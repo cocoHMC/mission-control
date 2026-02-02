@@ -1,0 +1,10 @@
+.DS_Store
+.env
+apps/web/.env.local
+apps/web/.env
+pb/pb_data/
+pb/pb_public/
+node_modules/
+apps/*/node_modules/
+dist/
+.next/

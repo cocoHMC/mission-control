@@ -1,0 +1,410 @@
+# Mission Control build loop progress log
+# One entry per build-loop turn.
+
+## 2026-02-02T17:51:53Z
+- urls: PROD=http://100.64.0.2:4010/tasks DEV=http://100.64.0.2:4011/tasks
+
+```
+<no diff>
+```
+
+## 2026-02-02T17:53:38Z
+- urls: PROD=http://100.64.0.2:4010/tasks DEV=http://100.64.0.2:4011/tasks
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```
+
+## 2026-02-02T18:02:04Z
+- urls: PROD=http://100.64.0.2:4010/tasks DEV=http://100.64.0.2:4011/tasks
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```
+
+## 2026-02-02T18:07:34Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T18:07:29Z
+- summary: <none>
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```
+
+## 2026-02-02T18:12:16Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T18:07:29Z
+- summary: <none>
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```
+
+## 2026-02-02T18:19:27Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T18:19:27Z
+- summary: <none>
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```
+
+## 2026-02-02T18:19:34Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T18:19:27Z
+- summary: <none>
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```
+
+## 2026-02-02T18:21:22Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T18:19:27Z
+- summary: <none>
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```
+
+## 2026-02-02T18:21:41Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T18:21:37Z
+- summary: Setup continuous proof pings + stabilized DEV-only workflow. Next: implement subscriptions + activity feed + enforcement tightening; then shadcn + drag/drop.
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```
+
+## 2026-02-02T18:21:45Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T18:21:37Z
+- summary: Setup continuous proof pings + stabilized DEV-only workflow. Next: implement subscriptions + activity feed + enforcement tightening; then shadcn + drag/drop.
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```
+
+## 2026-02-02T18:29:34Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T18:21:37Z
+- summary: Setup continuous proof pings + stabilized DEV-only workflow. Next: implement subscriptions + activity feed + enforcement tightening; then shadcn + drag/drop.
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```
+
+## 2026-02-02T18:39:34Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T18:21:37Z
+- summary: Setup continuous proof pings + stabilized DEV-only workflow. Next: implement subscriptions + activity feed + enforcement tightening; then shadcn + drag/drop.
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```
+
+## 2026-02-02T18:45:27Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T18:45:21Z
+- summary: Setup continuous proof pings + stabilized DEV-only workflow. Next: implement subscriptions + activity feed + enforcement tightening; then shadcn + drag/drop.
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```
+
+## 2026-02-02T18:45:34Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T18:45:21Z
+- summary: Setup continuous proof pings + stabilized DEV-only workflow. Next: implement subscriptions + activity feed + enforcement tightening; then shadcn + drag/drop.
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```
+
+## 2026-02-02T18:49:15Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T18:48:36Z
+- summary: Implemented task subscriptions + subscriber notifications on new messages; added Activity feed API + /activity page; updated dev compose to mount source for true live updates (no rebuild).
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```
+
+## 2026-02-02T18:55:34Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T18:55:25Z
+- summary: Implemented task subscriptions + subscriber notifications on new messages; added Activity feed API + /activity page; updated dev compose to mount source for true live updates (no rebuild).
+- git status (porcelain):
+
+```
+?? .env.example
+?? .gitignore
+?? README.md
+?? agents/
+?? apps/
+?? docker-compose.dev.yml
+?? docker-compose.yml
+?? docs/
+?? ops/
+?? package.json
+?? pb/
+?? pnpm-lock.yaml
+?? pnpm-workspace.yaml
+?? scripts/
+```
+
+```
+<no diff>
+```

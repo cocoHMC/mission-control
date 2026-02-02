@@ -1,0 +1,19 @@
+{
+  "name": "mission-control",
+  "private": true,
+  "packageManager": "pnpm@10.28.2",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "pnpm -r dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^11.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1"
+  }
+}

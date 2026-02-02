@@ -1,0 +1,45 @@
+services:
+  web-dev:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.dev
+    depends_on:
+      - pb
+    ports:
+      - "100.64.0.2:4011:4011"
+    volumes:
+      # Live-edit source on the host without rebuilding the image.
+      - ./apps/web:/repo/apps/web
+      - ./pnpm-lock.yaml:/repo/pnpm-lock.yaml
+      - ./pnpm-workspace.yaml:/repo/pnpm-workspace.yaml
+      - ./package.json:/repo/package.json
+    environment:
+      PORT: 4011
+      PB_URL: http://pb:8090
+      PB_SERVICE_EMAIL: ${PB_SERVICE_EMAIL}
+      PB_SERVICE_PASSWORD: ${PB_SERVICE_PASSWORD}
+      MC_ADMIN_USER: ${MC_ADMIN_USER}
+      MC_ADMIN_PASSWORD: ${MC_ADMIN_PASSWORD}
+      NEXT_TELEMETRY_DISABLED: 1
+
+  worker-dev:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile.dev
+    depends_on:
+      - pb
+    volumes:
+      - ./apps/worker:/repo/apps/worker
+      - ./pnpm-lock.yaml:/repo/pnpm-lock.yaml
+      - ./pnpm-workspace.yaml:/repo/pnpm-workspace.yaml
+      - ./package.json:/repo/package.json
+    environment:
+      PB_URL: http://pb:8090
+      PB_SERVICE_EMAIL: ${PB_SERVICE_EMAIL}
+      PB_SERVICE_PASSWORD: ${PB_SERVICE_PASSWORD}
+      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL_DOCKER:-http://host.docker.internal:18789}
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      LEASE_MINUTES: ${LEASE_MINUTES:-45}
+
+  # Reuse the same pb service/volume from docker-compose.yml by running:
+  # docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d

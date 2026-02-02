@@ -1,0 +1,5 @@
+{
+  "lastTurnAt": "2026-02-02T18:55:32Z",
+  "lastSummary": "Added activity logging for task claim; added a proper Blocked flow requiring a reason via /api/tasks/[id]/block and a UI input. Verified activity feed shows task_claimed.",
+  "nextPlanned": "Enforcement tightening (lease expiry -> nudge -> escalate with context) + shadcn UI + drag/drop kanban + docs/deliverables + nodes UI"
+}
