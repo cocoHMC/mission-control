@@ -935,3 +935,8 @@ Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allow
  GET /tasks/hhacar2kx8h9972 200 in 80ms (compile: 6ms, proxy.ts: 3ms, render: 72ms)
  GET /tasks 200 in 341ms (compile: 9ms, proxy.ts: 14ms, render: 317ms)
  GET /api/pb-token 200 in 85ms (compile: 1252µs, render: 84ms)
+ GET /tasks 200 in 146ms (compile: 4ms, proxy.ts: 16ms, render: 126ms)
+ GET /api/pb-token 200 in 99ms (compile: 3ms, render: 96ms)
+ GET /tasks/hhacar2kx8h9972 200 in 67ms (compile: 7ms, proxy.ts: 3ms, render: 57ms)
+ GET /tasks 200 in 161ms (compile: 7ms, proxy.ts: 12ms, render: 143ms)
+ GET /api/pb-token 200 in 127ms (compile: 25ms, render: 102ms)
