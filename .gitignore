@@ -4,6 +4,8 @@ apps/web/.env.local
 apps/web/.env
 pb/pb_data/
 pb/pb_public/
+pb/pocketbase.log
+backups/
 node_modules/
 apps/*/node_modules/
 dist/

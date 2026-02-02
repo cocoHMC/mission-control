@@ -5,6 +5,8 @@ const ADMIN_EMAIL = process.env.PB_ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.PB_ADMIN_PASSWORD;
 const SERVICE_EMAIL = process.env.PB_SERVICE_EMAIL;
 const SERVICE_PASSWORD = process.env.PB_SERVICE_PASSWORD;
+const LEAD_AGENT_ID = process.env.MC_LEAD_AGENT_ID || process.env.MC_LEAD_AGENT || 'coco';
+const LEAD_AGENT_NAME = process.env.MC_LEAD_AGENT_NAME || 'Lead';
 
 if (!ADMIN_EMAIL || !ADMIN_PASSWORD || !SERVICE_EMAIL || !SERVICE_PASSWORD) {
   console.error('Missing PB_* env vars. Check .env');
@@ -147,6 +149,20 @@ function rel(name) {
   return { type: 'relation', name, required: false, options: { collectionId: name, maxSelect: 1 } };
 }
 
+async function ensureAgent(token, agent) {
+  const q = encodeURIComponent(`openclawAgentId="${agent.openclawAgentId}"`);
+  const existing = await pbFetch(`/api/collections/agents/records?perPage=1&filter=${q}`, {
+    token: `Bearer ${token}`,
+  });
+  if (existing?.items?.length) return existing.items[0];
+
+  return pbFetch('/api/collections/agents/records', {
+    method: 'POST',
+    token: `Bearer ${token}`,
+    body: agent,
+  });
+}
+
 async function main() {
   console.log('[pb_bootstrap] PB_URL', PB_URL);
   const token = await adminToken();
@@ -173,6 +189,7 @@ async function main() {
       name: 'nodes',
       type: 'base',
       schema: [
+        { type: 'text', name: 'nodeId' },
         { type: 'text', name: 'displayName' },
         { type: 'bool', name: 'paired' },
         { type: 'date', name: 'lastSeenAt' },
@@ -272,6 +289,14 @@ async function main() {
 
   await ensureServiceUser(token);
   console.log('[pb_bootstrap] ensured service user', SERVICE_EMAIL);
+  await ensureAgent(token, {
+    displayName: LEAD_AGENT_NAME,
+    role: 'Primary Gateway (Lead)',
+    openclawAgentId: LEAD_AGENT_ID,
+    status: 'idle',
+    modelTier: 'mid',
+  });
+  console.log('[pb_bootstrap] ensured lead agent', LEAD_AGENT_ID);
 
   console.log('[pb_bootstrap] done');
 }

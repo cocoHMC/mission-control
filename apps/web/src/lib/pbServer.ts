@@ -29,7 +29,7 @@ async function authToken(): Promise<string> {
   return json.token;
 }
 
-export async function pbFetch(path: string, init: { method?: string; body?: any } = {}) {
+export async function pbFetch<T = unknown>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const token = await authToken();
   const res = await fetch(new URL(path, pbUrl()), {
     method: init.method ?? 'GET',
@@ -43,5 +43,5 @@ export async function pbFetch(path: string, init: { method?: string; body?: any 
   const text = await res.text();
   const json = text ? JSON.parse(text) : null;
   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
-  return json;
+  return json as T;
 }

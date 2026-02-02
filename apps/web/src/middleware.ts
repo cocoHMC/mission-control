@@ -28,5 +28,5 @@ export function middleware(req: NextRequest) {
 export const config = {
   // Let API routes work without browser basic-auth so server components can fetch.
   // UI pages remain gated.
-  matcher: ['/((?!api/|activity$|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!api/|_next/static|_next/image|favicon.ico).*)'],
 };

@@ -1,0 +1,937 @@
+
+> web@0.1.0 dev /Users/kyle_wils/Development/mission-control/apps/web
+> next dev --webpack --port 4010
+
+▲ Next.js 16.1.6 (webpack)
+- Local:         http://localhost:4010
+- Network:       http://192.168.1.231:4010
+
+✓ Starting...
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+✓ Ready in 1324ms
+ GET /api/health 200 in 979ms (compile: 943ms, render: 36ms)
+ GET /settings 200 in 1889ms (compile: 1632ms, proxy.ts: 9ms, render: 247ms)
+⨯ Error: PocketBase GET /api/collections/documents/records?page=1&perPage=200&sort=-updated failed: 400 {"data":{},"message":"Something went wrong while processing your request.","status":400}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async DocsPage (src/app/docs/page.tsx:10:16)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 | {
+  digest: '216317003'
+}
+⨯ Error: PocketBase GET /api/collections/activities/records?page=1&perPage=200&sort=-created failed: 400 {"data":{},"message":"Something went wrong while processing your request.","status":400}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async ActivityPage (src/app/activity/page.tsx:10:16)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 | {
+  digest: '1747324907'
+}
+ GET /docs 500 in 2.0s (compile: 1609ms, proxy.ts: 7ms, render: 431ms)
+ GET /activity 500 in 1949ms (compile: 1494ms, proxy.ts: 25ms, render: 430ms)
+ GET /tasks/new 200 in 1962ms (compile: 1494ms, proxy.ts: 25ms, render: 443ms)
+ GET /agents 200 in 2.0s (compile: 1497ms, proxy.ts: 79ms, render: 447ms)
+ GET /nodes 200 in 2.0s (compile: 1516ms, proxy.ts: 66ms, render: 448ms)
+⨯ Error: PocketBase GET /api/collections/activities/records?page=1&perPage=12&sort=-created failed: 400 {"data":{},"message":"Something went wrong while processing your request.","status":400}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async getOverview (src/app/page.tsx:13:20)
+    at async DashboardPage (src/app/page.tsx:22:39)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 | {
+  digest: '315724350'
+}
+⨯ Error: PocketBase GET /api/collections/activities/records?page=1&perPage=12&sort=-created failed: 400 {"data":{},"message":"Something went wrong while processing your request.","status":400}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async getOverview (src/app/page.tsx:13:20)
+    at async DashboardPage (src/app/page.tsx:22:39)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 | {
+  digest: '315724350'
+}
+ GET / 500 in 1421ms (compile: 1136ms, proxy.ts: 23ms, render: 263ms)
+ GET / 500 in 1201ms (compile: 916ms, proxy.ts: 17ms, render: 269ms)
+ GET /tasks 200 in 1429ms (compile: 1114ms, proxy.ts: 4ms, render: 310ms)
+ GET /tasks 200 in 165ms (compile: 17ms, proxy.ts: 15ms, render: 134ms)
+⨯ Error: PocketBase GET /api/collections/activities/records?page=1&perPage=200&sort=-created failed: 400 {"data":{},"message":"Something went wrong while processing your request.","status":400}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async ActivityPage (src/app/activity/page.tsx:10:16)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 | {
+  digest: '1747324907'
+}
+ GET /tasks/new 200 in 131ms (compile: 15ms, proxy.ts: 19ms, render: 98ms)
+ GET /activity 500 in 97ms (compile: 10ms, proxy.ts: 9ms, render: 77ms)
+ GET /agents 200 in 127ms (compile: 14ms, proxy.ts: 7ms, render: 105ms)
+⨯ Error: PocketBase GET /api/collections/documents/records?page=1&perPage=200&sort=-updated failed: 400 {"data":{},"message":"Something went wrong while processing your request.","status":400}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async DocsPage (src/app/docs/page.tsx:10:16)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 | {
+  digest: '216317003'
+}
+ GET /nodes 200 in 119ms (compile: 12ms, proxy.ts: 9ms, render: 98ms)
+ GET /docs 500 in 109ms (compile: 9ms, proxy.ts: 14ms, render: 87ms)
+ GET /settings 200 in 76ms (compile: 16ms, proxy.ts: 13ms, render: 47ms)
+⚠ Blocked cross-origin request from 127.0.0.1 to /_next/* resource. To allow this, configure "allowedDevOrigins" in next.config
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+ GET /tsasks 404 in 691ms (compile: 629ms, proxy.ts: 4ms, render: 58ms)
+ GET /tasks 200 in 190ms (compile: 8ms, proxy.ts: 3ms, render: 179ms)
+ GET /agents 200 in 57ms (compile: 12ms, proxy.ts: 10ms, render: 35ms)
+ GET /nodes 200 in 150ms (compile: 40ms, proxy.ts: 4ms, render: 106ms)
+⨯ Error: PocketBase GET /api/collections/documents/records?page=1&perPage=200&sort=-updated failed: 400 {"data":{},"message":"Something went wrong while processing your request.","status":400}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async DocsPage (src/app/docs/page.tsx:10:16)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 | {
+  digest: '216317003'
+}
+ GET /docs 200 in 44ms (compile: 14ms, proxy.ts: 5ms, render: 25ms)
+⨯ Error: PocketBase GET /api/collections/documents/records?page=1&perPage=200&sort=-updated failed: 400 {"data":{},"message":"Something went wrong while processing your request.","status":400}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async DocsPage (src/app/docs/page.tsx:10:16)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 | {
+  digest: '216317003'
+}
+ GET /docs 500 in 144ms (compile: 28ms, proxy.ts: 4ms, render: 113ms)
+ GET /nodes 200 in 72ms (compile: 6ms, proxy.ts: 3ms, render: 63ms)
+ GET /agents 200 in 870ms (compile: 744ms, proxy.ts: 8ms, render: 119ms)
+ GET /activity 200 in 64ms (compile: 10ms, proxy.ts: 4ms, render: 51ms)
+ GET /docs 200 in 1619ms (compile: 1363ms, proxy.ts: 37ms, render: 218ms)
+ GET /tasks 200 in 1828ms (compile: 1585ms, proxy.ts: 14ms, render: 229ms)
+ GET /tasks/new 200 in 1756ms (compile: 1491ms, proxy.ts: 34ms, render: 230ms)
+Error: Route "/tasks/[id]" used `params.id`. `params` is a Promise and must be unwrapped with `await` or `React.use()` before accessing its properties. Learn more: https://nextjs.org/docs/messages/sync-dynamic-apis
+    at TaskDetailPage (src/app/tasks/[id]/page.tsx:27:20)
+  25 | export default async function TaskDetailPage({ params }: { params: { id: string } }) {
+  26 |   const [task, agents, messages, documents] = await Promise.all([
+> 27 |     getTask(params.id),
+     |                    ^
+  28 |     getAgents(),
+  29 |     getMessages(params.id),
+  30 |     getDocs(params.id),
+⨯ Error: PocketBase GET /api/collections/tasks/records/undefined failed: 404 {"data":{},"message":"The requested resource wasn't found.","status":404}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async TaskDetailPage (src/app/tasks/[id]/page.tsx:26:47)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 | {
+  digest: '2046422028'
+}
+ GET /tasks/hhacar2kx8h9972 500 in 2.8s (compile: 2.8s, proxy.ts: 3ms, render: 49ms)
+ GET / 200 in 69ms (compile: 7ms, proxy.ts: 2ms, render: 60ms)
+ GET /tasks 200 in 73ms (compile: 1567µs, proxy.ts: 3ms, render: 68ms)
+ GET /tasks/new 200 in 65ms (compile: 1704µs, proxy.ts: 2ms, render: 61ms)
+ GET /activity 200 in 71ms (compile: 6ms, proxy.ts: 2ms, render: 63ms)
+ GET /agents 200 in 64ms (compile: 4ms, proxy.ts: 3ms, render: 58ms)
+ GET /nodes 200 in 59ms (compile: 4ms, proxy.ts: 2ms, render: 53ms)
+ GET /docs 200 in 71ms (compile: 1322µs, proxy.ts: 5ms, render: 64ms)
+ GET /settings 200 in 42ms (compile: 8ms, proxy.ts: 2ms, render: 32ms)
+ GET / 200 in 374ms (compile: 34ms, proxy.ts: 28ms, render: 311ms)
+ GET /nodes 200 in 84ms (compile: 4ms, proxy.ts: 7ms, render: 73ms)
+ GET /docs 200 in 52ms (compile: 1791µs, proxy.ts: 4ms, render: 46ms)
+ GET /activity 200 in 43ms (compile: 1732µs, proxy.ts: 3ms, render: 38ms)
+ GET / 200 in 68ms (compile: 3ms, proxy.ts: 5ms, render: 60ms)
+ GET /tasks/new 200 in 116ms (compile: 11ms, proxy.ts: 9ms, render: 96ms)
+ GET /docs 200 in 56ms (compile: 2ms, proxy.ts: 6ms, render: 47ms)
+ GET /tasks 200 in 51ms (compile: 2ms, proxy.ts: 3ms, render: 45ms)
+Error: Route "/tasks/[id]" used `params.id`. `params` is a Promise and must be unwrapped with `await` or `React.use()` before accessing its properties. Learn more: https://nextjs.org/docs/messages/sync-dynamic-apis
+    at TaskDetailPage (src/app/tasks/[id]/page.tsx:27:20)
+  25 | export default async function TaskDetailPage({ params }: { params: { id: string } }) {
+  26 |   const [task, agents, messages, documents] = await Promise.all([
+> 27 |     getTask(params.id),
+     |                    ^
+  28 |     getAgents(),
+  29 |     getMessages(params.id),
+  30 |     getDocs(params.id),
+⨯ Error: PocketBase GET /api/collections/tasks/records/undefined failed: 404 {"data":{},"message":"The requested resource wasn't found.","status":404}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async TaskDetailPage (src/app/tasks/[id]/page.tsx:26:47)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 | {
+  digest: '2046422028'
+}
+ GET /tasks/hhacar2kx8h9972 500 in 71ms (compile: 9ms, proxy.ts: 6ms, render: 55ms)
+ GET /tasks 200 in 35ms (compile: 1789µs, proxy.ts: 5ms, render: 27ms)
+ GET /agents 200 in 50ms (compile: 4ms, proxy.ts: 5ms, render: 42ms)
+Error: Route "/tasks/[id]" used `params.id`. `params` is a Promise and must be unwrapped with `await` or `React.use()` before accessing its properties. Learn more: https://nextjs.org/docs/messages/sync-dynamic-apis
+    at TaskDetailPage (src/app/tasks/[id]/page.tsx:27:20)
+  25 | export default async function TaskDetailPage({ params }: { params: { id: string } }) {
+  26 |   const [task, agents, messages, documents] = await Promise.all([
+> 27 |     getTask(params.id),
+     |                    ^
+  28 |     getAgents(),
+  29 |     getMessages(params.id),
+  30 |     getDocs(params.id),
+⨯ Error: PocketBase GET /api/collections/tasks/records/undefined failed: 404 {"data":{},"message":"The requested resource wasn't found.","status":404}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async TaskDetailPage (src/app/tasks/[id]/page.tsx:26:47)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 | {
+  digest: '2046422028'
+}
+ GET /tasks/hhacar2kx8h9972 500 in 67ms (compile: 4ms, proxy.ts: 3ms, render: 60ms)
+ GET / 200 in 168ms (compile: 8ms, proxy.ts: 4ms, render: 156ms)
+ GET /docs 200 in 220ms (compile: 4ms, proxy.ts: 7ms, render: 209ms)
+ GET /nodes 200 in 288ms (compile: 5ms, proxy.ts: 39ms, render: 245ms)
+ GET /tasks/new 200 in 72ms (compile: 13ms, proxy.ts: 15ms, render: 44ms)
+ GET /tasks/new 200 in 87ms (compile: 3ms, proxy.ts: 3ms, render: 81ms)
+ GET /docs 200 in 91ms (compile: 5ms, proxy.ts: 13ms, render: 73ms)
+ GET /tasks 200 in 81ms (compile: 3ms, proxy.ts: 13ms, render: 65ms)
+Error: Route "/tasks/[id]" used `params.id`. `params` is a Promise and must be unwrapped with `await` or `React.use()` before accessing its properties. Learn more: https://nextjs.org/docs/messages/sync-dynamic-apis
+    at TaskDetailPage (src/app/tasks/[id]/page.tsx:27:20)
+  25 | export default async function TaskDetailPage({ params }: { params: { id: string } }) {
+  26 |   const [task, agents, messages, documents] = await Promise.all([
+> 27 |     getTask(params.id),
+     |                    ^
+  28 |     getAgents(),
+  29 |     getMessages(params.id),
+  30 |     getDocs(params.id),
+⨯ Error: PocketBase GET /api/collections/messages/records?page=1&perPage=200&filter=taskId+%3D+%22undefined%22&sort=-created failed: 400 {"data":{},"message":"Something went wrong while processing your request.","status":400}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async TaskDetailPage (src/app/tasks/[id]/page.tsx:26:47)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 | {
+  digest: '2860605998'
+}
+ GET /tasks/hhacar2kx8h9972 500 in 132ms (compile: 24ms, proxy.ts: 7ms, render: 102ms)
+ GET /activity 200 in 136ms (compile: 6ms, proxy.ts: 18ms, render: 111ms)
+ GET /tasks/new 200 in 93ms (compile: 4ms, proxy.ts: 4ms, render: 85ms)
+Error: Route "/tasks/[id]" used `params.id`. `params` is a Promise and must be unwrapped with `await` or `React.use()` before accessing its properties. Learn more: https://nextjs.org/docs/messages/sync-dynamic-apis
+    at TaskDetailPage (src/app/tasks/[id]/page.tsx:27:20)
+  25 | export default async function TaskDetailPage({ params }: { params: { id: string } }) {
+  26 |   const [task, agents, messages, documents] = await Promise.all([
+> 27 |     getTask(params.id),
+     |                    ^
+  28 |     getAgents(),
+  29 |     getMessages(params.id),
+  30 |     getDocs(params.id),
+⨯ Error: PocketBase GET /api/collections/tasks/records/undefined failed: 404 {"data":{},"message":"The requested resource wasn't found.","status":404}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async TaskDetailPage (src/app/tasks/[id]/page.tsx:26:47)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 | {
+  digest: '2046422028'
+}
+ GET /tasks/hhacar2kx8h9972 500 in 115ms (compile: 8ms, proxy.ts: 3ms, render: 104ms)
+ GET /agents 200 in 67ms (compile: 3ms, proxy.ts: 5ms, render: 59ms)
+ GET /docs 200 in 304ms (compile: 89ms, proxy.ts: 7ms, render: 208ms)
+ GET /tasks 200 in 94ms (compile: 11ms, proxy.ts: 3ms, render: 80ms)
+ GET /settings 200 in 475ms (compile: 445ms, proxy.ts: 4ms, render: 26ms)
+⨯ Error: PocketBase GET /api/collections/documents/records?page=1&perPage=100&filter=taskId+%3D+%22hhacar2kx8h9972%22&sort=-updated failed: 400 {"data":{},"message":"Something went wrong while processing your request.","status":400}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async TaskDetailPage (src/app/tasks/[id]/page.tsx:27:47)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 | {
+  digest: '1459218924'
+}
+ GET /tasks/hhacar2kx8h9972 500 in 261ms (compile: 12ms, proxy.ts: 4ms, render: 245ms)
+ GET /tasks/new 200 in 241ms (compile: 12ms, proxy.ts: 3ms, render: 226ms)
+ GET /tasks 200 in 75ms (compile: 8ms, proxy.ts: 6ms, render: 62ms)
+ GET /nodes 200 in 428ms (compile: 331ms, proxy.ts: 4ms, render: 93ms)
+ GET /nodes 200 in 78ms (compile: 1755µs, proxy.ts: 4ms, render: 72ms)
+ GET /docs 200 in 75ms (compile: 9ms, proxy.ts: 5ms, render: 61ms)
+ GET /agents 200 in 163ms (compile: 39ms, proxy.ts: 7ms, render: 117ms)
+ GET /activity 200 in 564ms (compile: 471ms, proxy.ts: 4ms, render: 89ms)
+ GET /tasks/hhacar2kx8h9972 200 in 258ms (compile: 31ms, proxy.ts: 4ms, render: 224ms)
+ GET /tasks 200 in 200ms (compile: 10ms, proxy.ts: 101ms, render: 89ms)
+ GET /tasks 200 in 72ms (compile: 3ms, proxy.ts: 4ms, render: 65ms)
+ GET / 200 in 656ms (compile: 554ms, proxy.ts: 2ms, render: 99ms)
+ GET /tasks/hhacar2kx8h9972 200 in 501ms (compile: 21ms, proxy.ts: 4ms, render: 476ms)
+ GET /activity 200 in 278ms (compile: 44ms, proxy.ts: 46ms, render: 188ms)
+ GET /tasks/hhacar2kx8h9972 200 in 413ms (compile: 34ms, proxy.ts: 30ms, render: 350ms)
+ GET / 200 in 406ms (compile: 14ms, proxy.ts: 27ms, render: 365ms)
+ GET /agents 200 in 112ms (compile: 15ms, proxy.ts: 10ms, render: 87ms)
+ GET /tasks 200 in 51ms (compile: 18ms, proxy.ts: 4ms, render: 29ms)
+ GET /tasks/new 200 in 65ms (compile: 12ms, proxy.ts: 4ms, render: 48ms)
+ GET /tasks 200 in 80ms (compile: 2ms, proxy.ts: 6ms, render: 72ms)
+ GET / 200 in 88ms (compile: 4ms, proxy.ts: 16ms, render: 68ms)
+ GET /nodes 200 in 94ms (compile: 13ms, proxy.ts: 4ms, render: 77ms)
+ GET /tasks 200 in 42ms (compile: 3ms, proxy.ts: 10ms, render: 29ms)
+ GET /activity 200 in 186ms (compile: 37ms, proxy.ts: 14ms, render: 135ms)
+ GET /tasks 200 in 220ms (compile: 14ms, proxy.ts: 14ms, render: 191ms)
+ GET /agents 200 in 54ms (compile: 4ms, proxy.ts: 12ms, render: 39ms)
+ GET /nodes 200 in 47ms (compile: 1935µs, proxy.ts: 4ms, render: 42ms)
+ GET /docs 200 in 71ms (compile: 29ms, proxy.ts: 7ms, render: 35ms)
+ GET /settings 200 in 53ms (compile: 20ms, proxy.ts: 5ms, render: 28ms)
+ GET / 200 in 67ms (compile: 32ms, proxy.ts: 5ms, render: 30ms)
+ GET /tasks/new 200 in 113ms (compile: 7ms, proxy.ts: 7ms, render: 98ms)
+ GET /tasks/new 200 in 36ms (compile: 4ms, proxy.ts: 9ms, render: 24ms)
+ GET /tasks/hhacar2kx8h9972 200 in 77ms (compile: 7ms, proxy.ts: 2ms, render: 68ms)
+ GET /docs 200 in 85ms (compile: 2ms, proxy.ts: 4ms, render: 79ms)
+ GET /tasks/new 200 in 84ms (compile: 5ms, proxy.ts: 4ms, render: 75ms)
+ GET /tasks/hhacar2kx8h9972 200 in 145ms (compile: 12ms, proxy.ts: 8ms, render: 125ms)
+ GET /activity 200 in 118ms (compile: 4ms, proxy.ts: 6ms, render: 108ms)
+ GET /agents 200 in 61ms (compile: 2ms, proxy.ts: 5ms, render: 53ms)
+ POST /api/tasks 200 in 1158ms (compile: 1061ms, render: 97ms)
+ GET /tasks 200 in 129ms (compile: 61ms, proxy.ts: 5ms, render: 62ms)
+ GET /tasks 200 in 36ms (compile: 5ms, proxy.ts: 6ms, render: 25ms)
+ GET /tasks/nwyzdbbowo8ic8x 200 in 548ms (compile: 53ms, proxy.ts: 51ms, render: 444ms)
+ GET /tasks/new 200 in 413ms (compile: 62ms, proxy.ts: 56ms, render: 295ms)
+ GET /tasks 200 in 392ms (compile: 26ms, proxy.ts: 59ms, render: 307ms)
+ POST /api/messages 200 in 1087ms (compile: 970ms, render: 117ms)
+ GET /tasks/nwyzdbbowo8ic8x 200 in 111ms (compile: 45ms, proxy.ts: 7ms, render: 59ms)
+ GET /tasks/new 200 in 95ms (compile: 12ms, proxy.ts: 5ms, render: 79ms)
+ GET /docs 200 in 54ms (compile: 12ms, proxy.ts: 2ms, render: 40ms)
+ GET /agents 200 in 98ms (compile: 20ms, proxy.ts: 14ms, render: 63ms)
+ GET /tasks 200 in 75ms (compile: 12ms, proxy.ts: 6ms, render: 57ms)
+ GET /tasks/hhacar2kx8h9972 200 in 355ms (compile: 10ms, proxy.ts: 3ms, render: 342ms)
+ GET /nodes 200 in 294ms (compile: 28ms, proxy.ts: 182ms, render: 84ms)
+ GET /tasks 200 in 78ms (compile: 4ms, proxy.ts: 14ms, render: 60ms)
+ GET /tasks/nwyzdbbowo8ic8x 200 in 264ms (compile: 52ms, proxy.ts: 28ms, render: 184ms)
+ GET /nodes 200 in 131ms (compile: 3ms, proxy.ts: 20ms, render: 109ms)
+ GET /agents 200 in 74ms (compile: 3ms, proxy.ts: 8ms, render: 63ms)
+ GET /tasks/hhacar2kx8h9972 200 in 365ms (compile: 11ms, proxy.ts: 11ms, render: 343ms)
+ POST /api/documents 200 in 819ms (compile: 744ms, render: 75ms)
+ GET /tasks/nwyzdbbowo8ic8x 200 in 57ms (compile: 21ms, proxy.ts: 2ms, render: 34ms)
+ GET /tasks/new 200 in 192ms (compile: 40ms, proxy.ts: 7ms, render: 145ms)
+ GET /tasks 200 in 96ms (compile: 15ms, proxy.ts: 4ms, render: 77ms)
+ GET /activity 200 in 450ms (compile: 331ms, proxy.ts: 5ms, render: 114ms)
+ GET /agents 200 in 32ms (compile: 9ms, proxy.ts: 4ms, render: 19ms)
+ GET /nodes 200 in 39ms (compile: 15ms, proxy.ts: 5ms, render: 19ms)
+Error: Route "/api/tasks/[id]" used `params.id`. `params` is a Promise and must be unwrapped with `await` or `React.use()` before accessing its properties. Learn more: https://nextjs.org/docs/messages/sync-dynamic-apis
+    at PATCH (src/app/api/tasks/[id]/route.ts:15:74)
+  13 |     payload.lastProgressAt = new Date().toISOString();
+  14 |   }
+> 15 |   const updated = await pbFetch(`/api/collections/tasks/records/${params.id}`, { method: 'PATCH', body: payload });
+     |                                                                          ^
+  16 |   return NextResponse.json(updated);
+  17 | }
+  18 |
+⨯ Error: PocketBase PATCH /api/collections/tasks/records/undefined failed: 404 {"data":{},"message":"The requested resource wasn't found.","status":404}
+    at pbFetch (src/lib/pbServer.ts:45:22)
+    at async PATCH (src/app/api/tasks/[id]/route.ts:15:19)
+  43 |   const text = await res.text();
+  44 |   const json = text ? JSON.parse(text) : null;
+> 45 |   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+     |                      ^
+  46 |   return json as T;
+  47 | }
+  48 |
+ PATCH /api/tasks/nwyzdbbowo8ic8x 500 in 916ms (compile: 738ms, render: 177ms)
+ GET /tasks/nwyzdbbowo8ic8x 200 in 58ms (compile: 20ms, proxy.ts: 2ms, render: 35ms)
+ GET /agents 200 in 51ms (compile: 18ms, proxy.ts: 5ms, render: 28ms)
+ GET /activity 200 in 56ms (compile: 14ms, proxy.ts: 6ms, render: 36ms)
+ GET /docs 200 in 102ms (compile: 14ms, proxy.ts: 4ms, render: 84ms)
+ GET /activity 200 in 62ms (compile: 1673µs, proxy.ts: 3ms, render: 57ms)
+ GET /tasks 200 in 37ms (compile: 9ms, proxy.ts: 2ms, render: 26ms)
+ GET / 200 in 602ms (compile: 497ms, proxy.ts: 5ms, render: 101ms)
+ GET /tasks/hhacar2kx8h9972 200 in 488ms (compile: 42ms, proxy.ts: 91ms, render: 356ms)
+ GET /agents 200 in 194ms (compile: 28ms, proxy.ts: 2ms, render: 164ms)
+ GET /tasks/nwyzdbbowo8ic8x 200 in 96ms (compile: 18ms, proxy.ts: 2ms, render: 76ms)
+ GET /nodes 200 in 83ms (compile: 9ms, proxy.ts: 4ms, render: 69ms)
+ GET /tasks/new 200 in 137ms (compile: 15ms, proxy.ts: 8ms, render: 114ms)
+ PATCH /api/tasks/nwyzdbbowo8ic8x 200 in 19ms (compile: 10ms, render: 9ms)
+ GET /tasks/nwyzdbbowo8ic8x 200 in 107ms (compile: 13ms, proxy.ts: 32ms, render: 61ms)
+ GET / 200 in 107ms (compile: 16ms, proxy.ts: 5ms, render: 86ms)
+ GET /tasks/hhacar2kx8h9972 200 in 79ms (compile: 7ms, proxy.ts: 5ms, render: 68ms)
+ GET /tasks 200 in 98ms (compile: 18ms, proxy.ts: 12ms, render: 68ms)
+ GET /tasks 200 in 84ms (compile: 3ms, proxy.ts: 5ms, render: 77ms)
+ GET /tasks/nwyzdbbowo8ic8x 200 in 92ms (compile: 6ms, proxy.ts: 5ms, render: 81ms)
+ GET /activity 200 in 70ms (compile: 11ms, proxy.ts: 4ms, render: 55ms)
+ GET / 200 in 36ms (compile: 2ms, proxy.ts: 3ms, render: 31ms)
+ GET /tasks/hhacar2kx8h9972 200 in 74ms (compile: 5ms, proxy.ts: 5ms, render: 64ms)
+ GET /tasks 200 in 40ms (compile: 2ms, proxy.ts: 4ms, render: 34ms)
+ GET /tasks/hhacar2kx8h9972 200 in 77ms (compile: 4ms, proxy.ts: 4ms, render: 69ms)
+ GET /docs 200 in 55ms (compile: 10ms, proxy.ts: 4ms, render: 41ms)
+ GET /agents 200 in 51ms (compile: 3ms, proxy.ts: 4ms, render: 44ms)
+ GET /tasks/nwyzdbbowo8ic8x 200 in 462ms (compile: 75ms, proxy.ts: 4ms, render: 384ms)
+ GET /tasks/new 200 in 571ms (compile: 387ms, proxy.ts: 6ms, render: 178ms)
+ GET / 200 in 75ms (compile: 31ms, proxy.ts: 5ms, render: 39ms)
+ GET /nodes 200 in 691ms (compile: 543ms, proxy.ts: 6ms, render: 142ms)
+ GET /tasks/hhacar2kx8h9972 200 in 268ms (compile: 44ms, proxy.ts: 4ms, render: 221ms)
+ GET / 200 in 132ms (compile: 16ms, proxy.ts: 2ms, render: 113ms)
+ GET /tasks 200 in 80ms (compile: 11ms, proxy.ts: 5ms, render: 65ms)
+ GET /activity 200 in 83ms (compile: 14ms, proxy.ts: 4ms, render: 65ms)
+ GET /tasks/hhacar2kx8h9972 200 in 126ms (compile: 9ms, proxy.ts: 14ms, render: 102ms)
+ GET /nodes 200 in 160ms (compile: 25ms, proxy.ts: 11ms, render: 124ms)
+ GET /agents 200 in 69ms (compile: 13ms, proxy.ts: 2ms, render: 54ms)
+ GET /tasks/nwyzdbbowo8ic8x 200 in 130ms (compile: 12ms, proxy.ts: 3ms, render: 115ms)
+ GET /docs 200 in 79ms (compile: 14ms, proxy.ts: 3ms, render: 62ms)
+ GET / 200 in 150ms (compile: 3ms, proxy.ts: 4ms, render: 143ms)
+ GET /tasks/hhacar2kx8h9972 200 in 323ms (compile: 44ms, proxy.ts: 4ms, render: 274ms)
+ GET /docs 200 in 103ms (compile: 13ms, proxy.ts: 21ms, render: 68ms)
+ GET /tasks/new 200 in 578ms (compile: 446ms, proxy.ts: 6ms, render: 126ms)
+ GET /nodes 200 in 61ms (compile: 37ms, proxy.ts: 6ms, render: 18ms)
+ GET /tasks 200 in 81ms (compile: 10ms, proxy.ts: 3ms, render: 67ms)
+ GET /settings 200 in 641ms (compile: 593ms, proxy.ts: 5ms, render: 42ms)
+ GET /activity 200 in 260ms (compile: 15ms, proxy.ts: 13ms, render: 231ms)
+ GET /tasks/hhacar2kx8h9972 200 in 248ms (compile: 17ms, proxy.ts: 3ms, render: 227ms)
+ GET /tasks/nwyzdbbowo8ic8x 200 in 220ms (compile: 14ms, proxy.ts: 12ms, render: 195ms)
+ GET /nodes 200 in 101ms (compile: 18ms, proxy.ts: 5ms, render: 77ms)
+ GET /agents 200 in 85ms (compile: 14ms, proxy.ts: 6ms, render: 65ms)
+ GET /docs 200 in 64ms (compile: 11ms, proxy.ts: 4ms, render: 50ms)
+ GET /tasks/hhacar2kx8h9972 200 in 156ms (compile: 5ms, proxy.ts: 7ms, render: 144ms)
+ GET /tasks/new 200 in 130ms (compile: 12ms, proxy.ts: 37ms, render: 80ms)
+ GET /tasks 200 in 80ms (compile: 9ms, proxy.ts: 3ms, render: 68ms)
+ GET /settings 200 in 55ms (compile: 7ms, proxy.ts: 8ms, render: 40ms)
+ GET /activity 200 in 77ms (compile: 3ms, proxy.ts: 6ms, render: 68ms)
+ GET /tasks/hhacar2kx8h9972 200 in 73ms (compile: 5ms, proxy.ts: 2ms, render: 65ms)
+ GET /api/health 200 in 752ms (compile: 744ms, render: 8ms)
+ GET /tasks/nwyzdbbowo8ic8x 200 in 366ms (compile: 57ms, proxy.ts: 4ms, render: 305ms)
+ GET /tasks/new 200 in 214ms (compile: 21ms, proxy.ts: 16ms, render: 177ms)
+ GET /tasks/hhacar2kx8h9972 200 in 147ms (compile: 11ms, proxy.ts: 11ms, render: 126ms)
+ GET /tasks 200 in 403ms (compile: 28ms, proxy.ts: 70ms, render: 305ms)
+ GET /tasks/nwyzdbbowo8ic8x 200 in 168ms (compile: 22ms, proxy.ts: 15ms, render: 131ms)
+ GET /nodes 200 in 169ms (compile: 29ms, proxy.ts: 22ms, render: 118ms)
+ GET /docs 200 in 177ms (compile: 17ms, proxy.ts: 51ms, render: 109ms)
+ GET /agents 200 in 103ms (compile: 26ms, proxy.ts: 7ms, render: 70ms)
+ GET /settings 200 in 88ms (compile: 14ms, proxy.ts: 7ms, render: 68ms)
+ GET /tasks/hhacar2kx8h9972 200 in 196ms (compile: 15ms, proxy.ts: 9ms, render: 172ms)
+ GET /activity 200 in 111ms (compile: 11ms, proxy.ts: 3ms, render: 97ms)
+ GET /tasks/new 200 in 155ms (compile: 6ms, proxy.ts: 12ms, render: 137ms)
+ GET /tasks 200 in 92ms (compile: 3ms, proxy.ts: 8ms, render: 81ms)
+ GET /tasks/new 200 in 45ms (compile: 5ms, proxy.ts: 6ms, render: 33ms)
+ GET /tasks 200 in 450ms (compile: 8ms, proxy.ts: 32ms, render: 410ms)
+ GET /tasks/hhacar2kx8h9972 200 in 367ms (compile: 45ms, proxy.ts: 76ms, render: 246ms)
+ GET /tasks/new 200 in 45ms (compile: 6ms, proxy.ts: 6ms, render: 33ms)
+ GET /settings 200 in 66ms (compile: 5ms, proxy.ts: 5ms, render: 56ms)
+ GET /nodes 200 in 245ms (compile: 55ms, proxy.ts: 3ms, render: 187ms)
+ GET /tasks 200 in 223ms (compile: 18ms, proxy.ts: 59ms, render: 145ms)
+ GET /docs 200 in 74ms (compile: 2ms, proxy.ts: 3ms, render: 69ms)
+ GET /agents 200 in 62ms (compile: 1975µs, proxy.ts: 4ms, render: 57ms)
+ GET /tasks 200 in 157ms (compile: 5ms, proxy.ts: 25ms, render: 127ms)
+ GET /tasks/hhacar2kx8h9972 200 in 82ms (compile: 6ms, proxy.ts: 8ms, render: 67ms)
+ POST /api/messages 200 in 1384ms (compile: 1244ms, render: 140ms)
+ PATCH /api/tasks/hhacar2kx8h9972 200 in 1700ms (compile: 1552ms, render: 147ms)
+ POST /api/documents 200 in 1095ms (compile: 926ms, render: 169ms)
+ GET /tasks/hhacar2kx8h9972 200 in 173ms (compile: 61ms, proxy.ts: 12ms, render: 101ms)
+ GET /tasks/hhacar2kx8h9972 200 in 126ms (compile: 24ms, proxy.ts: 10ms, render: 93ms)
+ GET /tasks/hhacar2kx8h9972 200 in 103ms (compile: 14ms, proxy.ts: 12ms, render: 77ms)
+ GET /activity 200 in 949ms (compile: 687ms, proxy.ts: 7ms, render: 255ms)
+ GET /tasks/hhacar2kx8h9972 200 in 125ms (compile: 12ms, proxy.ts: 4ms, render: 110ms)
+ GET /tasks/new 200 in 107ms (compile: 23ms, proxy.ts: 10ms, render: 74ms)
+ GET /tasks 200 in 514ms (compile: 40ms, proxy.ts: 64ms, render: 410ms)
+ GET /settings 200 in 124ms (compile: 11ms, proxy.ts: 6ms, render: 106ms)
+ GET /tasks/hhacar2kx8h9972 200 in 70ms (compile: 6ms, proxy.ts: 4ms, render: 60ms)
+ GET /tasks/hhacar2kx8h9972 200 in 95ms (compile: 5ms, proxy.ts: 3ms, render: 87ms)
+ GET /nodes 200 in 273ms (compile: 48ms, proxy.ts: 28ms, render: 197ms)
+ GET /docs 200 in 140ms (compile: 17ms, proxy.ts: 9ms, render: 115ms)
+ GET /agents 200 in 64ms (compile: 10ms, proxy.ts: 3ms, render: 52ms)
+ GET /tasks/hhacar2kx8h9972 200 in 1105ms (compile: 171ms, proxy.ts: 17ms, render: 917ms)
+ GET /tasks/hhacar2kx8h9972 200 in 454ms (compile: 17ms, proxy.ts: 39ms, render: 398ms)
+ GET /settings 200 in 226ms (compile: 17ms, proxy.ts: 19ms, render: 190ms)
+ GET /tasks 200 in 187ms (compile: 2ms, proxy.ts: 10ms, render: 175ms)
+ GET /tasks/new 200 in 100ms (compile: 4ms, proxy.ts: 12ms, render: 85ms)
+ GET /activity 200 in 151ms (compile: 4ms, proxy.ts: 5ms, render: 142ms)
+ GET /tasks/hhacar2kx8h9972 200 in 73ms (compile: 11ms, proxy.ts: 8ms, render: 54ms)
+ GET /docs 200 in 62ms (compile: 3ms, proxy.ts: 7ms, render: 52ms)
+ GET /nodes 200 in 133ms (compile: 4ms, proxy.ts: 8ms, render: 121ms)
+ GET /agents 200 in 112ms (compile: 2ms, proxy.ts: 3ms, render: 107ms)
+ GET /tasks/hhacar2kx8h9972 200 in 94ms (compile: 5ms, proxy.ts: 3ms, render: 85ms)
+ GET /tasks 200 in 67ms (compile: 10ms, proxy.ts: 12ms, render: 44ms)
+ GET /tasks/kiwkn1er847xkaz 200 in 48ms (compile: 5ms, proxy.ts: 5ms, render: 38ms)
+ GET /tasks 200 in 28ms (compile: 1604µs, proxy.ts: 5ms, render: 21ms)
+ GET /tasks/nj1lp0fl7t5rt2m 200 in 38ms (compile: 4ms, proxy.ts: 3ms, render: 31ms)
+ GET /tasks 200 in 28ms (compile: 1933µs, proxy.ts: 4ms, render: 23ms)
+ GET /tasks/new 200 in 246ms (compile: 10ms, proxy.ts: 14ms, render: 222ms)
+ GET /tasks/hhacar2kx8h9972 200 in 238ms (compile: 38ms, proxy.ts: 85ms, render: 114ms)
+ GET /tasks 200 in 51ms (compile: 1531µs, proxy.ts: 5ms, render: 44ms)
+ GET /tasks 200 in 67ms (compile: 8ms, proxy.ts: 4ms, render: 55ms)
+ GET /tasks/hhacar2kx8h9972 200 in 85ms (compile: 9ms, proxy.ts: 4ms, render: 72ms)
+ GET /agents 200 in 113ms (compile: 5ms, proxy.ts: 16ms, render: 92ms)
+ GET /activity 200 in 88ms (compile: 3ms, proxy.ts: 3ms, render: 82ms)
+ GET /tasks/hhacar2kx8h9972 200 in 197ms (compile: 19ms, proxy.ts: 10ms, render: 169ms)
+ GET /docs 200 in 164ms (compile: 8ms, proxy.ts: 8ms, render: 148ms)
+ GET /nodes 200 in 84ms (compile: 1999µs, proxy.ts: 3ms, render: 79ms)
+ GET /tasks/hhacar2kx8h9972 200 in 128ms (compile: 15ms, proxy.ts: 5ms, render: 108ms)
+ GET /tasks/new 200 in 99ms (compile: 3ms, proxy.ts: 7ms, render: 89ms)
+ GET /tasks 200 in 65ms (compile: 3ms, proxy.ts: 3ms, render: 59ms)
+ GET /tasks/hhacar2kx8h9972 200 in 90ms (compile: 6ms, proxy.ts: 5ms, render: 79ms)
+ GET /tasks 200 in 186ms (compile: 44ms, proxy.ts: 11ms, render: 131ms)
+ GET /agents 200 in 52ms (compile: 2ms, proxy.ts: 2ms, render: 47ms)
+ GET /activity 200 in 167ms (compile: 3ms, proxy.ts: 13ms, render: 152ms)
+ GET /docs 200 in 73ms (compile: 4ms, proxy.ts: 7ms, render: 61ms)
+ GET /tasks/hhacar2kx8h9972 200 in 100ms (compile: 14ms, proxy.ts: 5ms, render: 81ms)
+ GET /nodes 200 in 57ms (compile: 1435µs, proxy.ts: 3ms, render: 53ms)
+ GET /tasks 200 in 455ms (compile: 154ms, proxy.ts: 23ms, render: 278ms)
+ GET /tasks/new 200 in 127ms (compile: 15ms, proxy.ts: 18ms, render: 94ms)
+ GET /tasks/hhacar2kx8h9972 200 in 146ms (compile: 15ms, proxy.ts: 4ms, render: 126ms)
+ GET /tasks 200 in 73ms (compile: 1681µs, proxy.ts: 2ms, render: 69ms)
+ GET /tasks 200 in 198ms (compile: 21ms, proxy.ts: 79ms, render: 98ms)
+ GET /tasks/hhacar2kx8h9972 200 in 180ms (compile: 21ms, proxy.ts: 36ms, render: 123ms)
+ GET / 200 in 1183ms (compile: 1053ms, proxy.ts: 4ms, render: 126ms)
+ GET /docs 200 in 205ms (compile: 36ms, proxy.ts: 3ms, render: 166ms)
+ GET /tasks 200 in 118ms (compile: 8ms, proxy.ts: 2ms, render: 108ms)
+ GET /nodes 200 in 322ms (compile: 70ms, proxy.ts: 102ms, render: 149ms)
+ GET /agents 200 in 463ms (compile: 337ms, proxy.ts: 5ms, render: 120ms)
+ GET /tasks 200 in 230ms (compile: 30ms, proxy.ts: 34ms, render: 165ms)
+ GET /tasks 200 in 76ms (compile: 3ms, proxy.ts: 4ms, render: 69ms)
+ GET /tasks 200 in 145ms (compile: 3ms, proxy.ts: 13ms, render: 129ms)
+ GET /task 404 in 879ms (compile: 811ms, proxy.ts: 51ms, render: 17ms)
+ GET /activity 200 in 2.2s (compile: 2.0s, proxy.ts: 5ms, render: 215ms)
+ GET /tasks 200 in 145ms (compile: 27ms, proxy.ts: 5ms, render: 113ms)
+ GET /tasks 200 in 80ms (compile: 4ms, proxy.ts: 3ms, render: 73ms)
+ GET /tasks/hhacar2kx8h9972 200 in 254ms (compile: 42ms, proxy.ts: 5ms, render: 208ms)
+ GET /tasks/new 200 in 578ms (compile: 455ms, proxy.ts: 4ms, render: 119ms)
+ GET /tasks 200 in 128ms (compile: 30ms, proxy.ts: 5ms, render: 93ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22kiwkn1er847xkaz%22 200 in 1585ms (compile: 1479ms, render: 106ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22kiwkn1er847xkaz%22 200 in 1587ms (compile: 1482ms, render: 106ms)
+ GET /api/tasks/kiwkn1er847xkaz 200 in 1566ms (compile: 1459ms, render: 107ms)
+ GET /agents 200 in 1085ms (compile: 775ms, proxy.ts: 10ms, render: 301ms)
+ GET /nodes 200 in 1138ms (compile: 822ms, proxy.ts: 12ms, render: 303ms)
+ GET /tasks/hhacar2kx8h9972 200 in 137ms (compile: 16ms, proxy.ts: 3ms, render: 117ms)
+ GET /tasks 200 in 170ms (compile: 12ms, proxy.ts: 8ms, render: 150ms)
+ GET /docs 200 in 1553ms (compile: 1347ms, proxy.ts: 5ms, render: 201ms)
+ GET /activity 200 in 606ms (compile: 395ms, proxy.ts: 3ms, render: 209ms)
+ GET /tasks 200 in 138ms (compile: 7ms, proxy.ts: 12ms, render: 119ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22kiwkn1er847xkaz%22 200 in 39ms (compile: 14ms, render: 25ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22kiwkn1er847xkaz%22 200 in 40ms (compile: 25ms, render: 15ms)
+ GET /api/tasks/kiwkn1er847xkaz 200 in 66ms (compile: 54ms, render: 12ms)
+ GET /tasks 200 in 121ms (compile: 5ms, proxy.ts: 16ms, render: 100ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22kiwkn1er847xkaz%22 200 in 41ms (compile: 21ms, render: 20ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22kiwkn1er847xkaz%22 200 in 39ms (compile: 31ms, render: 9ms)
+ GET /api/tasks/kiwkn1er847xkaz 200 in 45ms (compile: 39ms, render: 6ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22nj1lp0fl7t5rt2m%22 200 in 12ms (compile: 4ms, render: 8ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22nj1lp0fl7t5rt2m%22 200 in 13ms (compile: 8ms, render: 5ms)
+ GET /api/tasks/nj1lp0fl7t5rt2m 200 in 21ms (compile: 15ms, render: 6ms)
+ GET /tasks/hhacar2kx8h9972 200 in 226ms (compile: 35ms, proxy.ts: 3ms, render: 188ms)
+ GET /tasks/nj1lp0fl7t5rt2m 200 in 164ms (compile: 37ms, proxy.ts: 5ms, render: 122ms)
+ GET /tasks 200 in 42ms (compile: 10ms, proxy.ts: 5ms, render: 27ms)
+ GET /tasks/new 200 in 133ms (compile: 11ms, proxy.ts: 6ms, render: 117ms)
+ GET /agents 200 in 137ms (compile: 18ms, proxy.ts: 8ms, render: 111ms)
+ GET /nodes 200 in 68ms (compile: 13ms, proxy.ts: 3ms, render: 52ms)
+ GET /activity 200 in 130ms (compile: 24ms, proxy.ts: 3ms, render: 103ms)
+ GET /tasks/hhacar2kx8h9972 200 in 130ms (compile: 4ms, proxy.ts: 3ms, render: 122ms)
+ GET /tasks 200 in 183ms (compile: 8ms, proxy.ts: 67ms, render: 108ms)
+ GET /docs 200 in 89ms (compile: 21ms, proxy.ts: 4ms, render: 64ms)
+ GET /tasks 200 in 489ms (compile: 5ms, proxy.ts: 6ms, render: 477ms)
+ GET /tasks 200 in 102ms (compile: 3ms, proxy.ts: 7ms, render: 92ms)
+ GET /tasks/new 200 in 690ms (compile: 482ms, proxy.ts: 5ms, render: 203ms)
+ GET /tasks 200 in 325ms (compile: 16ms, proxy.ts: 8ms, render: 301ms)
+ GET /tasks/hhacar2kx8h9972 200 in 193ms (compile: 23ms, proxy.ts: 23ms, render: 147ms)
+ GET /nodes 200 in 126ms (compile: 18ms, proxy.ts: 4ms, render: 104ms)
+ GET /activity 200 in 302ms (compile: 47ms, proxy.ts: 13ms, render: 242ms)
+ GET /tasks/hhacar2kx8h9972 200 in 414ms (compile: 33ms, proxy.ts: 32ms, render: 350ms)
+ GET /tasks 200 in 450ms (compile: 183ms, proxy.ts: 27ms, render: 240ms)
+ GET /agents 200 in 152ms (compile: 27ms, proxy.ts: 33ms, render: 91ms)
+ GET /docs 200 in 266ms (compile: 22ms, proxy.ts: 99ms, render: 145ms)
+ GET /tasks 200 in 120ms (compile: 10ms, proxy.ts: 23ms, render: 88ms)
+ GET /tasks/new 200 in 235ms (compile: 8ms, proxy.ts: 72ms, render: 155ms)
+ GET /nodes 200 in 83ms (compile: 5ms, proxy.ts: 15ms, render: 63ms)
+ GET /tasks 200 in 104ms (compile: 4ms, proxy.ts: 6ms, render: 95ms)
+ GET /tasks/hhacar2kx8h9972 200 in 92ms (compile: 15ms, proxy.ts: 9ms, render: 68ms)
+ GET /tasks 200 in 70ms (compile: 1958µs, proxy.ts: 18ms, render: 50ms)
+ GET /tasks 200 in 122ms (compile: 4ms, proxy.ts: 9ms, render: 110ms)
+ GET /activity 200 in 79ms (compile: 4ms, proxy.ts: 3ms, render: 72ms)
+ GET /docs 200 in 53ms (compile: 1564µs, proxy.ts: 4ms, render: 47ms)
+ GET /agents 200 in 83ms (compile: 21ms, proxy.ts: 10ms, render: 53ms)
+ GET /tasks/hhacar2kx8h9972 200 in 82ms (compile: 12ms, proxy.ts: 7ms, render: 63ms)
+ GET /tasks 200 in 149ms (compile: 15ms, proxy.ts: 26ms, render: 108ms)
+ GET /tasks/new 200 in 73ms (compile: 6ms, proxy.ts: 4ms, render: 62ms)
+ GET /docs 200 in 127ms (compile: 4ms, proxy.ts: 26ms, render: 96ms)
+ GET /tasks 200 in 97ms (compile: 4ms, proxy.ts: 3ms, render: 90ms)
+ GET /nodes 200 in 68ms (compile: 10ms, proxy.ts: 7ms, render: 52ms)
+ GET /agents 200 in 61ms (compile: 5ms, proxy.ts: 6ms, render: 51ms)
+ GET /tasks/hhacar2kx8h9972 200 in 84ms (compile: 10ms, proxy.ts: 6ms, render: 67ms)
+ GET /tasks 200 in 81ms (compile: 6ms, proxy.ts: 5ms, render: 70ms)
+ GET /activity 200 in 159ms (compile: 5ms, proxy.ts: 11ms, render: 142ms)
+ GET /tasks/hhacar2kx8h9972 200 in 90ms (compile: 7ms, proxy.ts: 3ms, render: 80ms)
+ GET /tasks 200 in 193ms (compile: 4ms, proxy.ts: 19ms, render: 170ms)
+ GET /tasks 200 in 69ms (compile: 2ms, proxy.ts: 5ms, render: 61ms)
+ GET /tasks/new 200 in 59ms (compile: 5ms, proxy.ts: 3ms, render: 52ms)
+ GET /docs 200 in 73ms (compile: 3ms, proxy.ts: 5ms, render: 65ms)
+ GET /agents 200 in 111ms (compile: 5ms, proxy.ts: 31ms, render: 76ms)
+ GET /nodes 200 in 70ms (compile: 2ms, proxy.ts: 8ms, render: 60ms)
+ GET /tasks 200 in 129ms (compile: 3ms, proxy.ts: 6ms, render: 120ms)
+ GET /tasks/hhacar2kx8h9972 200 in 97ms (compile: 8ms, proxy.ts: 6ms, render: 84ms)
+ GET /activity 200 in 118ms (compile: 3ms, proxy.ts: 3ms, render: 112ms)
+ GET /tasks/hhacar2kx8h9972 200 in 174ms (compile: 25ms, proxy.ts: 30ms, render: 119ms)
+ GET /tasks 200 in 98ms (compile: 2ms, proxy.ts: 13ms, render: 83ms)
+ GET /docs 200 in 134ms (compile: 35ms, proxy.ts: 11ms, render: 89ms)
+ GET /tasks 200 in 97ms (compile: 5ms, proxy.ts: 6ms, render: 86ms)
+ GET /nodes 200 in 53ms (compile: 1471µs, proxy.ts: 3ms, render: 48ms)
+ GET /tasks/new 200 in 70ms (compile: 1508µs, proxy.ts: 4ms, render: 64ms)
+ GET /agents 200 in 66ms (compile: 2ms, proxy.ts: 3ms, render: 61ms)
+ GET /tasks 200 in 155ms (compile: 5ms, proxy.ts: 9ms, render: 141ms)
+ GET /tasks 200 in 87ms (compile: 2ms, proxy.ts: 3ms, render: 82ms)
+ GET /activity 200 in 105ms (compile: 3ms, proxy.ts: 5ms, render: 97ms)
+ GET /tasks/hhacar2kx8h9972 200 in 82ms (compile: 7ms, proxy.ts: 3ms, render: 73ms)
+ GET /tasks/hhacar2kx8h9972 200 in 83ms (compile: 4ms, proxy.ts: 3ms, render: 77ms)
+ GET /tasks 200 in 157ms (compile: 4ms, proxy.ts: 14ms, render: 139ms)
+ GET /nodes 200 in 61ms (compile: 2ms, proxy.ts: 4ms, render: 54ms)
+ GET /docs 200 in 418ms (compile: 13ms, proxy.ts: 24ms, render: 381ms)
+ GET /agents 200 in 161ms (compile: 5ms, proxy.ts: 38ms, render: 118ms)
+ GET /tasks/new 200 in 64ms (compile: 1773µs, proxy.ts: 5ms, render: 57ms)
+ GET /activity 200 in 228ms (compile: 4ms, proxy.ts: 9ms, render: 215ms)
+ GET /tasks 200 in 111ms (compile: 5ms, proxy.ts: 39ms, render: 67ms)
+ GET /tasks 200 in 49ms (compile: 1411µs, proxy.ts: 2ms, render: 45ms)
+ GET /tasks/hhacar2kx8h9972 200 in 223ms (compile: 29ms, proxy.ts: 33ms, render: 161ms)
+ GET /tasks 200 in 71ms (compile: 3ms, proxy.ts: 5ms, render: 64ms)
+ GET /nodes 200 in 82ms (compile: 3ms, proxy.ts: 3ms, render: 75ms)
+ GET /tasks/hhacar2kx8h9972 200 in 253ms (compile: 9ms, proxy.ts: 3ms, render: 241ms)
+ GET /docs 200 in 155ms (compile: 5ms, proxy.ts: 11ms, render: 139ms)
+ GET /tasks 200 in 76ms (compile: 1867µs, proxy.ts: 3ms, render: 71ms)
+ GET /agents 200 in 69ms (compile: 3ms, proxy.ts: 3ms, render: 63ms)
+ GET /tasks/new 200 in 79ms (compile: 4ms, proxy.ts: 4ms, render: 72ms)
+ GET /tasks/hhacar2kx8h9972 200 in 188ms (compile: 13ms, proxy.ts: 12ms, render: 164ms)
+ GET /activity 200 in 116ms (compile: 4ms, proxy.ts: 2ms, render: 110ms)
+ GET /tasks 200 in 87ms (compile: 2ms, proxy.ts: 4ms, render: 81ms)
+ GET /tasks 200 in 142ms (compile: 5ms, proxy.ts: 9ms, render: 128ms)
+ GET /tasks/hhacar2kx8h9972 200 in 104ms (compile: 9ms, proxy.ts: 8ms, render: 87ms)
+ GET /docs 200 in 101ms (compile: 5ms, proxy.ts: 10ms, render: 87ms)
+ GET /nodes 200 in 80ms (compile: 7ms, proxy.ts: 4ms, render: 68ms)
+ GET /tasks 200 in 200ms (compile: 5ms, proxy.ts: 11ms, render: 184ms)
+ GET /agents 200 in 211ms (compile: 20ms, proxy.ts: 24ms, render: 167ms)
+ GET /tasks/new 200 in 62ms (compile: 2ms, proxy.ts: 3ms, render: 56ms)
+ GET /tasks 200 in 247ms (compile: 5ms, proxy.ts: 34ms, render: 207ms)
+ GET /tasks/hhacar2kx8h9972 200 in 163ms (compile: 16ms, proxy.ts: 4ms, render: 143ms)
+ GET /activity 200 in 95ms (compile: 1749µs, proxy.ts: 3ms, render: 90ms)
+ GET /tasks 200 in 220ms (compile: 59ms, proxy.ts: 9ms, render: 152ms)
+ GET /tasks/hhacar2kx8h9972 200 in 134ms (compile: 7ms, proxy.ts: 3ms, render: 124ms)
+ GET /tasks 200 in 134ms (compile: 5ms, proxy.ts: 11ms, render: 118ms)
+ GET /docs 200 in 87ms (compile: 9ms, proxy.ts: 3ms, render: 75ms)
+ GET /agents 200 in 240ms (compile: 6ms, proxy.ts: 15ms, render: 218ms)
+ GET /nodes 200 in 89ms (compile: 6ms, proxy.ts: 3ms, render: 79ms)
+ GET /tasks/hhacar2kx8h9972 200 in 212ms (compile: 12ms, proxy.ts: 11ms, render: 189ms)
+ GET /tasks/new 200 in 75ms (compile: 3ms, proxy.ts: 5ms, render: 67ms)
+ GET /activity 200 in 193ms (compile: 13ms, proxy.ts: 19ms, render: 161ms)
+ GET /tasks 200 in 165ms (compile: 17ms, proxy.ts: 25ms, render: 124ms)
+ GET /tasks 200 in 537ms (compile: 35ms, proxy.ts: 40ms, render: 462ms)
+ GET /tasks/hhacar2kx8h9972 200 in 152ms (compile: 12ms, proxy.ts: 7ms, render: 133ms)
+ GET /tasks 200 in 107ms (compile: 3ms, proxy.ts: 4ms, render: 100ms)
+ GET /docs 200 in 80ms (compile: 4ms, proxy.ts: 6ms, render: 69ms)
+ GET /agents 200 in 122ms (compile: 12ms, proxy.ts: 14ms, render: 95ms)
+ GET /tasks 200 in 118ms (compile: 5ms, proxy.ts: 17ms, render: 95ms)
+ GET /nodes 200 in 62ms (compile: 3ms, proxy.ts: 5ms, render: 54ms)
+ GET /tasks/hhacar2kx8h9972 200 in 144ms (compile: 16ms, proxy.ts: 4ms, render: 124ms)
+ GET /activity 200 in 135ms (compile: 6ms, proxy.ts: 6ms, render: 124ms)
+ GET /tasks/new 200 in 62ms (compile: 2ms, proxy.ts: 4ms, render: 56ms)
+ GET /tasks/hhacar2kx8h9972 200 in 113ms (compile: 8ms, proxy.ts: 4ms, render: 101ms)
+ GET /docs 200 in 97ms (compile: 5ms, proxy.ts: 6ms, render: 86ms)
+ GET /tasks 200 in 207ms (compile: 7ms, proxy.ts: 16ms, render: 183ms)
+ GET /tasks 200 in 156ms (compile: 8ms, proxy.ts: 22ms, render: 126ms)
+ GET /nodes 200 in 166ms (compile: 4ms, proxy.ts: 11ms, render: 150ms)
+ GET /tasks/hhacar2kx8h9972 200 in 278ms (compile: 82ms, proxy.ts: 26ms, render: 170ms)
+ GET /tasks 200 in 126ms (compile: 8ms, proxy.ts: 18ms, render: 100ms)
+ GET /agents 200 in 229ms (compile: 5ms, proxy.ts: 24ms, render: 201ms)
+ GET /activity 200 in 132ms (compile: 4ms, proxy.ts: 5ms, render: 123ms)
+ GET /tasks/new 200 in 86ms (compile: 4ms, proxy.ts: 4ms, render: 77ms)
+ GET /tasks/hhacar2kx8h9972 200 in 302ms (compile: 25ms, proxy.ts: 17ms, render: 260ms)
+ GET /docs 200 in 186ms (compile: 6ms, proxy.ts: 11ms, render: 169ms)
+ GET /tasks 200 in 186ms (compile: 7ms, proxy.ts: 9ms, render: 170ms)
+ GET /tasks 200 in 113ms (compile: 5ms, proxy.ts: 10ms, render: 98ms)
+ GET /tasks 200 in 77ms (compile: 2ms, proxy.ts: 4ms, render: 71ms)
+ GET /nodes 200 in 122ms (compile: 6ms, proxy.ts: 31ms, render: 86ms)
+ GET /tasks/hhacar2kx8h9972 200 in 100ms (compile: 10ms, proxy.ts: 4ms, render: 86ms)
+ GET /tasks/new 200 in 530ms (compile: 53ms, proxy.ts: 142ms, render: 335ms)
+ GET /tasks/hhacar2kx8h9972 200 in 240ms (compile: 15ms, proxy.ts: 4ms, render: 222ms)
+ GET /agents 200 in 117ms (compile: 3ms, proxy.ts: 5ms, render: 109ms)
+ GET /activity 200 in 99ms (compile: 1945µs, proxy.ts: 4ms, render: 93ms)
+ GET /docs 200 in 130ms (compile: 4ms, proxy.ts: 6ms, render: 120ms)
+ GET /tasks 200 in 110ms (compile: 2ms, proxy.ts: 3ms, render: 105ms)
+ GET /tasks 200 in 1305ms (compile: 46ms, proxy.ts: 94ms, render: 1165ms)
+ GET /tasks 200 in 393ms (compile: 36ms, proxy.ts: 40ms, render: 318ms)
+ GET /tasks/hhacar2kx8h9972 200 in 320ms (compile: 18ms, proxy.ts: 13ms, render: 289ms)
+ GET /tasks/hhacar2kx8h9972 200 in 162ms (compile: 10ms, proxy.ts: 7ms, render: 145ms)
+ GET /nodes 200 in 104ms (compile: 1772µs, proxy.ts: 4ms, render: 98ms)
+ GET /tasks/new 200 in 690ms (compile: 438ms, proxy.ts: 3ms, render: 249ms)
+ GET /activity 200 in 1134ms (compile: 661ms, proxy.ts: 17ms, render: 456ms)
+ GET /agents 200 in 1383ms (compile: 1185ms, proxy.ts: 3ms, render: 196ms)
+ GET /tasks 200 in 134ms (compile: 10ms, proxy.ts: 4ms, render: 119ms)
+ GET /docs 200 in 775ms (compile: 581ms, proxy.ts: 20ms, render: 175ms)
+ GET /tasks 200 in 106ms (compile: 6ms, proxy.ts: 3ms, render: 97ms)
+ GET /tasks/hhacar2kx8h9972 200 in 272ms (compile: 44ms, proxy.ts: 4ms, render: 224ms)
+ GET /tasks/new 200 in 71ms (compile: 12ms, proxy.ts: 3ms, render: 56ms)
+ GET /tasks 200 in 107ms (compile: 11ms, proxy.ts: 3ms, render: 93ms)
+ GET /tasks/hhacar2kx8h9972 200 in 321ms (compile: 49ms, proxy.ts: 6ms, render: 266ms)
+ GET /activity 200 in 93ms (compile: 15ms, proxy.ts: 3ms, render: 75ms)
+ GET /nodes 200 in 676ms (compile: 501ms, proxy.ts: 8ms, render: 167ms)
+ GET /tasks 200 in 178ms (compile: 8ms, proxy.ts: 4ms, render: 167ms)
+ GET /agents 200 in 1062ms (compile: 768ms, proxy.ts: 118ms, render: 176ms)
+ GET /tasks 200 in 376ms (compile: 113ms, proxy.ts: 11ms, render: 253ms)
+ GET /docs 200 in 1048ms (compile: 793ms, proxy.ts: 4ms, render: 250ms)
+ GET /tasks/hhacar2kx8h9972 200 in 1015ms (compile: 763ms, proxy.ts: 3ms, render: 249ms)
+ GET /tasks/new 200 in 651ms (compile: 406ms, proxy.ts: 4ms, render: 241ms)
+ GET /tasks/hhacar2kx8h9972 200 in 161ms (compile: 21ms, proxy.ts: 8ms, render: 132ms)
+ GET /tasks 200 in 119ms (compile: 13ms, proxy.ts: 5ms, render: 101ms)
+ GET /activity 200 in 649ms (compile: 458ms, proxy.ts: 5ms, render: 186ms)
+ GET /nodes 200 in 723ms (compile: 438ms, proxy.ts: 4ms, render: 281ms)
+ GET /tasks 200 in 349ms (compile: 9ms, proxy.ts: 102ms, render: 238ms)
+ GET /tasks 200 in 243ms (compile: 42ms, proxy.ts: 3ms, render: 197ms)
+ GET /tasks/hhacar2kx8h9972 200 in 80ms (compile: 13ms, proxy.ts: 4ms, render: 63ms)
+ GET /docs 200 in 105ms (compile: 14ms, proxy.ts: 5ms, render: 86ms)
+ GET /agents 200 in 548ms (compile: 402ms, proxy.ts: 5ms, render: 140ms)
+ GET /tasks/new 200 in 227ms (compile: 39ms, proxy.ts: 4ms, render: 184ms)
+ GET /tasks/hhacar2kx8h9972 200 in 261ms (compile: 46ms, proxy.ts: 4ms, render: 212ms)
+ GET /tasks 200 in 98ms (compile: 16ms, proxy.ts: 7ms, render: 76ms)
+ GET /tasks 200 in 146ms (compile: 16ms, proxy.ts: 9ms, render: 122ms)
+ GET /nodes 200 in 87ms (compile: 22ms, proxy.ts: 3ms, render: 61ms)
+ GET /activity 200 in 660ms (compile: 414ms, proxy.ts: 6ms, render: 239ms)
+ GET /tasks 200 in 391ms (compile: 100ms, proxy.ts: 7ms, render: 284ms)
+ GET /tasks/hhacar2kx8h9972 200 in 79ms (compile: 15ms, proxy.ts: 3ms, render: 61ms)
+ GET /docs 200 in 485ms (compile: 337ms, proxy.ts: 3ms, render: 144ms)
+ GET /tasks/new 200 in 114ms (compile: 45ms, proxy.ts: 9ms, render: 60ms)
+ GET /tasks 200 in 267ms (compile: 35ms, proxy.ts: 3ms, render: 229ms)
+ GET /api/pb-token 200 in 1253ms (compile: 1174ms, render: 80ms)
+ GET /agents 200 in 643ms (compile: 499ms, proxy.ts: 6ms, render: 139ms)
+ GET /nodes 200 in 117ms (compile: 19ms, proxy.ts: 10ms, render: 89ms)
+ GET /tasks/hhacar2kx8h9972 200 in 399ms (compile: 76ms, proxy.ts: 11ms, render: 312ms)
+ GET /tasks 200 in 79ms (compile: 12ms, proxy.ts: 3ms, render: 64ms)
+ GET /api/pb-token 200 in 86ms (compile: 9ms, render: 77ms)
+ GET /tasks 200 in 103ms (compile: 5ms, proxy.ts: 4ms, render: 95ms)
+ GET /tasks/hhacar2kx8h9972 200 in 103ms (compile: 5ms, proxy.ts: 3ms, render: 94ms)
+ GET /api/pb-token 200 in 85ms (compile: 6ms, render: 79ms)
+ GET /activity 200 in 131ms (compile: 12ms, proxy.ts: 4ms, render: 116ms)
+ GET /api/pb-token 200 in 81ms (compile: 2ms, render: 78ms)
+ GET /tasks/new 200 in 230ms (compile: 12ms, proxy.ts: 55ms, render: 163ms)
+ GET /tasks 200 in 891ms (compile: 87ms, proxy.ts: 4ms, render: 800ms)
+ GET /api/pb-token 200 in 90ms (compile: 10ms, render: 80ms)
+ GET /docs 200 in 1205ms (compile: 769ms, proxy.ts: 5ms, render: 432ms)
+ GET /nodes 200 in 120ms (compile: 27ms, proxy.ts: 7ms, render: 85ms)
+ GET /agents 200 in 650ms (compile: 482ms, proxy.ts: 6ms, render: 162ms)
+ GET /tasks 200 in 146ms (compile: 17ms, proxy.ts: 8ms, render: 121ms)
+ GET /api/pb-token 200 in 117ms (compile: 26ms, render: 91ms)
+ GET /tasks/hhacar2kx8h9972 200 in 113ms (compile: 21ms, proxy.ts: 4ms, render: 88ms)
+ GET /tasks 200 in 153ms (compile: 5ms, proxy.ts: 9ms, render: 138ms)
+ GET /api/pb-token 200 in 86ms (compile: 1398µs, render: 84ms)
+ GET /activity 200 in 61ms (compile: 8ms, proxy.ts: 3ms, render: 50ms)
+ GET /api/pb-token 200 in 79ms (compile: 1308µs, render: 78ms)
+ GET /tasks/hhacar2kx8h9972 200 in 70ms (compile: 6ms, proxy.ts: 3ms, render: 61ms)
+ GET /tasks 200 in 171ms (compile: 8ms, proxy.ts: 13ms, render: 150ms)
+ GET /api/pb-token 200 in 79ms (compile: 2ms, render: 77ms)
+ GET /nodes 200 in 69ms (compile: 8ms, proxy.ts: 4ms, render: 57ms)
+ GET /tasks 200 in 235ms (compile: 2ms, proxy.ts: 12ms, render: 221ms)
+ GET /api/pb-token 200 in 83ms (compile: 7ms, render: 76ms)
+ GET /tasks/new 200 in 71ms (compile: 14ms, proxy.ts: 3ms, render: 54ms)
+ GET /agents 200 in 138ms (compile: 1855µs, proxy.ts: 3ms, render: 133ms)
+⚠ Found a change in next.config.js. Restarting the server to apply the changes...
+▲ Next.js 16.1.6 (webpack)
+- Local:         http://localhost:4010
+- Network:       http://192.168.1.231:4010
+
+✓ Starting...
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+✓ Ready in 1373ms
+⚠ Blocked cross-origin request from 127.0.0.1 to /_next/* resource. To allow this, configure "allowedDevOrigins" in next.config
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+ GET /tasks/hhacar2kx8h9972 200 in 2.9s (compile: 2.4s, proxy.ts: 57ms, render: 351ms)
+ GET /docs 200 in 869ms (compile: 691ms, proxy.ts: 11ms, render: 167ms)
+ GET /activity 200 in 661ms (compile: 455ms, proxy.ts: 16ms, render: 190ms)
+ GET /api/pb-token 200 in 577ms (compile: 501ms, render: 76ms)
+ GET /tasks 200 in 937ms (compile: 673ms, proxy.ts: 5ms, render: 258ms)
+ GET /api/pb-token 200 in 154ms (compile: 67ms, render: 87ms)
+ GET /tasks/hhacar2kx8h9972 200 in 113ms (compile: 19ms, proxy.ts: 10ms, render: 84ms)
+ GET /nodes 200 in 649ms (compile: 493ms, proxy.ts: 4ms, render: 152ms)
+ GET /tasks 200 in 144ms (compile: 13ms, proxy.ts: 9ms, render: 122ms)
+ GET /api/pb-token 200 in 82ms (compile: 7ms, render: 76ms)
+ GET /tasks 200 in 74ms (compile: 3ms, proxy.ts: 6ms, render: 65ms)
+ GET /api/pb-token 200 in 88ms (compile: 1777µs, render: 86ms)
+ GET /agents 200 in 573ms (compile: 424ms, proxy.ts: 5ms, render: 144ms)
+ GET /tasks/new 200 in 799ms (compile: 625ms, proxy.ts: 5ms, render: 169ms)
+ GET /docs 200 in 985ms (compile: 639ms, proxy.ts: 5ms, render: 341ms)
+ GET /tasks/hhacar2kx8h9972 200 in 958ms (compile: 612ms, proxy.ts: 5ms, render: 342ms)
+ GET /tasks 200 in 201ms (compile: 44ms, proxy.ts: 16ms, render: 141ms)
+ GET /api/pb-token 200 in 100ms (compile: 16ms, render: 84ms)
+ GET /tasks 200 in 144ms (compile: 4ms, proxy.ts: 11ms, render: 130ms)
+ GET /api/pb-token 200 in 86ms (compile: 5ms, render: 81ms)
+ GET /tasks/hhacar2kx8h9972 200 in 242ms (compile: 37ms, proxy.ts: 5ms, render: 200ms)
+ GET /nodes 200 in 74ms (compile: 9ms, proxy.ts: 6ms, render: 59ms)
+ GET /activity 200 in 542ms (compile: 377ms, proxy.ts: 14ms, render: 152ms)
+ GET /api/pb-token 200 in 111ms (compile: 11ms, render: 100ms)
+ GET /tasks 200 in 117ms (compile: 12ms, proxy.ts: 4ms, render: 100ms)
+ GET /api/pb-token 200 in 85ms (compile: 1772µs, render: 83ms)
+ GET /agents 200 in 64ms (compile: 10ms, proxy.ts: 4ms, render: 49ms)
+ GET /tasks 200 in 128ms (compile: 3ms, proxy.ts: 6ms, render: 119ms)
+ GET /api/pb-token 200 in 98ms (compile: 3ms, render: 95ms)
+ GET / 200 in 706ms (compile: 582ms, proxy.ts: 5ms, render: 119ms)
+ GET /tasks 200 in 56ms (compile: 15ms, proxy.ts: 6ms, render: 35ms)
+ GET /activity 200 in 40ms (compile: 12ms, proxy.ts: 4ms, render: 24ms)
+ GET /agents 200 in 45ms (compile: 15ms, proxy.ts: 5ms, render: 25ms)
+ GET /nodes 200 in 50ms (compile: 14ms, proxy.ts: 6ms, render: 30ms)
+ GET /docs 200 in 457ms (compile: 348ms, proxy.ts: 4ms, render: 105ms)
+ GET /settings 200 in 444ms (compile: 421ms, proxy.ts: 5ms, render: 18ms)
+ GET / 200 in 127ms (compile: 11ms, proxy.ts: 7ms, render: 109ms)
+ GET /settings 200 in 20ms (compile: 1975µs, proxy.ts: 3ms, render: 15ms)
+ GET /docs 200 in 41ms (compile: 7ms, proxy.ts: 5ms, render: 29ms)
+ GET /settings 200 in 22ms (compile: 1927µs, proxy.ts: 6ms, render: 14ms)
+ GET /docs 200 in 38ms (compile: 3ms, proxy.ts: 7ms, render: 28ms)
+ GET /nodes 200 in 44ms (compile: 11ms, proxy.ts: 5ms, render: 28ms)
+ GET /agents 200 in 21ms (compile: 4ms, proxy.ts: 3ms, render: 14ms)
+ GET /activity 200 in 31ms (compile: 9ms, proxy.ts: 4ms, render: 19ms)
+ GET /tasks 200 in 32ms (compile: 5ms, proxy.ts: 6ms, render: 21ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 895ms (compile: 782ms, render: 113ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 898ms (compile: 775ms, render: 122ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 7ms (compile: 3ms, render: 4ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 7ms (compile: 4ms, render: 4ms)
+ GET /tasks?task=hhacar2kx8h9972 200 in 942ms (compile: 764ms, proxy.ts: 21ms, render: 156ms)
+ GET /tasks?task=hhacar2kx8h9972 200 in 43ms (compile: 1870µs, proxy.ts: 24ms, render: 17ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 19ms (compile: 12ms, render: 7ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 18ms (compile: 14ms, render: 4ms)
+ GET /api/tasks/hhacar2kx8h9972 200 in 1181ms (compile: 1171ms, render: 10ms)
+ GET /api/tasks/hhacar2kx8h9972 200 in 216ms (compile: 205ms, render: 11ms)
+ GET /api/tasks/hhacar2kx8h9972 200 in 274ms (compile: 262ms, render: 12ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 8ms (compile: 2ms, render: 5ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 8ms (compile: 5ms, render: 4ms)
+ GET /api/tasks/hhacar2kx8h9972 200 in 15ms (compile: 10ms, render: 4ms)
+ GET /tasks 200 in 55ms (compile: 1998µs, proxy.ts: 5ms, render: 48ms)
+ GET /api/tasks/hhacar2kx8h9972 200 in 52ms (compile: 37ms, render: 15ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 156ms (compile: 13ms, render: 142ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 155ms (compile: 15ms, render: 140ms)
+ GET /tasks/hhacar2kx8h9972 200 in 694ms (compile: 389ms, proxy.ts: 3ms, render: 302ms)
+ GET /tasks?task=hhacar2kx8h9972 200 in 205ms (compile: 8ms, proxy.ts: 160ms, render: 37ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 12ms (compile: 3ms, render: 9ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 13ms (compile: 6ms, render: 7ms)
+ GET /api/tasks/hhacar2kx8h9972 200 in 17ms (compile: 6ms, render: 11ms)
+ GET /tasks?task=hhacar2kx8h9972 200 in 77ms (compile: 1752µs, proxy.ts: 4ms, render: 71ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 8ms (compile: 3ms, render: 4ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 9ms (compile: 6ms, render: 3ms)
+ GET /api/tasks/hhacar2kx8h9972 200 in 13ms (compile: 9ms, render: 4ms)
+ GET /api/pb-token 200 in 78ms (compile: 3ms, render: 75ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 7ms (compile: 2ms, render: 5ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22hhacar2kx8h9972%22 200 in 8ms (compile: 4ms, render: 4ms)
+ GET /api/tasks/hhacar2kx8h9972 200 in 12ms (compile: 9ms, render: 3ms)
+ GET /tasks 200 in 56ms (compile: 3ms, proxy.ts: 6ms, render: 47ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22nwyzdbbowo8ic8x%22 200 in 7ms (compile: 2ms, render: 5ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22nwyzdbbowo8ic8x%22 200 in 8ms (compile: 4ms, render: 4ms)
+ GET /api/tasks/nwyzdbbowo8ic8x 200 in 16ms (compile: 13ms, render: 3ms)
+ GET /tasks?task=nwyzdbbowo8ic8x 200 in 48ms (compile: 1478µs, proxy.ts: 3ms, render: 44ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22nwyzdbbowo8ic8x%22 200 in 7ms (compile: 3ms, render: 5ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22nwyzdbbowo8ic8x%22 200 in 8ms (compile: 4ms, render: 4ms)
+ GET /api/tasks/nwyzdbbowo8ic8x 200 in 12ms (compile: 8ms, render: 4ms)
+ GET /api/messages?page=1&perPage=200&filter=taskId+%3D+%22nwyzdbbowo8ic8x%22 200 in 8ms (compile: 3ms, render: 6ms)
+ GET /api/documents?page=1&perPage=100&filter=taskId+%3D+%22nwyzdbbowo8ic8x%22 200 in 8ms (compile: 5ms, render: 3ms)
+ GET /api/tasks/nwyzdbbowo8ic8x 200 in 13ms (compile: 9ms, render: 4ms)
+ GET /tasks 200 in 63ms (compile: 3ms, proxy.ts: 5ms, render: 55ms)
+ GET /tasks 200 in 174ms (compile: 22ms, proxy.ts: 26ms, render: 127ms)
+ GET /api/pb-token 200 in 76ms (compile: 1759µs, render: 75ms)
+ GET /tasks/hhacar2kx8h9972 200 in 374ms (compile: 73ms, proxy.ts: 8ms, render: 294ms)
+ GET /tasks 200 in 168ms (compile: 17ms, proxy.ts: 13ms, render: 138ms)
+ GET /api/pb-token 200 in 90ms (compile: 13ms, render: 77ms)
+ GET /tasks 200 in 95ms (compile: 1647µs, proxy.ts: 3ms, render: 90ms)
+ GET /api/pb-token 200 in 137ms (compile: 3ms, render: 134ms)
+ GET /tasks/hhacar2kx8h9972 200 in 95ms (compile: 12ms, proxy.ts: 5ms, render: 78ms)
+ GET /tasks 200 in 314ms (compile: 53ms, proxy.ts: 3ms, render: 258ms)
+ GET /api/pb-token 200 in 106ms (compile: 16ms, render: 90ms)
+ GET /tasks 200 in 143ms (compile: 6ms, proxy.ts: 13ms, render: 124ms)
+ GET /api/pb-token 200 in 83ms (compile: 3ms, render: 80ms)
+ GET /tasks/hhacar2kx8h9972 200 in 262ms (compile: 27ms, proxy.ts: 48ms, render: 187ms)
+ GET /tasks 200 in 95ms (compile: 8ms, proxy.ts: 8ms, render: 78ms)
+ GET /api/pb-token 200 in 90ms (compile: 5ms, render: 85ms)
+ GET /tasks 200 in 156ms (compile: 14ms, proxy.ts: 28ms, render: 114ms)
+ GET /api/pb-token 200 in 82ms (compile: 4ms, render: 78ms)
+ GET /tasks 200 in 138ms (compile: 11ms, proxy.ts: 17ms, render: 111ms)
+ GET /tasks/hhacar2kx8h9972 200 in 148ms (compile: 15ms, proxy.ts: 4ms, render: 129ms)
+ GET /api/pb-token 200 in 128ms (compile: 6ms, render: 121ms)
+ GET /tasks 200 in 490ms (compile: 5ms, proxy.ts: 97ms, render: 388ms)
+ GET /api/pb-token 200 in 95ms (compile: 13ms, render: 82ms)
+ GET /tasks/hhacar2kx8h9972 200 in 163ms (compile: 21ms, proxy.ts: 26ms, render: 115ms)
+ GET /tasks 200 in 71ms (compile: 3ms, proxy.ts: 3ms, render: 66ms)
+ GET /api/pb-token 200 in 79ms (compile: 2ms, render: 77ms)
+ GET /tasks 200 in 148ms (compile: 7ms, proxy.ts: 11ms, render: 131ms)
+ GET /api/pb-token 200 in 83ms (compile: 7ms, render: 76ms)
+ GET /tasks 200 in 236ms (compile: 6ms, proxy.ts: 31ms, render: 198ms)
+ GET /api/pb-token 200 in 138ms (compile: 46ms, render: 92ms)
+ GET /tasks/hhacar2kx8h9972 200 in 421ms (compile: 51ms, proxy.ts: 5ms, render: 365ms)
+ GET /tasks 200 in 300ms (compile: 50ms, proxy.ts: 10ms, render: 240ms)
+ GET /api/pb-token 200 in 89ms (compile: 13ms, render: 76ms)
+ GET /tasks/hhacar2kx8h9972 200 in 378ms (compile: 68ms, proxy.ts: 11ms, render: 298ms)
+ GET /tasks 200 in 89ms (compile: 12ms, proxy.ts: 6ms, render: 71ms)
+ GET /api/pb-token 200 in 192ms (compile: 63ms, render: 129ms)
+ GET /tasks 200 in 187ms (compile: 4ms, proxy.ts: 10ms, render: 173ms)
+ GET /api/pb-token 200 in 89ms (compile: 5ms, render: 84ms)
+ GET /tasks/hhacar2kx8h9972 200 in 315ms (compile: 10ms, proxy.ts: 18ms, render: 287ms)
+ GET /tasks 200 in 139ms (compile: 10ms, proxy.ts: 14ms, render: 115ms)
+ GET /api/pb-token 200 in 92ms (compile: 1851µs, render: 90ms)
+ GET /tasks 200 in 337ms (compile: 13ms, proxy.ts: 62ms, render: 262ms)
+ GET /api/pb-token 200 in 83ms (compile: 2ms, render: 81ms)
+ GET /tasks/hhacar2kx8h9972 200 in 211ms (compile: 14ms, proxy.ts: 33ms, render: 163ms)
+ GET /tasks 200 in 149ms (compile: 4ms, proxy.ts: 9ms, render: 137ms)
+ GET /api/pb-token 200 in 107ms (compile: 5ms, render: 102ms)
+ GET /tasks 200 in 98ms (compile: 5ms, proxy.ts: 13ms, render: 79ms)
+ GET /api/pb-token 200 in 99ms (compile: 7ms, render: 92ms)
+ GET /tasks/hhacar2kx8h9972 200 in 263ms (compile: 23ms, proxy.ts: 49ms, render: 190ms)
+ GET /tasks 200 in 95ms (compile: 7ms, proxy.ts: 5ms, render: 83ms)
+ GET /api/pb-token 200 in 78ms (compile: 1963µs, render: 76ms)
+ GET /tasks 200 in 186ms (compile: 5ms, proxy.ts: 40ms, render: 141ms)
+ GET /api/pb-token 200 in 90ms (compile: 2ms, render: 87ms)
+ GET /tasks 200 in 164ms (compile: 5ms, proxy.ts: 41ms, render: 118ms)
+ GET /api/pb-token 200 in 88ms (compile: 3ms, render: 86ms)
+ GET /tasks 200 in 77ms (compile: 4ms, proxy.ts: 6ms, render: 68ms)
+ GET /api/pb-token 200 in 84ms (compile: 5ms, render: 78ms)
+ GET /tasks/hhacar2kx8h9972 200 in 241ms (compile: 8ms, proxy.ts: 13ms, render: 221ms)
+ GET /tasks 200 in 352ms (compile: 63ms, proxy.ts: 7ms, render: 282ms)
+ GET /api/pb-token 200 in 142ms (compile: 32ms, render: 110ms)
+ GET /tasks 200 in 432ms (compile: 86ms, proxy.ts: 18ms, render: 328ms)
+ GET /api/pb-token 200 in 88ms (compile: 12ms, render: 75ms)
+ GET /tasks/hhacar2kx8h9972 200 in 234ms (compile: 50ms, proxy.ts: 13ms, render: 171ms)
+ GET /tasks 200 in 92ms (compile: 4ms, proxy.ts: 5ms, render: 83ms)
+ GET /api/pb-token 200 in 78ms (compile: 1505µs, render: 77ms)
+ GET /tasks 200 in 108ms (compile: 5ms, proxy.ts: 16ms, render: 87ms)
+ GET /api/pb-token 200 in 79ms (compile: 3ms, render: 76ms)
+ GET /tasks/hhacar2kx8h9972 200 in 533ms (compile: 98ms, proxy.ts: 13ms, render: 422ms)
+ GET /tasks 200 in 78ms (compile: 12ms, proxy.ts: 3ms, render: 63ms)
+ GET /api/pb-token 200 in 95ms (compile: 16ms, render: 79ms)
+ GET /tasks 200 in 65ms (compile: 1666µs, proxy.ts: 3ms, render: 60ms)
+ GET /api/pb-token 200 in 107ms (compile: 1365µs, render: 106ms)
+ GET /tasks 200 in 129ms (compile: 6ms, proxy.ts: 12ms, render: 111ms)
+ GET /api/pb-token 200 in 81ms (compile: 2ms, render: 79ms)
+ GET /tasks/hhacar2kx8h9972 200 in 80ms (compile: 6ms, proxy.ts: 3ms, render: 72ms)
+ GET /tasks 200 in 341ms (compile: 9ms, proxy.ts: 14ms, render: 317ms)
+ GET /api/pb-token 200 in 85ms (compile: 1252µs, render: 84ms)

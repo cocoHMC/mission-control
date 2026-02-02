@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+if [ ! -f .env ]; then
+  echo ".env missing. Run scripts/install.sh first." >&2
+  exit 1
+fi
+
+set -a
+source .env
+set +a
+
+pnpm build
+
+cat <<'MSG'
+Build complete.
+
+For macOS production:
+- Use launchd or a supervisor to run:
+  - pb/pocketbase serve --dir pb/pb_data --migrationsDir pb/pb_migrations
+  - pnpm -C apps/web start -H $MC_BIND_HOST -p $MC_WEB_PORT
+  - pnpm -C apps/worker start (or pnpm -C apps/worker dev in dev-only)
+
+See docs/RUNBOOK.md for launchd examples.
+MSG

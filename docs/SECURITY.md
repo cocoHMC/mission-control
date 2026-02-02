@@ -1,18 +1,28 @@
-# Mission Control — Security notes (v0)
+# Mission Control - Security
 
-## OpenClaw gateway
-- Keep gateway bound to loopback or tailnet-only.
-- Use gateway auth token/password; prefer a dedicated token for automation.
+## Network Boundaries
+- Bind services to loopback or tailnet IP only.
+- No public exposure.
+- Use headscale ACLs to limit device access.
 
-## Auditing
-- Run: `openclaw security audit`
-- Deep: `openclaw security audit --deep`
+## OpenClaw Gateway
+- Enable gateway auth token or password.
+- Use a dedicated token for Tools Invoke.
+- Do not share agent workspaces across agents.
 
-## Node execution
-- Treat nodes as remote code execution surfaces.
-- Use allowlists for `system.run`.
-- Pairing must be deliberate.
+## Audits
+- `openclaw security audit`
+- `openclaw security audit --deep`
 
-## Secrets
-- Do not commit `.env`.
-- Prefer storing long-lived secrets in Keychain (macOS) and injecting via launchd.
+## Node Execution
+- Use allowlists for exec approvals.
+- Treat node hosts as remote code execution surfaces.
+- Keep a strict allowlist and review regularly.
+
+## Secret Rotation
+- Rotate gateway token, PB admin password, PB service password quarterly.
+- Update `.env` on coco and restart services.
+
+## Data Safety
+- Back up `pb/pb_data` daily.
+- Store backups outside the repo (or encrypt at rest).
