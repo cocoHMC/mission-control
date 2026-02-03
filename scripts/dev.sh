@@ -19,7 +19,7 @@ PB_BIN="$ROOT_DIR/pb/pocketbase"
 if [ ! -x "$PB_BIN" ]; then
   echo "PocketBase binary missing (or not executable) at $PB_BIN" >&2
   echo "Attempting automatic install..." >&2
-  if ./scripts/pb_install.sh; then
+  if bash ./scripts/pb_install.sh; then
     echo "PocketBase installed." >&2
   else
     echo "" >&2

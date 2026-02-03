@@ -12,7 +12,7 @@ fi
 pnpm install
 
 if [ "${SKIP_PB_INSTALL:-0}" != "1" ]; then
-  if ! ./scripts/pb_install.sh; then
+  if ! bash ./scripts/pb_install.sh; then
     echo "" >&2
     echo "WARNING: PocketBase install failed." >&2
     echo "You can:" >&2
