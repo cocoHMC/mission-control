@@ -49,17 +49,16 @@ These are the “do this in order” steps if you’ve never run Mission Control
    corepack prepare pnpm@10.28.2 --activate
    ./scripts/install.sh
    ```
-3. Start dev:
+3. Start Mission Control:
    ```bash
-   ./scripts/dev.sh
+   ./scripts/run.sh
    ```
 4. Open the setup wizard:
    1. Go to `http://127.0.0.1:4010/setup`
    2. Set your Mission Control login (Basic Auth) and copy the password
    3. (Optional) OpenClaw: in OpenClaw UI “Overview”, copy the Gateway URL + Tools Invoke token, click **Test connection**, then **Save + Bootstrap**
-5. Restart after setup:
-   - Stop `./scripts/dev.sh`
-   - Run `./scripts/dev.sh` again
+5. After setup:
+   - Mission Control will restart itself automatically (when started via `./scripts/run.sh`).
 6. Use it:
    1. Open `http://127.0.0.1:4010/` and log in
    2. Create a task, add subtasks, assign to `main`
@@ -76,7 +75,7 @@ cd mission-control
 corepack enable
 corepack prepare pnpm@10.28.2 --activate
 ./scripts/install.sh
-./scripts/dev.sh
+./scripts/run.sh
 echo
 echo "Open setup: http://127.0.0.1:4010/setup"
 ```
@@ -116,7 +115,7 @@ corepack prepare pnpm@10.28.2 --activate
 
 ### 3) Start Dev
 ```bash
-./scripts/dev.sh
+./scripts/run.sh
 ```
 
 Then open:
@@ -128,7 +127,7 @@ The setup page will:
 - optionally connect OpenClaw (Tools Invoke delivery) and test the connection
 - show Tailscale status + copyable Tailnet URLs (when Tailscale is running)
 
-After applying setup, **restart** `./scripts/dev.sh` (Next.js only reads `.env` at startup).
+After applying setup, Mission Control restarts itself automatically (when started via `./scripts/run.sh`).
 
 ### Optional: CLI Setup (No Browser)
 ```bash

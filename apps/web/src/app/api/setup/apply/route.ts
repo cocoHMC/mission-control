@@ -184,14 +184,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const restartMode = process.env.MC_AUTO_RESTART === '1' ? 'auto' : 'manual';
+  // If Mission Control is started via our local runner script, it will restart the stack when
+  // the web process exits with this code.
+  const restartExitCode = Number.parseInt(process.env.MC_RESTART_EXIT_CODE || '42', 10) || 42;
+  if (restartMode === 'auto') {
+    // Give the response time to flush before the process exits.
+    const t = setTimeout(() => process.exit(restartExitCode), 750);
+    // Don’t keep the process alive because of the timer.
+    (t as any).unref?.();
+  }
+
   return NextResponse.json({
     ok: true,
     envPath,
     restartRequired: true,
-    next: [
-      'Stop the dev server (Ctrl+C).',
-      'Restart: ./scripts/dev.sh',
-      'Open: http://127.0.0.1:4010/ (login with your new credentials).',
-    ],
+    restartMode,
+    next:
+      restartMode === 'auto'
+        ? ['Restarting Mission Control now… (keep this tab open)']
+        : [
+            'Restart Mission Control (stop the running process and start it again).',
+            'Command: ./scripts/run.sh',
+            'Open: http://127.0.0.1:4010/ (login with your new credentials).',
+          ],
   });
 }

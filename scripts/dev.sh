@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+RESTART_EXIT_CODE="${MC_RESTART_EXIT_CODE:-42}"
+
 if [ ! -f .env ]; then
   cp .env.example .env
   echo "Created .env from .env.example (first-run defaults)"
@@ -31,36 +33,69 @@ if [ ! -x "$PB_BIN" ]; then
   fi
 fi
 
-"$PB_BIN" serve --dev --dir "$ROOT_DIR/pb/pb_data" --migrationsDir "$ROOT_DIR/pb/pb_migrations" > "$ROOT_DIR/pb/pocketbase.log" 2>&1 &
-PB_PID=$!
+stop_children() {
+  if [ -n "${WEB_PID:-}" ]; then
+    kill "$WEB_PID" >/dev/null 2>&1 || true
+    WEB_PID=""
+  fi
+  if [ -n "${WORKER_PID:-}" ]; then
+    kill "$WORKER_PID" >/dev/null 2>&1 || true
+    WORKER_PID=""
+  fi
+  if [ -n "${PB_PID:-}" ]; then
+    kill "$PB_PID" >/dev/null 2>&1 || true
+    PB_PID=""
+  fi
+}
 
-sleep 1
+trap 'stop_children; exit 0' INT TERM
+trap 'stop_children' EXIT
 
-NEEDS_SETUP="$("$DOTENV_BIN" -e "$ROOT_DIR/.env" -- node -e '
+while true; do
+  WEB_PID=""
+  WORKER_PID=""
+  PB_PID=""
+
+  "$PB_BIN" serve --dev --dir "$ROOT_DIR/pb/pb_data" --migrationsDir "$ROOT_DIR/pb/pb_migrations" > "$ROOT_DIR/pb/pocketbase.log" 2>&1 &
+  PB_PID=$!
+
+  sleep 1
+
+  NEEDS_SETUP="$("$DOTENV_BIN" -e "$ROOT_DIR/.env" -- node -e '
 const bad=(v)=>!v||String(v).trim().toLowerCase()==="change-me"||String(v).trim().toLowerCase()==="changeme";
 const needs = bad(process.env.MC_ADMIN_PASSWORD) || bad(process.env.PB_ADMIN_PASSWORD) || bad(process.env.PB_SERVICE_PASSWORD);
 console.log(needs ? "1" : "0");
 ')"
 
-if [ "$NEEDS_SETUP" = "1" ]; then
-  echo "Setup required. Open: http://127.0.0.1:${MC_WEB_PORT:-4010}/setup"
-else
-  node "$ROOT_DIR/scripts/pb_bootstrap.mjs"
-  node "$ROOT_DIR/scripts/pb_set_rules.mjs" || true
-  node "$ROOT_DIR/scripts/pb_backfill_vnext.mjs" || true
-fi
-
-cleanup() {
-  kill "$PB_PID" >/dev/null 2>&1 || true
-  if [ -n "${WORKER_PID:-}" ]; then
-    kill "$WORKER_PID" >/dev/null 2>&1 || true
+  if [ "$NEEDS_SETUP" = "1" ]; then
+    echo "Setup required. Open: http://127.0.0.1:${MC_WEB_PORT:-4010}/setup"
+  else
+    node "$ROOT_DIR/scripts/pb_bootstrap.mjs"
+    node "$ROOT_DIR/scripts/pb_set_rules.mjs" || true
+    node "$ROOT_DIR/scripts/pb_backfill_vnext.mjs" || true
   fi
-}
-trap cleanup EXIT
 
-if [ "$NEEDS_SETUP" != "1" ]; then
-  ("$DOTENV_BIN" -e "$ROOT_DIR/.env" -- pnpm -C apps/worker dev) > "$ROOT_DIR/apps/worker/dev.log" 2>&1 &
-  WORKER_PID=$!
-fi
+  if [ "$NEEDS_SETUP" != "1" ]; then
+    ("$DOTENV_BIN" -e "$ROOT_DIR/.env" -- pnpm -C apps/worker dev) > "$ROOT_DIR/apps/worker/dev.log" 2>&1 &
+    WORKER_PID=$!
+  fi
 
-exec "$DOTENV_BIN" -e "$ROOT_DIR/.env" -- sh -c 'pnpm -C apps/web exec next dev --webpack -H "${MC_BIND_HOST:-127.0.0.1}" -p "${MC_WEB_PORT:-4010}"'
+  "$DOTENV_BIN" -e "$ROOT_DIR/.env" -- sh -c 'export MC_AUTO_RESTART=1; exec pnpm -C apps/web exec next dev --webpack -H "${MC_BIND_HOST:-127.0.0.1}" -p "${MC_WEB_PORT:-4010}"' &
+  WEB_PID=$!
+
+  set +e
+  wait "$WEB_PID"
+  WEB_EXIT=$?
+  set -e
+  WEB_PID=""
+
+  stop_children
+
+  if [ "$WEB_EXIT" -eq "$RESTART_EXIT_CODE" ]; then
+    echo "[mission-control] restart requested; restarting..."
+    sleep 1
+    continue
+  fi
+
+  exit "$WEB_EXIT"
+done

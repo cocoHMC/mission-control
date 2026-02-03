@@ -24,7 +24,7 @@ type StatusResponse = {
 };
 
 type ApplyResponse =
-  | { ok: true; envPath: string; restartRequired: boolean; next: string[] }
+  | { ok: true; envPath: string; restartRequired: boolean; restartMode?: 'auto' | 'manual'; next: string[] }
   | { error: string };
 
 type TailscaleStatus =
@@ -65,6 +65,7 @@ export function SetupClient() {
   const [testingOpenclaw, setTestingOpenclaw] = React.useState(false);
   const [tailscale, setTailscale] = React.useState<TailscaleStatus | null>(null);
   const [loadingTailscale, setLoadingTailscale] = React.useState(false);
+  const [restartSeconds, setRestartSeconds] = React.useState<number | null>(null);
 
   const [form, setForm] = React.useState({
     mcAdminUser: 'admin',
@@ -160,11 +161,48 @@ export function SetupClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  React.useEffect(() => {
+    if (!result || !('ok' in result) || !result.ok) return;
+    if (result.restartMode !== 'auto') return;
+
+    const startedAt = Date.now();
+    setRestartSeconds(0);
+    let cancelled = false;
+
+    async function tick() {
+      if (cancelled) return;
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+      setRestartSeconds(elapsed);
+
+      // Once the process restarts, /api/setup/status will report configured=true.
+      // That route is not behind Basic Auth so we can poll safely here.
+      try {
+        const res = await fetch('/api/setup/status', { cache: 'no-store' });
+        const json = (await res.json()) as StatusResponse;
+        if (json?.configured) {
+          window.location.href = '/';
+          return;
+        }
+      } catch {
+        // During restart, the server may be down briefly. Keep polling.
+      }
+
+      if (elapsed >= 45) return; // give up; user can restart manually
+      setTimeout(() => void tick(), 1000);
+    }
+
+    void tick();
+    return () => {
+      cancelled = true;
+    };
+  }, [result]);
+
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     setSaving(true);
     setError(null);
     setResult(null);
+    setRestartSeconds(null);
     try {
       const payload = {
         ...form,
@@ -549,24 +587,41 @@ export function SetupClient() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="text-sm">
-                Wrote <span className="font-mono">{result.envPath}</span>. Restart required.
+                Wrote <span className="font-mono">{result.envPath}</span>.
               </div>
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-xs text-muted">
-                <div className="font-semibold text-[var(--foreground)]">Next</div>
-                <ol className="mt-2 list-decimal pl-5">
-                  {(result.next || []).map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
-              </div>
+
+              {result.restartMode === 'auto' ? (
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-xs text-muted">
+                  <div className="font-semibold text-[var(--foreground)]">Restarting Mission Control…</div>
+                  <div className="mt-2">
+                    {restartSeconds !== null
+                      ? `Restarting… T-minus ~${Math.max(0, 10 - restartSeconds)}s (elapsed ${restartSeconds}s)`
+                      : 'Restarting…'}
+                  </div>
+                  <div className="mt-2">When restart completes, you’ll be redirected to the login prompt.</div>
+                  {restartSeconds !== null && restartSeconds >= 45 ? (
+                    <div className="mt-3 text-red-600">
+                      Auto-restart didn’t complete. Restart Mission Control manually using <span className="font-mono">./scripts/run.sh</span>.
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-xs text-muted">
+                  <div className="font-semibold text-[var(--foreground)]">Next</div>
+                  <ol className="mt-2 list-decimal pl-5">
+                    {(result.next || []).map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
               <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-xs text-muted">
                 <div className="font-semibold text-[var(--foreground)]">Your Login</div>
                 <div className="mt-2">
                   username: <span className="font-mono">{form.mcAdminUser}</span>
                 </div>
-                <div className="mt-1">
-                  password: <span className="font-mono">{form.mcAdminPassword}</span>
-                </div>
+                <div className="mt-1">password: <span className="font-mono">••••••••</span></div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <CopyButton value={form.mcAdminUser} label="Copy user" />
                   <CopyButton value={form.mcAdminPassword} label="Copy pass" />
