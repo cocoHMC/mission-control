@@ -6,6 +6,7 @@
     "apps/*"
   ],
   "scripts": {
+    "setup": "node scripts/setup.mjs",
     "dev": "dotenv -e .env -- pnpm -r dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint"

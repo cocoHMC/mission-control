@@ -11,4 +11,15 @@ fi
 
 pnpm install
 
-echo "Install complete. Update .env then run scripts/dev.sh"
+if [ "${SKIP_PB_INSTALL:-0}" != "1" ]; then
+  if ! ./scripts/pb_install.sh; then
+    echo "" >&2
+    echo "WARNING: PocketBase install failed." >&2
+    echo "You can:" >&2
+    echo "  1) Install PocketBase manually into pb/pocketbase, or" >&2
+    echo "  2) Run PocketBase via Docker: docker compose up -d pb" >&2
+  fi
+fi
+
+echo "Install complete."
+echo "Next: ./scripts/dev.sh (then open http://127.0.0.1:4010/setup)"

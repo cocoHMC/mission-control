@@ -3,7 +3,13 @@ import { NextRequest, NextResponse } from 'next/server';
 function isAuthorized(req: NextRequest) {
   const user = process.env.MC_ADMIN_USER;
   const pass = process.env.MC_ADMIN_PASSWORD;
-  if (!user || !pass) return true;
+  const isPlaceholder = (value?: string) => {
+    if (!value) return true;
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'change-me' || normalized === 'changeme';
+  };
+
+  if (!user || !pass || isPlaceholder(user) || isPlaceholder(pass)) return false;
   const auth = req.headers.get('authorization') || '';
   const [scheme, encoded] = auth.split(' ');
   if (scheme !== 'Basic' || !encoded) return false;

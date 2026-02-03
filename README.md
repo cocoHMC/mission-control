@@ -2,6 +2,8 @@
 
 Self-hosted “mission control” for OpenClaw: Kanban tasks, agents, documents, activity, and node ops — designed to be **tailnet/LAN-only** and **token-safe**.
 
+This repo is meant to be “clone → run → open `/setup` → done”.
+
 ## What You Get
 - **Kanban tasks** (Inbox → Assigned → In Progress → Review → Done, plus Blocked)
 - **Subtasks** with progress counters (`done/total`)
@@ -25,15 +27,18 @@ This keeps everyday tasks moving while still allowing “human sign-off” tasks
 - **Worker (Node TS)**: notifications, lease enforcement, standups, node snapshots — **no LLM**
 - **OpenClaw**: only wakes when needed (assignment/mention/nudge/escalation). Everything else stays in the UI.
 
-## Quickstart (Recommended: Same Host As OpenClaw)
-This is the smoothest path because the UI can run `openclaw` CLI commands (status, node ops) and read the gateway config file.
+## Quickstart (Recommended)
+Run Mission Control on the **same machine as the OpenClaw Gateway**. It’s the smoothest path because Mission Control can:
+- run `openclaw` CLI status checks
+- open the OpenClaw config editor UI
+- manage node pairing commands (copy/paste)
 
 ### Prereqs
 - Node.js 22+
 - pnpm (via Corepack)
 - Git
-- OpenClaw installed and a gateway running (or set `OPENCLAW_GATEWAY_DISABLED=true` while you set up)
-- PocketBase binary placed at `pb/pocketbase`
+- OpenClaw installed + gateway running (optional; you can run Mission Control without OpenClaw and connect later)
+- `curl` + `unzip` (for PocketBase auto-download on macOS/Linux)
 
 ### Platform Notes
 - **macOS/Linux**: supported out of the box (scripts are Bash).
@@ -42,14 +47,44 @@ This is the smoothest path because the UI can run `openclaw` CLI commands (statu
   - Use **Docker Desktop** (see Docker section below).
   - The `scripts/*.sh` helpers are not designed for PowerShell/CMD.
 
-### 1) Install
+### 1) Clone
 ```bash
-git clone <your-private-repo-url>
+git clone https://github.com/cocoHMC/mission-control.git
 cd mission-control
+corepack enable
+corepack prepare pnpm@10.28.2 --activate
+```
+
+### 2) Install
+```bash
 ./scripts/install.sh
 ```
 
-### 2) Configure `.env`
+### 3) Start Dev
+```bash
+./scripts/dev.sh
+```
+
+Then open:
+- `http://127.0.0.1:4010/setup`
+
+The setup page will:
+- set up Mission Control login (Basic Auth)
+- bootstrap PocketBase schema and auth
+- optionally connect OpenClaw (Tools Invoke delivery) and test the connection
+- show Tailscale status + copyable Tailnet URLs (when Tailscale is running)
+
+After applying setup, **restart** `./scripts/dev.sh` (Next.js only reads `.env` at startup).
+
+### Optional: CLI Setup (No Browser)
+```bash
+cd mission-control
+node scripts/setup.mjs
+```
+
+Important: run it from the repo root (otherwise Node won’t find `scripts/setup.mjs`).
+
+### Alternative: Manual `.env` Setup
 ```bash
 cp .env.example .env
 ```
@@ -64,15 +99,10 @@ Minimum required values:
 Optional quality-of-life:
 - `MC_GATEWAY_HOST_HINT` (your tailnet IP/hostname; used only to prefill copyable node install commands in the UI)
 
-### 3) Start (Dev)
-```bash
-./scripts/dev.sh
-```
-
-This starts:
+When you run `./scripts/dev.sh`, it starts:
 - PocketBase (local) and writes logs to `pb/pocketbase.log`
 - Schema bootstrap + rules + backfill (idempotent)
-- Worker (`apps/worker/dev.log`)
+- Worker (logs are written under `apps/worker/` but are gitignored)
 - Web UI (default `http://127.0.0.1:4010`)
 
 ### 4) Verify Wiring

@@ -5,6 +5,8 @@ apps/web/.env
 pb/pb_data/
 pb/pb_public/
 pb/pocketbase.log
+*.log
+apps/*/dev.log
 backups/
 ops/openclaw/
 node_modules/

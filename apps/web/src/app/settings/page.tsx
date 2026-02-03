@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ThemeToggle } from '@/app/settings/ThemeToggle';
 import { WebNotifications } from '@/app/settings/WebNotifications';
 import { SetupChecklist } from '@/app/settings/SetupChecklist';
+import { TailscaleStatusCard } from '@/app/settings/TailscaleStatus';
 
 export default function SettingsPage() {
   const leadName = process.env.MC_LEAD_AGENT_NAME || process.env.MC_LEAD_AGENT_ID || 'Lead';
@@ -27,16 +28,7 @@ export default function SettingsPage() {
           gatewayHostHint={gatewayHostHint}
           gatewayPortHint={gatewayPortHint}
         />
-        <Card>
-          <CardHeader>
-            <CardTitle>Headscale + Tailnet</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-muted">
-            <div>Keep services bound to loopback or tailnet IP only.</div>
-            <div>Use headscale to authenticate devices and route traffic to the gateway host.</div>
-            <div>Enable basic auth in the UI even on tailnet.</div>
-          </CardContent>
-        </Card>
+        <TailscaleStatusCard webPort={webPort} />
         <Card>
           <CardHeader>
             <CardTitle>Theme</CardTitle>

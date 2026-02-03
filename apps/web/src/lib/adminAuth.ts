@@ -4,7 +4,15 @@ export function requireAdminAuth(req: NextRequest): NextResponse | null {
   const user = process.env.MC_ADMIN_USER;
   const pass = process.env.MC_ADMIN_PASSWORD;
 
-  if (!user || !pass) return null;
+  const isPlaceholder = (value?: string) => {
+    if (!value) return true;
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'change-me' || normalized === 'changeme';
+  };
+
+  if (!user || !pass || isPlaceholder(user) || isPlaceholder(pass)) {
+    return NextResponse.json({ error: 'Setup required' }, { status: 409 });
+  }
 
   const auth = req.headers.get('authorization') || '';
   const [scheme, encoded] = auth.split(' ');
