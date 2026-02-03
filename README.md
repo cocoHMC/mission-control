@@ -33,6 +33,54 @@ Run Mission Control on the **same machine as the OpenClaw Gateway**. It’s the 
 - open the OpenClaw config editor UI
 - manage node pairing commands (copy/paste)
 
+## Install From Scratch (New User Steps)
+These are the “do this in order” steps if you’ve never run Mission Control before.
+
+1. Install prerequisites:
+   - Node.js 22+
+   - Git
+   - (Recommended) Tailscale + your Headscale server, if you want tailnet access
+   - (Optional) OpenClaw if you want agent delivery/wiring
+2. Clone + install:
+   ```bash
+   git clone https://github.com/cocoHMC/mission-control.git
+   cd mission-control
+   corepack enable
+   corepack prepare pnpm@10.28.2 --activate
+   ./scripts/install.sh
+   ```
+3. Start dev:
+   ```bash
+   ./scripts/dev.sh
+   ```
+4. Open the setup wizard:
+   1. Go to `http://127.0.0.1:4010/setup`
+   2. Set your Mission Control login (Basic Auth) and copy the password
+   3. (Optional) OpenClaw: in OpenClaw UI “Overview”, copy the Gateway URL + Tools Invoke token, click **Test connection**, then **Save + Bootstrap**
+5. Restart after setup:
+   - Stop `./scripts/dev.sh`
+   - Run `./scripts/dev.sh` again
+6. Use it:
+   1. Open `http://127.0.0.1:4010/` and log in
+   2. Create a task, add subtasks, assign to `main`
+
+For tailnet access, `/setup` shows a **Tailscale status card** + the exact `tailscale serve --bg 4010` command and a copyable URL once Tailscale is running.
+
+## One-Liner (For Codex / Terminal Agents)
+If you’re using an AI coding agent that can run shell commands, paste this block as-is on macOS/Linux/WSL (it assumes Node.js 22+ and Git are already installed):
+
+```bash
+set -euo pipefail
+git clone https://github.com/cocoHMC/mission-control.git
+cd mission-control
+corepack enable
+corepack prepare pnpm@10.28.2 --activate
+./scripts/install.sh
+./scripts/dev.sh
+echo
+echo "Open setup: http://127.0.0.1:4010/setup"
+```
+
 ### Prereqs
 - Node.js 22+
 - pnpm (via Corepack)
@@ -46,6 +94,12 @@ Run Mission Control on the **same machine as the OpenClaw Gateway**. It’s the 
   - Recommended: **WSL2** (Ubuntu) and run everything inside WSL, *or*
   - Use **Docker Desktop** (see Docker section below).
   - The `scripts/*.sh` helpers are not designed for PowerShell/CMD.
+
+### Installing Prereqs (Plain English)
+- **Node.js**: install Node.js 22+ (includes `corepack`). If you don’t know what to pick, install the latest Node 22 “LTS” from Nodejs.org.
+- **Git**: install Git so you can `git clone` this repo.
+- **Tailscale** (recommended): install Tailscale and join your tailnet (or your Headscale server). Mission Control can stay loopback-only and still be reachable over tailnet via `tailscale serve`.
+- **OpenClaw** (optional): install OpenClaw and run the gateway if you want Mission Control to wake your agent via Tools Invoke.
 
 ### 1) Clone
 ```bash
