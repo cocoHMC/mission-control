@@ -5,6 +5,7 @@ export type Task = {
   title: string;
   description?: string;
   status: TaskStatus;
+  archived?: boolean;
   priority?: string;
   assigneeIds?: string[];
   labels?: string[];

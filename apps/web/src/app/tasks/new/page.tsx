@@ -3,11 +3,11 @@ import { Topbar } from '@/components/shell/Topbar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TaskForm } from '@/app/tasks/new/TaskForm';
 import { pbFetch } from '@/lib/pbServer';
-import type { NodeRecord, PBList } from '@/lib/types';
+import type { Agent, NodeRecord, PBList } from '@/lib/types';
 
 async function getAgents() {
   const q = new URLSearchParams({ page: '1', perPage: '200' });
-  return pbFetch(`/api/collections/agents/records?${q.toString()}`);
+  return pbFetch<PBList<Agent>>(`/api/collections/agents/records?${q.toString()}`);
 }
 
 async function getNodes() {

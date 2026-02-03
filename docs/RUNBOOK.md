@@ -33,12 +33,32 @@ Suggested services:
 - Default: bind to loopback and access via tailnet on coco.
 - Alternative: set `MC_BIND_HOST` to coco's tailnet IP and firewall to tailnet only.
 
+### Headscale bind (direct tailnet IP)
+1) Set OpenClaw gateway bind to tailnet (`gateway.bind = "tailnet"`).
+2) Set Mission Control web bind to tailnet:
+   - `MC_BIND_HOST=<tailnet-ip>`
+   - `MC_WEB_BIND=<tailnet-ip>` (Docker)
+3) Keep gateway auth enabled and restrict access via headscale ACLs.
+
+### Tailscale Serve (loopback-only gateway)
+1) Keep gateway on loopback (`gateway.bind = "loopback"`).
+2) Enable Serve in OpenClaw config (`gateway.tailscale.mode = "serve"`).
+3) Keep Mission Control bound to loopback and expose via Tailscale Serve/Proxy.
+4) Use basic-auth for the UI even on tailnet.
+
+## OpenClaw Config Editor
+- UI path: `/openclaw`
+- Validate first to see a unified diff.
+- Apply writes `ops/openclaw/pending.json` and a backup under `ops/openclaw/backups/`.
+- Restart the gateway manually after apply: `openclaw gateway restart`.
+
 ## Data bootstrap
 - `node scripts/pb_bootstrap.mjs`
 - `node scripts/pb_set_rules.mjs`
 
 ## Healthchecks
 - `scripts/healthcheck.sh`
+ - Optional: `node scripts/openclaw_ping.mjs` to validate Tools Invoke token.
 
 ## Backups
 - `scripts/backup.sh`

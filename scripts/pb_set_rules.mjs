@@ -47,6 +47,7 @@ async function main() {
     'activities',
     'notifications',
     'task_subscriptions',
+    'push_subscriptions',
   ]);
 
   for (const c of list.items) {

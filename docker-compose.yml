@@ -33,7 +33,7 @@ services:
       - pb
     ports:
       # Tailnet/LAN access: bind to tailnet IP if present.
-      - "100.64.0.2:4010:4010"
+      - "${MC_WEB_BIND:-127.0.0.1}:4010:4010"
     environment:
       PORT: 4010
       PB_URL: http://pb:8090

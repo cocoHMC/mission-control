@@ -46,7 +46,11 @@ export function ActivityFeed({ initialItems }: { initialItems: Activity[] }) {
     return () => {
       cancelled = true;
       if (pollId) clearInterval(pollId);
-      if (unsubscribe) void unsubscribe();
+      if (unsubscribe) {
+        void unsubscribe().catch(() => {
+          // Ignore realtime teardown errors on fast refresh/unmounted sessions.
+        });
+      }
     };
   }, []);
 
@@ -57,7 +61,7 @@ export function ActivityFeed({ initialItems }: { initialItems: Activity[] }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {items.map((item) => (
-          <div key={item.id} className="rounded-2xl border border-[var(--border)] bg-white p-4">
+          <div key={item.id} className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
             <div className="text-xs uppercase tracking-[0.2em] text-muted">{item.type}</div>
             <div className="mt-2 text-sm">{item.summary}</div>
             <div className="mt-2 text-xs text-muted">{formatShortDate(item.created)}</div>

@@ -68,7 +68,7 @@ export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord
         <div>
           <label className="text-sm font-medium">Priority</label>
           <select
-            className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-white px-3 text-sm"
+            className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]"
             value={priority}
             onChange={(event) => setPriority(event.target.value)}
           >
@@ -82,7 +82,7 @@ export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord
         <div>
           <label className="text-sm font-medium">Required node</label>
           <select
-            className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-white px-3 text-sm"
+            className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]"
             value={requiredNodeId}
             onChange={(event) => setRequiredNodeId(event.target.value)}
           >
@@ -101,7 +101,7 @@ export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord
               const key = agent.openclawAgentId ?? agent.id;
               const checked = assignees.includes(key) || assignees.includes(agent.id);
               return (
-              <label key={agent.id} className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm">
+              <label key={agent.id} className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">
                 <input
                   type="checkbox"
                   checked={checked}

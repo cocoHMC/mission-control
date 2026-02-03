@@ -11,6 +11,10 @@
   --accent-strong: #0b4f49;
   --highlight: #f2d5a6;
   --shadow: 0 20px 50px rgba(20, 20, 20, 0.08);
+  --bg-glow-1: rgba(242, 213, 166, 0.4);
+  --bg-glow-2: rgba(15, 118, 110, 0.15);
+  --glass-1: rgba(255, 255, 255, 0.7);
+  --glass-2: rgba(255, 255, 255, 0.35);
 }
 
 @theme inline {
@@ -39,7 +43,46 @@
     --accent-strong: #2ca99a;
     --highlight: #3a2b12;
     --shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+    --bg-glow-1: rgba(58, 43, 18, 0.7);
+    --bg-glow-2: rgba(55, 194, 177, 0.14);
+    --glass-1: rgba(28, 28, 28, 0.75);
+    --glass-2: rgba(21, 21, 21, 0.4);
   }
+}
+
+/* Explicit user override (Settings -> Theme). */
+:root[data-theme='light'] {
+  --background: #f6f4ef;
+  --foreground: #141414;
+  --muted: #6b6b6b;
+  --surface: #fbfaf7;
+  --card: #ffffff;
+  --border: #e5e1d8;
+  --accent: #0f766e;
+  --accent-strong: #0b4f49;
+  --highlight: #f2d5a6;
+  --shadow: 0 20px 50px rgba(20, 20, 20, 0.08);
+  --bg-glow-1: rgba(242, 213, 166, 0.4);
+  --bg-glow-2: rgba(15, 118, 110, 0.15);
+  --glass-1: rgba(255, 255, 255, 0.7);
+  --glass-2: rgba(255, 255, 255, 0.35);
+}
+
+:root[data-theme='dark'] {
+  --background: #101010;
+  --foreground: #f2f2f2;
+  --muted: #b1b1b1;
+  --surface: #151515;
+  --card: #1c1c1c;
+  --border: #2b2b2b;
+  --accent: #37c2b1;
+  --accent-strong: #2ca99a;
+  --highlight: #3a2b12;
+  --shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+  --bg-glow-1: rgba(58, 43, 18, 0.7);
+  --bg-glow-2: rgba(55, 194, 177, 0.14);
+  --glass-1: rgba(28, 28, 28, 0.75);
+  --glass-2: rgba(21, 21, 21, 0.4);
 }
 
 * {
@@ -47,8 +90,8 @@
 }
 
 body {
-  background: radial-gradient(circle at top left, rgba(242, 213, 166, 0.4), transparent 45%),
-    radial-gradient(circle at 30% 10%, rgba(15, 118, 110, 0.15), transparent 40%),
+  background: radial-gradient(circle at top left, var(--bg-glow-1), transparent 45%),
+    radial-gradient(circle at 30% 10%, var(--bg-glow-2), transparent 40%),
     var(--background);
   color: var(--foreground);
   font-family: var(--font-body), system-ui, sans-serif;
@@ -81,7 +124,7 @@ body {
 }
 
 .glass {
-  background: linear-gradient(140deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.35));
+  background: linear-gradient(140deg, var(--glass-1), var(--glass-2));
   backdrop-filter: blur(24px);
 }
 

@@ -4,6 +4,8 @@ import { pbFetch } from '@/lib/pbServer';
 import { TaskDetail } from '@/app/tasks/[id]/TaskDetail';
 import type { Agent, DocumentRecord, Message, NodeRecord, PBList, Task } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 async function getTask(id: string) {
   return pbFetch<Task>(`/api/collections/tasks/records/${id}`);
 }

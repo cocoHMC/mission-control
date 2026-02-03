@@ -64,7 +64,7 @@ export function NodeActions({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
         <div className="flex items-center justify-between">
           <div className="text-sm font-semibold">Pending approvals</div>
           {!actionsEnabled && <Badge className="border-none bg-[var(--highlight)] text-[var(--foreground)]">disabled</Badge>}
@@ -84,7 +84,7 @@ export function NodeActions({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
         <div className="text-sm font-semibold">Health checks</div>
         <div className="mt-3 space-y-3">
           {nodes.map((node) => (
@@ -107,7 +107,10 @@ export function NodeActions({
                 const key = `${node.nodeId ?? node.id}:${cmd}`;
                 const value = output[key];
                 return value ? (
-                  <pre key={key} className="mt-2 rounded-xl border border-[var(--border)] bg-white p-2 text-xs text-muted whitespace-pre-wrap">
+                  <pre
+                    key={key}
+                    className="mt-2 whitespace-pre-wrap rounded-xl border border-[var(--border)] bg-[var(--card)] p-2 text-xs text-[var(--foreground)]"
+                  >
                     {value}
                   </pre>
                 ) : null;

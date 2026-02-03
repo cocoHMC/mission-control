@@ -13,3 +13,7 @@ PB_URL="${PB_URL:-http://127.0.0.1:8090}/api/health"
 
 curl -fsS "$PB_URL" > /dev/null && echo "PocketBase OK"
 curl -fsS "$WEB_URL" > /dev/null && echo "Web OK"
+
+if [ "${MC_HEALTHCHECK_PING:-false}" = "true" ]; then
+  node "$ROOT_DIR/scripts/openclaw_ping.mjs" >/dev/null && echo "OpenClaw tools/invoke OK"
+fi

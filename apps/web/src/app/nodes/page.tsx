@@ -27,13 +27,13 @@ export default async function NodesPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {nodes.map((node) => (
-              <div key={node.id} className="rounded-2xl border border-[var(--border)] bg-white p-4">
+              <div key={node.id} className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-semibold">{node.displayName ?? node.id}</div>
                     <div className="text-xs text-muted">{node.os ?? 'unknown'} / {node.arch ?? 'unknown'}</div>
                   </div>
-                  <Badge className="border-none bg-[var(--accent)] text-white">{node.paired ? 'paired' : 'pending'}</Badge>
+                  <Badge className="border-none bg-[var(--accent)] text-[var(--background)]">{node.paired ? 'paired' : 'pending'}</Badge>
                 </div>
                 <div className="mt-2 text-xs text-muted">Last seen: {formatShortDate(node.lastSeenAt)}</div>
                 <div className="mt-1 text-xs text-muted">Exec policy: {node.execPolicy ?? 'deny'}</div>
@@ -60,6 +60,18 @@ export default async function NodesPage() {
               <div className="text-xs uppercase tracking-[0.2em]">Step 3</div>
               <div className="mt-2 text-sm text-[var(--foreground)]">On gateway host: openclaw nodes pending, approve request, set allowlist.</div>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>CLI reference</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted">
+            <div><span className="font-mono">openclaw nodes pending</span> to list requests.</div>
+            <div><span className="font-mono">openclaw nodes approve &lt;requestId&gt;</span> to pair.</div>
+            <div><span className="font-mono">openclaw nodes list</span> to inspect paired nodes.</div>
+            <div className="text-xs">Set allowlists before running remote commands.</div>
           </CardContent>
         </Card>
       </div>

@@ -4,7 +4,9 @@ let client: PocketBase | null = null;
 let tokenPromise: Promise<{ token: string; url: string }> | null = null;
 
 export type PBRealtimeEvent<T> = {
-  action: 'create' | 'update' | 'delete';
+  // PocketBase types `action` as `string` even though the server only emits
+  // create/update/delete. Widen here so our subscribe callbacks are assignable.
+  action: string;
   record: T;
 };
 

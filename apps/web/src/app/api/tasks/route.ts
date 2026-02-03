@@ -21,7 +21,9 @@ export async function POST(req: NextRequest) {
     requiredNodeId: body.requiredNodeId ?? '',
     escalationAgentId: body.escalationAgentId ?? leadAgentId,
     maxAutoNudges: body.maxAutoNudges ?? 3,
+    attemptCount: body.attemptCount ?? 0,
   };
   const created = await pbFetch('/api/collections/tasks/records', { method: 'POST', body: payload });
+
   return NextResponse.json(created);
 }

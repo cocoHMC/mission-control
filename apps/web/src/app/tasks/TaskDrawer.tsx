@@ -4,6 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { TaskDetail } from '@/app/tasks/[id]/TaskDetail';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { getPocketBaseClient, type PBRealtimeEvent } from '@/lib/pbClient';
 import type { Agent, DocumentRecord, Message, NodeRecord, PBList, Task } from '@/lib/types';
 
@@ -22,21 +23,74 @@ async function fetchJson<T>(url: string) {
 }
 
 export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps) {
+  const TRANSITION_MS = 220;
+  const [rendered, setRendered] = React.useState(open);
+  const [visible, setVisible] = React.useState(open);
+  const [activeTaskId, setActiveTaskId] = React.useState<string | null>(taskId);
   const [task, setTask] = React.useState<Task | null>(null);
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [documents, setDocuments] = React.useState<DocumentRecord[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  React.useEffect(() => {
+    if (taskId) setActiveTaskId(taskId);
+  }, [taskId]);
+
+  const liveTaskId = taskId ?? activeTaskId;
+
+  // Opening: render immediately (before paint) and then slide in on the next frame.
+  React.useLayoutEffect(() => {
+    if (open) {
+      setRendered(true);
+      setVisible(false);
+      const raf = requestAnimationFrame(() => setVisible(true));
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [open]);
+
+  // Closing: allow one paint with the drawer visible, then slide out and unmount.
+  React.useEffect(() => {
+    if (open) return;
+    setVisible(false);
+    const timeout = setTimeout(() => setRendered(false), TRANSITION_MS);
+    return () => clearTimeout(timeout);
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!rendered) return;
+
+    const prevOverflow = document.body.style.overflow;
+    const prevPaddingRight = document.body.style.paddingRight;
+    const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    document.body.style.overflow = 'hidden';
+    if (scrollBarWidth > 0) document.body.style.paddingRight = `${scrollBarWidth}px`;
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.paddingRight = prevPaddingRight;
+    };
+  }, [rendered]);
+
+  React.useEffect(() => {
+    if (!rendered) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [rendered, onClose]);
+
   const refresh = React.useCallback(async () => {
-    if (!taskId) return;
+    if (!liveTaskId) return;
     setLoading(true);
     setError(null);
     try {
       const [taskData, messageList, docList] = await Promise.all([
-        fetchJson<Task>(`/api/tasks/${taskId}`),
-        fetchJson<PBList<Message>>(`/api/messages?${new URLSearchParams({ page: '1', perPage: '200', filter: `taskId = \"${taskId}\"` }).toString()}`),
-        fetchJson<PBList<DocumentRecord>>(`/api/documents?${new URLSearchParams({ page: '1', perPage: '100', filter: `taskId = \"${taskId}\"` }).toString()}`),
+        fetchJson<Task>(`/api/tasks/${liveTaskId}`),
+        fetchJson<PBList<Message>>(`/api/messages?${new URLSearchParams({ page: '1', perPage: '200', filter: `taskId = \"${liveTaskId}\"` }).toString()}`),
+        fetchJson<PBList<DocumentRecord>>(`/api/documents?${new URLSearchParams({ page: '1', perPage: '100', filter: `taskId = \"${liveTaskId}\"` }).toString()}`),
       ]);
       setTask(taskData);
       setMessages(messageList.items ?? []);
@@ -46,14 +100,14 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
     } finally {
       setLoading(false);
     }
-  }, [taskId]);
+  }, [liveTaskId]);
 
   React.useEffect(() => {
-    if (open && taskId) void refresh();
-  }, [open, taskId, refresh]);
+    if (open && liveTaskId) void refresh();
+  }, [open, liveTaskId, refresh]);
 
   React.useEffect(() => {
-    if (!open || !taskId) return;
+    if (!open || !liveTaskId) return;
     let cancelled = false;
     let pollId: ReturnType<typeof setInterval> | null = setInterval(() => void refresh(), 30_000);
     let unsubscribeTasks: (() => Promise<void>) | null = null;
@@ -75,11 +129,13 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
           clearInterval(pollId);
           pollId = null;
         }
-        await pb.collection('tasks').subscribe('*', (e: PBRealtimeEvent<Task>) => {
-          if (e?.record?.id === taskId) setTask(e.record as Task);
+        // Subscribe to the specific task record to avoid clobbering the TaskBoard
+        // subscription (both components share a PB client).
+        await pb.collection('tasks').subscribe(liveTaskId, (e: PBRealtimeEvent<Task>) => {
+          if (e?.record?.id === liveTaskId) setTask(e.record as Task);
         });
         await pb.collection('messages').subscribe('*', (e: PBRealtimeEvent<Message>) => {
-          if (e?.record?.taskId !== taskId) return;
+          if (e?.record?.taskId !== liveTaskId) return;
           if (e.action === 'delete') {
             setMessages((prev) => prev.filter((m) => m.id !== e.record.id));
           } else {
@@ -87,7 +143,7 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
           }
         });
         await pb.collection('documents').subscribe('*', (e: PBRealtimeEvent<DocumentRecord>) => {
-          if (e?.record?.taskId !== taskId) return;
+          if (e?.record?.taskId !== liveTaskId) return;
           if (e.action === 'delete') {
             setDocuments((prev) => prev.filter((d) => d.id !== e.record.id));
           } else {
@@ -95,7 +151,7 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
           }
         });
 
-        unsubscribeTasks = async () => pb.collection('tasks').unsubscribe('*');
+        unsubscribeTasks = async () => pb.collection('tasks').unsubscribe(liveTaskId);
         unsubscribeMessages = async () => pb.collection('messages').unsubscribe('*');
         unsubscribeDocs = async () => pb.collection('documents').unsubscribe('*');
       })
@@ -106,31 +162,31 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
     return () => {
       cancelled = true;
       if (pollId) clearInterval(pollId);
-      if (unsubscribeTasks) void unsubscribeTasks();
-      if (unsubscribeMessages) void unsubscribeMessages();
-      if (unsubscribeDocs) void unsubscribeDocs();
+      if (unsubscribeTasks) void unsubscribeTasks().catch(() => {});
+      if (unsubscribeMessages) void unsubscribeMessages().catch(() => {});
+      if (unsubscribeDocs) void unsubscribeDocs().catch(() => {});
     };
-  }, [open, taskId, refresh]);
+  }, [open, liveTaskId, refresh]);
 
-  React.useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-    };
-  }, [open, onClose]);
-
-  if (!open) return null;
+  if (!rendered) return null;
 
   return (
     <div className="fixed inset-0 z-50">
-      <button type="button" aria-label="Close drawer" className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="absolute right-0 top-0 flex h-full w-full max-w-3xl flex-col bg-white shadow-2xl">
+      <button
+        type="button"
+        aria-label="Close drawer"
+        className={cn(
+          'absolute inset-0 bg-black/30 backdrop-blur-sm transition-opacity duration-200',
+          visible ? 'opacity-100' : 'pointer-events-none opacity-0'
+        )}
+        onClick={onClose}
+      />
+      <div
+        className={cn(
+          'absolute right-0 top-0 flex h-full w-full max-w-3xl flex-col bg-[var(--surface)] shadow-2xl transition-transform duration-200 ease-out will-change-transform',
+          visible ? 'translate-x-0' : 'translate-x-full'
+        )}
+      >
         <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-4">
           <div>
             <div className="text-xs uppercase tracking-[0.2em] text-muted">Task</div>

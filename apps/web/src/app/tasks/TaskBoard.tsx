@@ -22,6 +22,7 @@ type Task = {
   title: string;
   priority?: string;
   status: string;
+  archived?: boolean;
   assigneeIds?: string[];
   labels?: string[];
   requiredNodeId?: string;
@@ -55,7 +56,7 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (taskId: string) => vo
       ref={setNodeRef}
       style={style}
       className={cn(
-        'rounded-2xl border border-[var(--border)] bg-white p-3 text-sm shadow-sm transition',
+        'rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-sm shadow-sm transition',
         isDragging ? 'opacity-60' : 'hover:-translate-y-0.5 hover:shadow-md'
       )}
     >
@@ -88,12 +89,60 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (taskId: string) => vo
                 </span>
               )}
               {(task.labels ?? []).slice(0, 2).map((label) => (
-                <span key={label} className="rounded-full border border-[var(--border)] bg-white px-2 py-0.5">
+                <span key={label} className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">
                   {label}
                 </span>
               ))}
               {(task.labels?.length ?? 0) > 2 && (
-                <span className="rounded-full border border-[var(--border)] bg-white px-2 py-0.5">
+                <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">
+                  +{(task.labels?.length ?? 0) - 2}
+                </span>
+              )}
+            </div>
+          )}
+          <div className="mt-2 flex items-center gap-2 text-xs text-muted">
+            <Badge className="border-none bg-[var(--highlight)] text-[var(--foreground)]">{task.priority ?? 'p2'}</Badge>
+            <span>{task.assigneeIds?.length ? `${task.assigneeIds.length} assignee(s)` : 'Unassigned'}</span>
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TaskCardStatic({ task, onOpen }: { task: Task; onOpen: (taskId: string) => void }) {
+  return (
+    <div className={cn('rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-sm shadow-sm transition')}>
+      <div className="flex items-stretch gap-3">
+        <div
+          aria-hidden="true"
+          className="group relative h-full w-2 shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface)]/60 opacity-50"
+          style={{
+            backgroundImage:
+              'repeating-linear-gradient(180deg, rgba(15,23,42,0.25) 0, rgba(15,23,42,0.25) 2px, transparent 2px, transparent 5px)',
+          }}
+        />
+        <button type="button" onClick={() => onOpen(task.id)} className="flex-1 text-left">
+          <div
+            className="font-medium"
+            style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+          >
+            {task.title}
+          </div>
+          {(task.labels?.length || task.requiredNodeId) && (
+            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted">
+              {task.requiredNodeId && (
+                <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">
+                  node:{task.requiredNodeId}
+                </span>
+              )}
+              {(task.labels ?? []).slice(0, 2).map((label) => (
+                <span key={label} className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">
+                  {label}
+                </span>
+              ))}
+              {(task.labels?.length ?? 0) > 2 && (
+                <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">
                   +{(task.labels?.length ?? 0) - 2}
                 </span>
               )}
@@ -116,11 +165,11 @@ function Column({ status, tasks, onOpen }: { status: string; tasks: Task[]; onOp
     <div className="flex w-[240px] shrink-0 flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] sm:w-[260px] lg:w-[300px]">
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)]/95 px-3 py-3 backdrop-blur">
         <div className="text-xs uppercase tracking-[0.2em] text-muted">{titleCase(status)}</div>
-        <Badge className="border-none bg-white text-[var(--foreground)]">{tasks.length}</Badge>
+        <Badge className="border-none bg-[var(--card)] text-[var(--foreground)]">{tasks.length}</Badge>
       </div>
       <div
         ref={setNodeRef}
-        className={cn('space-y-3 p-3 transition', isOver ? 'bg-white/70' : '')}
+        className={cn('space-y-3 p-3 transition', isOver ? 'bg-[color:var(--card)]/70' : '')}
         style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}
       >
         {tasks.map((task) => (
@@ -132,16 +181,43 @@ function Column({ status, tasks, onOpen }: { status: string; tasks: Task[]; onOp
   );
 }
 
+function ColumnStatic({ status, tasks, onOpen }: { status: string; tasks: Task[]; onOpen: (taskId: string) => void }) {
+  return (
+    <div className="flex w-[240px] shrink-0 flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] sm:w-[260px] lg:w-[300px]">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)]/95 px-3 py-3 backdrop-blur">
+        <div className="text-xs uppercase tracking-[0.2em] text-muted">{titleCase(status)}</div>
+        <Badge className="border-none bg-[var(--card)] text-[var(--foreground)]">{tasks.length}</Badge>
+      </div>
+      <div className={cn('space-y-3 p-3 transition')} style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
+        {tasks.map((task) => (
+          <TaskCardStatic key={task.id} task={task} onOpen={onOpen} />
+        ))}
+        {!tasks.length && (
+          <div className="rounded-xl border border-dashed border-[var(--border)] p-4 text-xs text-muted">No tasks</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[]; agents: Agent[]; nodes: NodeRecord[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [tasks, setTasks] = React.useState<Task[]>(initialTasks);
-  const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [drawerTaskId, setDrawerTaskId] = React.useState<string | null>(null);
+  const [mounted, setMounted] = React.useState(false);
+  // Optimistic open/close to avoid a jittery UX while the URL updates.
+  // `undefined` => follow URL `?task=...`
+  // `string`    => force open that task immediately
+  // `null`      => force closed immediately
+  const [overrideTaskId, setOverrideTaskId] = React.useState<string | null | undefined>(undefined);
 
   React.useEffect(() => {
     setTasks(initialTasks);
   }, [initialTasks]);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   React.useEffect(() => {
     let pollId: ReturnType<typeof setInterval> | null = setInterval(async () => {
@@ -180,21 +256,21 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
     return () => {
       cancelled = true;
       if (pollId) clearInterval(pollId);
-      if (unsubscribe) void unsubscribe();
+      if (unsubscribe) {
+        void unsubscribe().catch(() => {
+          // Ignore realtime teardown errors on fast refresh/unmounted sessions.
+        });
+      }
     };
   }, []);
 
   const taskParam = searchParams.get('task');
 
   React.useEffect(() => {
-    if (taskParam) {
-      setDrawerTaskId(taskParam);
-      setDrawerOpen(true);
-    } else if (drawerOpen) {
-      setDrawerOpen(false);
-      setDrawerTaskId(null);
-    }
-  }, [taskParam, drawerOpen]);
+    if (overrideTaskId === undefined) return;
+    if (overrideTaskId === null && !taskParam) setOverrideTaskId(undefined);
+    if (typeof overrideTaskId === 'string' && taskParam === overrideTaskId) setOverrideTaskId(undefined);
+  }, [overrideTaskId, taskParam]);
 
   async function updateStatus(taskId: string, status: string) {
     await fetch(`/api/tasks/${taskId}`, {
@@ -215,21 +291,22 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
   }
 
   const grouped = columns.reduce<Record<string, Task[]>>((acc, col) => {
-    acc[col.id] = tasks.filter((task) => task.status === col.id);
+    acc[col.id] = tasks.filter((task) => task.status === col.id && !task.archived);
     return acc;
   }, {});
 
   function openDrawer(taskId: string) {
-    setDrawerTaskId(taskId);
-    setDrawerOpen(true);
+    setOverrideTaskId(taskId);
     router.replace(`/tasks?task=${taskId}`, { scroll: false });
   }
 
   function closeDrawer() {
-    setDrawerOpen(false);
-    setDrawerTaskId(null);
+    setOverrideTaskId(null);
     router.replace('/tasks', { scroll: false });
   }
+
+  const effectiveTaskId = overrideTaskId !== undefined ? overrideTaskId : taskParam;
+  const drawerOpen = Boolean(effectiveTaskId);
 
   return (
     <div>
@@ -237,16 +314,26 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
         <span>Active agents: {agents.length}</span>
         <span>Drag tasks across columns to update status.</span>
       </div>
-      <DndContext onDragEnd={handleDragEnd}>
+      {mounted ? (
+        <DndContext onDragEnd={handleDragEnd}>
+          <div className="-mx-4 overflow-x-auto pb-4">
+            <div className="flex w-max gap-4 px-4">
+              {columns.map((col) => (
+                <Column key={col.id} status={col.id} tasks={grouped[col.id] ?? []} onOpen={openDrawer} />
+              ))}
+            </div>
+          </div>
+        </DndContext>
+      ) : (
         <div className="-mx-4 overflow-x-auto pb-4">
           <div className="flex w-max gap-4 px-4">
             {columns.map((col) => (
-              <Column key={col.id} status={col.id} tasks={grouped[col.id] ?? []} onOpen={openDrawer} />
+              <ColumnStatic key={col.id} status={col.id} tasks={grouped[col.id] ?? []} onOpen={openDrawer} />
             ))}
           </div>
         </div>
-      </DndContext>
-      <TaskDrawer open={drawerOpen} taskId={drawerTaskId} agents={agents} nodes={nodes} onClose={closeDrawer} />
+      )}
+      <TaskDrawer open={drawerOpen} taskId={effectiveTaskId} agents={agents} nodes={nodes} onClose={closeDrawer} />
     </div>
   );
 }

@@ -408,3 +408,161 @@
 ```
 <no diff>
 ```
+
+## 2026-02-02T19:00:59Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T19:00:39Z
+- summary: Implemented task_subscriptions upsert helper (dedupe) and wired auto-subscribe for commenters, mentioned agents, and newly-added assignees on task PATCH; subscribers now get notifications on new messages with deduped subscriber list. Added /api/activity endpoint (filters + sort) and updated Activity page to consume it; marked activity/tasks pages as force-dynamic so builds don’t require PB env vars. Verified via apps/web lint + build.
+- git status (porcelain):
+
+```
+ M apps/web/src/app/activity/page.tsx
+ M apps/web/src/app/api/tasks/[id]/messages/route.ts
+ M apps/web/src/app/tasks/[id]/page.tsx
+ M apps/web/src/app/tasks/[id]/taskDetailClient.tsx
+ M apps/web/src/app/tasks/page.tsx
+ M apps/web/src/lib/pbServer.ts
+ M docs/BUILD_STATUS.json
+```
+
+```
+ apps/web/src/app/activity/page.tsx                | 2 ++
+ apps/web/src/app/api/tasks/[id]/messages/route.ts | 6 ++++--
+ apps/web/src/app/tasks/[id]/page.tsx              | 2 ++
+ apps/web/src/app/tasks/[id]/taskDetailClient.tsx  | 2 +-
+ apps/web/src/app/tasks/page.tsx                   | 2 ++
+ apps/web/src/lib/pbServer.ts                      | 2 +-
+ docs/BUILD_STATUS.json                            | 6 +++---
+ 7 files changed, 15 insertions(+), 7 deletions(-)
+```
+
+## 2026-02-02T19:05:34Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T19:00:39Z
+- summary: Implemented task_subscriptions upsert helper (dedupe) and wired auto-subscribe for commenters, mentioned agents, and newly-added assignees on task PATCH; subscribers now get notifications on new messages with deduped subscriber list. Added /api/activity endpoint (filters + sort) and updated Activity page to consume it; marked activity/tasks pages as force-dynamic so builds don’t require PB env vars. Verified via apps/web lint + build.
+- git status (porcelain):
+
+```
+ M apps/web/src/app/activity/page.tsx
+ M apps/web/src/app/api/tasks/[id]/messages/route.ts
+ M apps/web/src/app/tasks/[id]/page.tsx
+ M apps/web/src/app/tasks/[id]/taskDetailClient.tsx
+ M apps/web/src/app/tasks/page.tsx
+ M apps/web/src/lib/pbServer.ts
+ M docs/BUILD_STATUS.json
+ M docs/PROGRESS.log
+```
+
+```
+ apps/web/src/app/activity/page.tsx                |  2 ++
+ apps/web/src/app/api/tasks/[id]/messages/route.ts |  6 +++--
+ apps/web/src/app/tasks/[id]/page.tsx              |  2 ++
+ apps/web/src/app/tasks/[id]/taskDetailClient.tsx  |  2 +-
+ apps/web/src/app/tasks/page.tsx                   |  2 ++
+ apps/web/src/lib/pbServer.ts                      |  2 +-
+ docs/BUILD_STATUS.json                            |  6 ++---
+ docs/PROGRESS.log                                 | 27 +++++++++++++++++++++++
+ 8 files changed, 42 insertions(+), 7 deletions(-)
+```
+
+## 2026-02-02T19:13:20Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T19:12:55Z
+- summary: Implemented task_subscriptions upsert helper (dedupe) and wired auto-subscribe for commenters, mentioned agents, and newly-added assignees on task PATCH; subscribers now get notifications on new messages with deduped subscriber list. Added /api/activity endpoint (filters + sort) and updated Activity page to consume it; marked activity/tasks pages as force-dynamic so builds don’t require PB env vars. Verified via apps/web lint + build.
+- git status (porcelain):
+
+```
+ M apps/web/src/app/activity/page.tsx
+ M apps/web/src/app/api/tasks/[id]/claim/route.ts
+ M apps/web/src/app/api/tasks/[id]/messages/route.ts
+ M apps/web/src/app/api/tasks/route.ts
+ M apps/web/src/app/tasks/[id]/page.tsx
+ M apps/web/src/app/tasks/[id]/taskDetailClient.tsx
+ M apps/web/src/app/tasks/page.tsx
+ M apps/web/src/lib/pbServer.ts
+ M docs/BUILD_STATUS.json
+ M docs/PROGRESS.log
+?? apps/worker/eslint.config.js
+```
+
+```
+ apps/web/src/app/activity/page.tsx                |  2 +
+ apps/web/src/app/api/tasks/[id]/claim/route.ts    |  6 +--
+ apps/web/src/app/api/tasks/[id]/messages/route.ts |  6 ++-
+ apps/web/src/app/api/tasks/route.ts               |  8 +---
+ apps/web/src/app/tasks/[id]/page.tsx              |  2 +
+ apps/web/src/app/tasks/[id]/taskDetailClient.tsx  |  2 +-
+ apps/web/src/app/tasks/page.tsx                   |  2 +
+ apps/web/src/lib/pbServer.ts                      |  2 +-
+ docs/BUILD_STATUS.json                            |  6 +--
+ docs/PROGRESS.log                                 | 56 +++++++++++++++++++++++
+ 10 files changed, 75 insertions(+), 17 deletions(-)
+```
+
+## 2026-02-02T19:13:41Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T19:12:55Z
+- summary: Refactored task create + claim routes to use ensureTaskSubscription (deduped upsert) consistently for assignees; ensured new messages notify task subscribers (excluding author + mentions). Added minimal apps/worker ESLint v9 config so workspace lint passes. Verified via pnpm -r lint and apps/web build; ran ops/proof_of_work.sh.
+- git status (porcelain):
+
+```
+ M apps/web/src/app/activity/page.tsx
+ M apps/web/src/app/api/tasks/[id]/claim/route.ts
+ M apps/web/src/app/api/tasks/[id]/messages/route.ts
+ M apps/web/src/app/api/tasks/route.ts
+ M apps/web/src/app/tasks/[id]/page.tsx
+ M apps/web/src/app/tasks/[id]/taskDetailClient.tsx
+ M apps/web/src/app/tasks/page.tsx
+ M apps/web/src/lib/pbServer.ts
+ M docs/BUILD_STATUS.json
+ M docs/PROGRESS.log
+?? apps/worker/eslint.config.js
+```
+
+```
+ apps/web/src/app/activity/page.tsx                |  2 +
+ apps/web/src/app/api/tasks/[id]/claim/route.ts    |  6 +-
+ apps/web/src/app/api/tasks/[id]/messages/route.ts |  6 +-
+ apps/web/src/app/api/tasks/route.ts               |  8 +-
+ apps/web/src/app/tasks/[id]/page.tsx              |  2 +
+ apps/web/src/app/tasks/[id]/taskDetailClient.tsx  |  2 +-
+ apps/web/src/app/tasks/page.tsx                   |  2 +
+ apps/web/src/lib/pbServer.ts                      |  2 +-
+ docs/BUILD_STATUS.json                            |  6 +-
+ docs/PROGRESS.log                                 | 90 +++++++++++++++++++++++
+ 10 files changed, 109 insertions(+), 17 deletions(-)
+```
+
+## 2026-02-02T19:15:35Z
+- url: DEV=http://100.64.0.2:4011/tasks
+- last_code_change_utc: 2026-02-02T19:12:55Z
+- summary: Refactored task create + claim routes to use ensureTaskSubscription (deduped upsert) consistently for assignees; ensured new messages notify task subscribers (excluding author + mentions). Added minimal apps/worker ESLint v9 config so workspace lint passes. Verified via pnpm -r lint and apps/web build; ran ops/proof_of_work.sh.
+- git status (porcelain):
+
+```
+ M apps/web/src/app/activity/page.tsx
+ M apps/web/src/app/api/tasks/[id]/claim/route.ts
+ M apps/web/src/app/api/tasks/[id]/messages/route.ts
+ M apps/web/src/app/api/tasks/route.ts
+ M apps/web/src/app/tasks/[id]/page.tsx
+ M apps/web/src/app/tasks/[id]/taskDetailClient.tsx
+ M apps/web/src/app/tasks/page.tsx
+ M apps/web/src/lib/pbServer.ts
+ M docs/BUILD_STATUS.json
+ M docs/PROGRESS.log
+?? apps/worker/eslint.config.js
+```
+
+```
+ apps/web/src/app/activity/page.tsx                |   2 +
+ apps/web/src/app/api/tasks/[id]/claim/route.ts    |   6 +-
+ apps/web/src/app/api/tasks/[id]/messages/route.ts |   6 +-
+ apps/web/src/app/api/tasks/route.ts               |   8 +-
+ apps/web/src/app/tasks/[id]/page.tsx              |   2 +
+ apps/web/src/app/tasks/[id]/taskDetailClient.tsx  |   2 +-
+ apps/web/src/app/tasks/page.tsx                   |   2 +
+ apps/web/src/lib/pbServer.ts                      |   2 +-
+ docs/BUILD_STATUS.json                            |   6 +-
+ docs/PROGRESS.log                                 | 124 ++++++++++++++++++++++
+ 10 files changed, 143 insertions(+), 17 deletions(-)
+```

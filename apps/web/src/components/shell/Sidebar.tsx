@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, Brain, ClipboardCheck, LayoutDashboard, ListTodo, Server, Settings } from 'lucide-react';
+import { BarChart3, Brain, ClipboardCheck, LayoutDashboard, ListTodo, Server, Settings, SlidersHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const nav = [
@@ -12,6 +12,7 @@ const nav = [
   { href: '/agents', label: 'Agents', icon: Brain },
   { href: '/nodes', label: 'Nodes', icon: Server },
   { href: '/docs', label: 'Docs', icon: ClipboardCheck },
+  { href: '/openclaw', label: 'OpenClaw', icon: SlidersHorizontal },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -37,7 +38,9 @@ export function Sidebar() {
               href={item.href}
               className={cn(
                 'flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition',
-                active ? 'bg-[var(--accent)] text-white' : 'text-[var(--foreground)] hover:bg-black/5'
+                active
+                  ? 'bg-[var(--accent)] text-[var(--background)]'
+                  : 'text-[var(--foreground)] hover:bg-[color:var(--foreground)]/5'
               )}
             >
               <Icon className="h-4 w-4" />

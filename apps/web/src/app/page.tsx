@@ -53,12 +53,12 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {agents.map((agent) => (
-              <div key={agent.id} className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-white p-3">
+              <div key={agent.id} className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
                 <div>
                   <div className="text-sm font-medium">{agent.displayName ?? agent.id}</div>
                   <div className="text-xs text-muted">{agent.role ?? 'Agent'}</div>
                 </div>
-                <Badge className="border-none bg-[var(--accent)] text-white">{agent.status ?? 'idle'}</Badge>
+                <Badge className="border-none bg-[var(--accent)] text-[var(--background)]">{agent.status ?? 'idle'}</Badge>
               </div>
             ))}
             {!agents.length && <div className="text-sm text-muted">No agents yet. Seed Coco in settings.</div>}
@@ -74,7 +74,7 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {activity.map((item) => (
-              <div key={item.id} className="rounded-2xl border border-[var(--border)] bg-white p-3">
+              <div key={item.id} className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
                 <div className="text-xs uppercase tracking-[0.18em] text-muted">{item.type}</div>
                 <div className="mt-1 text-sm">{item.summary}</div>
                 <div className="mt-2 text-xs text-muted">{formatShortDate(item.created)}</div>
@@ -96,7 +96,7 @@ export default async function DashboardPage() {
               { href: '/nodes', label: 'Nodes', desc: 'Pair new devices' },
               { href: '/docs', label: 'Docs', desc: 'Store deliverables' },
             ].map((item) => (
-              <Link key={item.href} href={item.href} className="rounded-2xl border border-[var(--border)] bg-white p-4 transition hover:-translate-y-0.5 hover:shadow-sm">
+              <Link key={item.href} href={item.href} className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4 transition hover:-translate-y-0.5 hover:shadow-sm">
                 <div className="text-sm font-semibold">{item.label}</div>
                 <div className="mt-1 text-xs text-muted">{item.desc}</div>
               </Link>

@@ -1,4 +1,5 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import { IBM_Plex_Sans, JetBrains_Mono, Space_Grotesk } from 'next/font/google';
 import './globals.css';
 
@@ -21,7 +22,16 @@ const mono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: 'Mission Control',
   description: 'OpenClaw Mission Control',
+  manifest: '/manifest.json',
 };
+
+export const viewport: Viewport = {
+  themeColor: '#f4efe9',
+};
+
+// This is an authenticated, realtime dashboard. Disable static generation so
+// builds don't try to prerender pages that require runtime env credentials.
+export const dynamic = 'force-dynamic';
 
 export default function RootLayout({
   children,
@@ -29,8 +39,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={`${display.variable} ${body.variable} ${mono.variable} antialiased`}>
+        <Script id="mc-theme-init" strategy="beforeInteractive">
+          {`(() => {
+  try {
+    const t = localStorage.getItem('mc_theme');
+    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  } catch {}
+})();`}
+        </Script>
         {children}
       </body>
     </html>

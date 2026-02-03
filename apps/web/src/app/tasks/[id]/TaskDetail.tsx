@@ -12,6 +12,7 @@ import { formatShortDate } from '@/lib/utils';
 import type { Agent, DocumentRecord, Message, NodeRecord, Task } from '@/lib/types';
 
 const STATUSES = ['inbox', 'assigned', 'in_progress', 'review', 'blocked', 'done'];
+type Status = (typeof STATUSES)[number];
 
 export function TaskDetail({
   task,
@@ -29,8 +30,8 @@ export function TaskDetail({
   onUpdated?: () => void | Promise<void>;
 }) {
   const router = useRouter();
-  const leadAgentId = process.env.NEXT_PUBLIC_MC_LEAD_AGENT_ID || 'coco';
-  const [status, setStatus] = React.useState(task.status);
+  const leadAgentId = process.env.NEXT_PUBLIC_MC_LEAD_AGENT_ID || 'main';
+  const [status, setStatus] = React.useState<Status>(task.status as Status);
   const [message, setMessage] = React.useState('');
   const [docTitle, setDocTitle] = React.useState('');
   const [docContent, setDocContent] = React.useState('');
@@ -38,13 +39,15 @@ export function TaskDetail({
   const [labelsInput, setLabelsInput] = React.useState((task.labels ?? []).join(', '));
   const [requiredNodeId, setRequiredNodeId] = React.useState(task.requiredNodeId ?? '');
   const [blockReason, setBlockReason] = React.useState('');
+  const [archived, setArchived] = React.useState(Boolean(task.archived));
 
   React.useEffect(() => {
     setStatus(task.status);
     setAssignees(task.assigneeIds ?? []);
     setLabelsInput((task.labels ?? []).join(', '));
     setRequiredNodeId(task.requiredNodeId ?? '');
-  }, [task.id, task.status, task.assigneeIds, task.labels, task.requiredNodeId]);
+    setArchived(Boolean(task.archived));
+  }, [task.id, task.status, task.assigneeIds, task.labels, task.requiredNodeId, task.archived]);
 
   async function updateTask(payload: Record<string, unknown>) {
     await fetch(`/api/tasks/${task.id}`, {
@@ -56,7 +59,18 @@ export function TaskDetail({
     if (onUpdated) await onUpdated();
   }
 
-  async function onStatusChange(value: string) {
+  async function archiveTask(nextArchived: boolean) {
+    await updateTask({ archived: nextArchived });
+    setArchived(nextArchived);
+  }
+
+  async function deleteTask() {
+    if (!window.confirm('Are you sure?')) return;
+    await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
+    router.replace('/tasks');
+  }
+
+  async function onStatusChange(value: Status) {
     setStatus(value);
     await updateTask({ status: value });
   }
@@ -119,13 +133,13 @@ export function TaskDetail({
   return (
     <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
       <div className="space-y-6">
-        <div className="rounded-2xl border border-[var(--border)] bg-white p-6">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <div className="text-xs uppercase tracking-[0.2em] text-muted">Task</div>
               <h2 className="mt-2 text-2xl font-semibold headline">{task.title}</h2>
             </div>
-            <Badge className="border-none bg-[var(--accent)] text-white">{status.replace('_', ' ')}</Badge>
+            <Badge className="border-none bg-[var(--accent)] text-[var(--background)]">{status.replace('_', ' ')}</Badge>
           </div>
           <div className="mt-4 text-sm text-muted">{task.description ? null : 'No description yet.'}</div>
           {task.description ? (
@@ -144,7 +158,7 @@ export function TaskDetail({
           )}
         </div>
 
-        <div className="rounded-2xl border border-[var(--border)] bg-white p-6">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
           <div className="text-sm font-semibold">Thread</div>
           <div className="mt-4 space-y-4">
             {messages.map((msg) => (
@@ -161,7 +175,7 @@ export function TaskDetail({
           </form>
         </div>
 
-        <div className="rounded-2xl border border-[var(--border)] bg-white p-6">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
           <div className="text-sm font-semibold">Documents</div>
           <div className="mt-4 space-y-3">
             {documents.map((doc) => (
@@ -182,12 +196,12 @@ export function TaskDetail({
       </div>
 
       <div className="space-y-6">
-        <div className="rounded-2xl border border-[var(--border)] bg-white p-6">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
           <div className="text-sm font-semibold">Status</div>
           <select
             value={status}
-            onChange={(event) => onStatusChange(event.target.value)}
-            className="mt-3 h-11 w-full rounded-xl border border-[var(--border)] bg-white px-3 text-sm"
+            onChange={(event) => onStatusChange(event.target.value as Status)}
+            className="mt-3 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]"
           >
             {STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -219,7 +233,7 @@ export function TaskDetail({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[var(--border)] bg-white p-6">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
           <div className="text-sm font-semibold">Assignees</div>
           <div className="mt-3 space-y-2">
             {agents.map((agent) => {
@@ -235,7 +249,7 @@ export function TaskDetail({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[var(--border)] bg-white p-6 space-y-3">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 space-y-3">
           <div className="text-sm font-semibold">Task metadata</div>
           <div>
             <label className="text-xs uppercase tracking-[0.2em] text-muted">Required node</label>
@@ -246,7 +260,7 @@ export function TaskDetail({
                 setRequiredNodeId(value);
                 await updateTask({ requiredNodeId: value || '' });
               }}
-              className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-white px-3 text-sm"
+              className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]"
             >
               <option value="">Any node</option>
               {nodes.map((node) => (
@@ -266,6 +280,18 @@ export function TaskDetail({
             />
             <Button type="button" size="sm" variant="secondary" className="mt-2" onClick={onUpdateLabels}>
               Save labels
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 space-y-3">
+          <div className="text-sm font-semibold">Task actions</div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="secondary" onClick={() => archiveTask(!archived)}>
+              {archived ? 'Unarchive' : 'Archive'}
+            </Button>
+            <Button type="button" size="sm" variant="destructive" onClick={deleteTask}>
+              Delete
             </Button>
           </div>
         </div>

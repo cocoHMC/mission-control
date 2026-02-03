@@ -1,8 +1,16 @@
 #!/usr/bin/env node
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Always load Mission Control's root `.env` regardless of where the command is invoked from.
+// OpenClaw often runs commands from the agent workspace (not this repo), so relying on
+// dotenv's default cwd lookup breaks.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+dotenv.config({ path: resolve(__dirname, '..', '.env') });
 
 const PB_URL = process.env.PB_URL || 'http://127.0.0.1:8090';
 const EMAIL = process.env.PB_SERVICE_EMAIL;
@@ -140,6 +148,8 @@ async function main() {
         status: assignees.length ? 'assigned' : 'inbox',
         assigneeIds: assignees,
         escalationAgentId: DEFAULT_AGENT,
+        attemptCount: 0,
+        maxAutoNudges: 3,
       },
     });
     console.log('created', created.id);
@@ -161,6 +171,7 @@ async function main() {
         lastProgressAt: now.toISOString(),
         leaseExpiresAt: new Date(now.getTime() + leaseMin * 60_000).toISOString(),
         attemptCount: 0,
+        maxAutoNudges: 3,
       },
     });
     console.log('claimed', updated.id);

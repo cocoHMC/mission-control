@@ -4,6 +4,8 @@ import { TaskBoard } from '@/app/tasks/TaskBoard';
 import { pbFetch } from '@/lib/pbServer';
 import type { Agent, NodeRecord, PBList, Task } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 async function getTasks() {
   const q = new URLSearchParams({ page: '1', perPage: '200' });
   return pbFetch<PBList<Task>>(`/api/collections/tasks/records?${q.toString()}`);

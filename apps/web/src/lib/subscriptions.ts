@@ -16,11 +16,11 @@ export async function ensureTaskSubscription(opts: {
     perPage: '1',
     filter: `taskId = "${taskId}" && agentId = "${agentId}"`,
   });
-  const existing = await pbFetch(`/api/collections/task_subscriptions/records?${q.toString()}`);
+  const existing = await pbFetch<{ items?: Array<Record<string, unknown>> }>(`/api/collections/task_subscriptions/records?${q.toString()}`);
   if (existing?.items?.length) return existing.items[0];
 
   try {
-    return await pbFetch('/api/collections/task_subscriptions/records', {
+    return await pbFetch<Record<string, unknown>>('/api/collections/task_subscriptions/records', {
       method: 'POST',
       body: { taskId, agentId, reason },
     });

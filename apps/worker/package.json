@@ -9,9 +9,11 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@types/web-push": "^3.6.4",
     "dotenv": "^16.4.7",
     "eventsource": "^4.1.0",
     "pocketbase": "^0.26.1",
+    "web-push": "^3.6.7",
     "zod": "^3.24.2"
   },
   "devDependencies": {

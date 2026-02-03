@@ -34,7 +34,7 @@ export function CommandPalette() {
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
         <button
-          className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--foreground)]"
+          className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm font-medium text-[var(--foreground)]"
           type="button"
         >
           Cmd+K Command
@@ -46,7 +46,7 @@ export function CommandPalette() {
           <Command className="flex h-[360px] w-full flex-col">
             <Command.Input
               placeholder="Search actions, tasks, nodes..."
-              className="rounded-2xl border border-[var(--border)] bg-white px-4 py-3 text-sm outline-none"
+              className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
             />
             <Command.List className="mt-3 flex-1 overflow-y-auto">
               {actions.map((action) => {
@@ -58,7 +58,7 @@ export function CommandPalette() {
                       setOpen(false);
                       router.push(action.href);
                     }}
-                    className="flex cursor-pointer items-center gap-3 rounded-2xl px-3 py-2 text-sm text-[var(--foreground)] data-[selected=true]:bg-[var(--accent)] data-[selected=true]:text-white"
+                    className="flex cursor-pointer items-center gap-3 rounded-2xl px-3 py-2 text-sm text-[var(--foreground)] data-[selected=true]:bg-[var(--accent)] data-[selected=true]:text-[var(--background)]"
                   >
                     <Icon className="h-4 w-4" />
                     {action.label}

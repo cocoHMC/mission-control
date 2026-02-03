@@ -46,7 +46,7 @@ export function DocumentsList({ initialDocs }: { initialDocs: DocumentRecord[] }
     return () => {
       cancelled = true;
       if (pollId) clearInterval(pollId);
-      if (unsubscribe) void unsubscribe();
+      if (unsubscribe) void unsubscribe().catch(() => {});
     };
   }, []);
 

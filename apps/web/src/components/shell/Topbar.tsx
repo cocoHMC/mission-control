@@ -17,13 +17,13 @@ export function Topbar({ title, subtitle, actionHref, actionLabel }: { title: st
         {actionHref && actionLabel ? (
           <Link
             href={actionHref}
-            className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white"
+            className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--background)]"
           >
             <Sparkles className="h-4 w-4" />
             {actionLabel}
           </Link>
         ) : null}
-        <button className="rounded-full border border-[var(--border)] bg-white p-2">
+        <button className="rounded-full border border-[var(--border)] bg-[var(--card)] p-2">
           <Bell className="h-4 w-4" />
         </button>
         <CommandPalette />

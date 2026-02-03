@@ -270,6 +270,20 @@ async function main() {
         { type: 'select', name: 'reason', options: { maxSelect: 1, values: ['assigned', 'commented', 'mentioned', 'manual'] } },
       ],
     },
+    {
+      name: 'push_subscriptions',
+      type: 'base',
+      schema: [
+        { type: 'text', name: 'endpoint', required: true },
+        { type: 'text', name: 'p256dh', required: true },
+        { type: 'text', name: 'auth', required: true },
+        { type: 'text', name: 'deviceLabel' },
+        { type: 'text', name: 'userAgent' },
+        { type: 'bool', name: 'enabled' },
+        { type: 'date', name: 'lastSeenAt' },
+      ],
+      indexes: ['CREATE UNIQUE INDEX `idx_endpoint_push_subscriptions` ON `push_subscriptions` (`endpoint`)'],
+    },
   ];
 
   for (const def of collections) {

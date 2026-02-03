@@ -6,6 +6,7 @@ pb/pb_data/
 pb/pb_public/
 pb/pocketbase.log
 backups/
+ops/openclaw/
 node_modules/
 apps/*/node_modules/
 dist/

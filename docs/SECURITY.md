@@ -9,6 +9,7 @@
 - Enable gateway auth token or password.
 - Use a dedicated token for Tools Invoke.
 - Do not share agent workspaces across agents.
+ - If you use the OpenClaw config editor, validate diffs before apply and restart the gateway manually.
 
 ## Audits
 - `openclaw security audit`
