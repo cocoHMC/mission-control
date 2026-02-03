@@ -95,7 +95,49 @@ function schemaToFields(schema) {
 async function ensureCollection(token, def) {
   const existing = await pbFetch('/api/collections?page=1&perPage=200', { token: token ? `Bearer ${token}` : undefined });
   const found = existing?.items?.find((c) => c.name === def.name);
-  if (found) return found;
+  if (found) {
+    const desiredFields = def.fields ?? schemaToFields(def.schema);
+    const desiredByName = new Map((desiredFields || []).map((f) => [f.name, f]));
+    const existingNames = new Set((found.fields || []).map((f) => f.name));
+    const missingFields = (desiredFields || []).filter((f) => f?.name && !existingNames.has(f.name));
+
+    const nextFields = (found.fields || []).map((field) => {
+      const desired = desiredByName.get(field.name);
+      if (!desired) return field;
+      // Currently we only reconcile `required` because it's the primary behavior-changing knob we rely on.
+      if (typeof desired.required === 'boolean' && field.required !== desired.required) {
+        return { ...field, required: desired.required };
+      }
+      return field;
+    });
+
+    const desiredIndexes = def.indexes ?? [];
+    const existingIndexes = new Set(found.indexes || []);
+    const missingIndexes = desiredIndexes.filter((idx) => !existingIndexes.has(idx));
+
+    const fieldsChanged =
+      missingFields.length ||
+      nextFields.length !== (found.fields || []).length ||
+      nextFields.some((f, i) => (found.fields || [])[i]?.required !== f.required);
+
+    if (fieldsChanged || missingIndexes.length) {
+      const patched = await pbFetch(`/api/collections/${found.id}`, {
+        method: 'PATCH',
+        token: `Bearer ${token}`,
+        body: {
+          ...(fieldsChanged ? { fields: [...nextFields, ...missingFields] } : {}),
+          ...(missingIndexes.length ? { indexes: [...(found.indexes || []), ...missingIndexes] } : {}),
+        },
+      });
+      console.log('[pb_bootstrap] patched collection', def.name, {
+        addedFields: missingFields.map((f) => f.name),
+        addedIndexes: missingIndexes.length,
+      });
+      return patched;
+    }
+
+    return found;
+  }
 
   const body = {
     ...def,
@@ -217,6 +259,32 @@ async function main() {
         { type: 'date', name: 'lastProgressAt' },
         { type: 'number', name: 'maxAutoNudges' },
         { type: 'text', name: 'escalationAgentId' },
+        { type: 'bool', name: 'archived' },
+        { type: 'date', name: 'createdAt', required: true },
+        { type: 'date', name: 'updatedAt', required: true },
+        { type: 'date', name: 'startAt' },
+        { type: 'date', name: 'dueAt' },
+        { type: 'date', name: 'completedAt' },
+        // PocketBase validates required bool/number fields as "must be truthy",
+        // which breaks defaults like `false` and `0`. We enforce these in app logic instead.
+        { type: 'bool', name: 'requiresReview' },
+        { type: 'number', name: 'order' },
+        { type: 'number', name: 'subtasksTotal' },
+        { type: 'number', name: 'subtasksDone' },
+      ],
+    },
+    {
+      name: 'subtasks',
+      type: 'base',
+      schema: [
+        { type: 'text', name: 'taskId', required: true },
+        { type: 'text', name: 'title', required: true },
+        { type: 'bool', name: 'done' },
+        { type: 'number', name: 'order' },
+        { type: 'json', name: 'assigneeIds' },
+        { type: 'date', name: 'dueAt' },
+        { type: 'date', name: 'createdAt', required: true },
+        { type: 'date', name: 'updatedAt', required: true },
       ],
     },
     {
@@ -227,6 +295,8 @@ async function main() {
         { type: 'text', name: 'fromAgentId' },
         { type: 'editor', name: 'content', required: true },
         { type: 'json', name: 'mentions' },
+        { type: 'date', name: 'createdAt', required: true },
+        { type: 'date', name: 'updatedAt', required: true },
       ],
     },
     {
@@ -238,6 +308,8 @@ async function main() {
         { type: 'editor', name: 'content' },
         { type: 'select', name: 'type', options: { maxSelect: 1, values: ['deliverable', 'research', 'protocol', 'runbook'] } },
         { type: 'text', name: 'exportPath' },
+        { type: 'date', name: 'createdAt', required: true },
+        { type: 'date', name: 'updatedAt', required: true },
       ],
     },
     {
@@ -248,6 +320,7 @@ async function main() {
         { type: 'text', name: 'actorAgentId' },
         { type: 'text', name: 'taskId' },
         { type: 'text', name: 'summary' },
+        { type: 'date', name: 'createdAt', required: true },
       ],
     },
     {
@@ -291,7 +364,7 @@ async function main() {
       ...def,
       system: false,
       options: def.options || {},
-      indexes: [],
+      indexes: def.indexes || [],
       listRule: null,
       viewRule: null,
       createRule: null,

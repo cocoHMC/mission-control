@@ -59,7 +59,7 @@ export function DocumentsList({ initialDocs }: { initialDocs: DocumentRecord[] }
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted">
             <div>Type: {doc.type}</div>
-            <div>Updated: {formatShortDate(doc.updated)}</div>
+            <div>Updated: {formatShortDate(doc.updatedAt)}</div>
             {doc.taskId && <div>Task: {doc.taskId}</div>}
           </CardContent>
         </Card>

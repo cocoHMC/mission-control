@@ -62,13 +62,17 @@ function usage() {
 Usage:
   missionctl my --agent <id>
   missionctl list [--status ...] [--assignee ...] [--label ...] [--json]
-  missionctl create --title "..." [--desc "..."] [--priority p2] [--assignees lead,dev]
+  missionctl create --title "..." [--desc "..."] [--priority p2] [--assignees lead,dev] [--startAt ISO] [--dueAt ISO] [--requiresReview true|false]
   missionctl claim <taskId> --agent <id>
   missionctl assign <taskId> --assignees coco,dev
   missionctl say <taskId> --agent <id> --text "..."
   missionctl status <taskId> --status <inbox|assigned|in_progress|review|done|blocked>
+  missionctl task set <taskId> [--startAt ISO] [--dueAt ISO] [--requiresReview true|false]
   missionctl block <taskId> --agent <id> --reason "..."
   missionctl doc <taskId> --title "..." --content "..." [--type deliverable]
+  missionctl subtasks list <taskId> [--json]
+  missionctl subtasks add <taskId> --title "..."
+  missionctl subtasks toggle <subtaskId> [--done true|false]
   missionctl subscribe <taskId> --agent <id>
   missionctl notify <agentId> --text "..."
   missionctl node list
@@ -91,6 +95,12 @@ function argList(flag) {
   const v = arg(flag);
   if (!v) return [];
   return v.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+function argBool(flag) {
+  const v = arg(flag);
+  if (v == null) return undefined;
+  return ['1', 'true', 'yes', 'y', 'on'].includes(String(v).toLowerCase());
 }
 
 async function main() {
@@ -138,6 +148,10 @@ async function main() {
     const desc = arg('--desc') || '';
     const priority = arg('--priority') || 'p2';
     const assignees = argList('--assignees');
+    const startAt = arg('--startAt') || '';
+    const dueAt = arg('--dueAt') || '';
+    const requiresReview = argBool('--requiresReview') ?? false;
+    const now = new Date().toISOString();
     const created = await pb('/api/collections/tasks/records', {
       method: 'POST',
       token: t,
@@ -150,6 +164,16 @@ async function main() {
         escalationAgentId: DEFAULT_AGENT,
         attemptCount: 0,
         maxAutoNudges: 3,
+        archived: false,
+        createdAt: now,
+        updatedAt: now,
+        startAt,
+        dueAt,
+        completedAt: '',
+        requiresReview,
+        order: Date.now(),
+        subtasksTotal: 0,
+        subtasksDone: 0,
       },
     });
     console.log('created', created.id);
@@ -172,6 +196,7 @@ async function main() {
         leaseExpiresAt: new Date(now.getTime() + leaseMin * 60_000).toISOString(),
         attemptCount: 0,
         maxAutoNudges: 3,
+        updatedAt: now.toISOString(),
       },
     });
     console.log('claimed', updated.id);
@@ -186,7 +211,7 @@ async function main() {
     const updated = await pb(`/api/collections/tasks/records/${taskId}`, {
       method: 'PATCH',
       token: t,
-      body: { assigneeIds: assignees, status: 'assigned' },
+      body: { assigneeIds: assignees, status: 'assigned', updatedAt: new Date().toISOString() },
     });
     console.log('assigned', updated.id);
     return;
@@ -198,10 +223,11 @@ async function main() {
     const text = arg('--text');
     if (!taskId) throw new Error('taskId required');
     if (!text) throw new Error('--text required');
+    const now = new Date().toISOString();
     const created = await pb('/api/collections/messages/records', {
       method: 'POST',
       token: t,
-      body: { taskId, fromAgentId: agent, content: text, mentions: [] },
+      body: { taskId, fromAgentId: agent, content: text, mentions: [], createdAt: now, updatedAt: now },
     });
     console.log('message', created.id);
     return;
@@ -212,12 +238,42 @@ async function main() {
     const status = arg('--status');
     if (!taskId) throw new Error('taskId required');
     if (!status) throw new Error('--status required');
+    const now = new Date().toISOString();
     const updated = await pb(`/api/collections/tasks/records/${taskId}`, {
       method: 'PATCH',
       token: t,
-      body: { status, lastProgressAt: new Date().toISOString() },
+      body: {
+        status,
+        lastProgressAt: now,
+        completedAt: status === 'done' ? now : undefined,
+        updatedAt: now,
+      },
     });
     console.log('updated', updated.id, updated.status);
+    return;
+  }
+
+  if (cmd === 'task' && process.argv[3] === 'set') {
+    const taskId = process.argv[4];
+    if (!taskId) throw new Error('taskId required');
+    const startAt = arg('--startAt');
+    const dueAt = arg('--dueAt');
+    const requiresReview = argBool('--requiresReview');
+    if (startAt == null && dueAt == null && requiresReview == null) {
+      throw new Error('Nothing to set. Use --startAt, --dueAt, or --requiresReview');
+    }
+    const now = new Date().toISOString();
+    const updated = await pb(`/api/collections/tasks/records/${taskId}`, {
+      method: 'PATCH',
+      token: t,
+      body: {
+        ...(startAt != null ? { startAt } : {}),
+        ...(dueAt != null ? { dueAt } : {}),
+        ...(requiresReview != null ? { requiresReview } : {}),
+        updatedAt: now,
+      },
+    });
+    console.log('task updated', updated.id);
     return;
   }
 
@@ -230,12 +286,13 @@ async function main() {
     await pb(`/api/collections/tasks/records/${taskId}`, {
       method: 'PATCH',
       token: t,
-      body: { status: 'blocked', lastProgressAt: new Date().toISOString() },
+      body: { status: 'blocked', lastProgressAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
     });
+    const now = new Date().toISOString();
     const msg = await pb('/api/collections/messages/records', {
       method: 'POST',
       token: t,
-      body: { taskId, fromAgentId: agent, content: `BLOCKED: ${reason}`, mentions: [] },
+      body: { taskId, fromAgentId: agent, content: `BLOCKED: ${reason}`, mentions: [], createdAt: now, updatedAt: now },
     });
     console.log('blocked', taskId, 'message', msg.id);
     return;
@@ -249,13 +306,78 @@ async function main() {
     if (!taskId) throw new Error('taskId required');
     if (!title) throw new Error('--title required');
     if (!content) throw new Error('--content required');
+    const now = new Date().toISOString();
     const created = await pb('/api/collections/documents/records', {
       method: 'POST',
       token: t,
-      body: { taskId, title, content, type },
+      body: { taskId, title, content, type, createdAt: now, updatedAt: now },
     });
     console.log('doc', created.id);
     return;
+  }
+
+  if (cmd === 'subtasks') {
+    const sub = process.argv[3];
+
+    if (sub === 'list') {
+      const taskId = process.argv[4];
+      const jsonFlag = process.argv.includes('--json');
+      if (!taskId) throw new Error('taskId required');
+      const q = new URLSearchParams({ page: '1', perPage: '200', filter: `taskId = "${taskId}"` });
+      const list = await pb(`/api/collections/subtasks/records?${q.toString()}`, { token: t });
+      const items = (list.items || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      if (jsonFlag) {
+        console.log(JSON.stringify(items, null, 2));
+        return;
+      }
+      for (const s of items) {
+        console.log(`${s.id}  [${s.done ? 'x' : ' '}]  ${s.title}`);
+      }
+      return;
+    }
+
+    if (sub === 'add') {
+      const taskId = process.argv[4];
+      const title = arg('--title');
+      if (!taskId) throw new Error('taskId required');
+      if (!title) throw new Error('--title required');
+      const now = new Date().toISOString();
+      const created = await pb('/api/collections/subtasks/records', {
+        method: 'POST',
+        token: t,
+        body: {
+          taskId,
+          title,
+          done: false,
+          order: Date.now(),
+          assigneeIds: [],
+          dueAt: '',
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      console.log('subtask created', created.id);
+      return;
+    }
+
+    if (sub === 'toggle') {
+      const subtaskId = process.argv[4];
+      if (!subtaskId) throw new Error('subtaskId required');
+      const doneFlag = argBool('--done');
+      let done = doneFlag;
+      if (done == null) {
+        const existing = await pb(`/api/collections/subtasks/records/${subtaskId}`, { token: t });
+        done = !existing?.done;
+      }
+      const now = new Date().toISOString();
+      const updated = await pb(`/api/collections/subtasks/records/${subtaskId}`, {
+        method: 'PATCH',
+        token: t,
+        body: { done, updatedAt: now },
+      });
+      console.log('subtask updated', updated.id, updated.done ? 'done' : 'not_done');
+      return;
+    }
   }
 
   if (cmd === 'subscribe') {

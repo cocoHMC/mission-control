@@ -34,7 +34,7 @@ export function ActivityFeed({ initialItems }: { initialItems: Activity[] }) {
             const next = [...prev];
             if (idx === -1) next.push(e.record as Activity);
             else next[idx] = e.record as Activity;
-            return next.sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''));
+            return next.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
           });
         });
         unsubscribe = async () => pb.collection('activities').unsubscribe('*');
@@ -64,7 +64,7 @@ export function ActivityFeed({ initialItems }: { initialItems: Activity[] }) {
           <div key={item.id} className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
             <div className="text-xs uppercase tracking-[0.2em] text-muted">{item.type}</div>
             <div className="mt-2 text-sm">{item.summary}</div>
-            <div className="mt-2 text-xs text-muted">{formatShortDate(item.created)}</div>
+            <div className="mt-2 text-xs text-muted">{formatShortDate(item.createdAt)}</div>
           </div>
         ))}
         {!items.length && <div className="text-sm text-muted">No activity yet.</div>}

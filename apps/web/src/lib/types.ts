@@ -16,8 +16,15 @@ export type Task = {
   lastProgressAt?: string;
   maxAutoNudges?: number;
   escalationAgentId?: string;
-  created?: string;
-  updated?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  startAt?: string;
+  dueAt?: string;
+  completedAt?: string;
+  requiresReview?: boolean;
+  order?: number;
+  subtasksTotal?: number;
+  subtasksDone?: number;
 };
 
 export type Agent = {
@@ -38,7 +45,7 @@ export type Activity = {
   type: string;
   summary: string;
   taskId?: string;
-  created?: string;
+  createdAt?: string;
 };
 
 export type Message = {
@@ -46,7 +53,8 @@ export type Message = {
   taskId: string;
   fromAgentId?: string;
   content: string;
-  created?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type DocumentRecord = {
@@ -55,7 +63,8 @@ export type DocumentRecord = {
   title: string;
   content?: string;
   type?: string;
-  updated?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type NodeRecord = {
@@ -77,4 +86,16 @@ export type PBList<T> = {
   perPage: number;
   totalItems: number;
   totalPages: number;
+};
+
+export type Subtask = {
+  id: string;
+  taskId: string;
+  title: string;
+  done?: boolean;
+  order?: number;
+  assigneeIds?: string[];
+  dueAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };

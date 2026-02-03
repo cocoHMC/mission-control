@@ -77,7 +77,7 @@ export default async function DashboardPage() {
               <div key={item.id} className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
                 <div className="text-xs uppercase tracking-[0.18em] text-muted">{item.type}</div>
                 <div className="mt-1 text-sm">{item.summary}</div>
-                <div className="mt-2 text-xs text-muted">{formatShortDate(item.created)}</div>
+                <div className="mt-2 text-xs text-muted">{formatShortDate(item.createdAt)}</div>
               </div>
             ))}
             {!activity.length && <div className="text-sm text-muted">No activity yet.</div>}
@@ -95,6 +95,8 @@ export default async function DashboardPage() {
               { href: '/activity', label: 'Activity Feed', desc: 'Audit every action' },
               { href: '/nodes', label: 'Nodes', desc: 'Pair new devices' },
               { href: '/docs', label: 'Docs', desc: 'Store deliverables' },
+              { href: '/openclaw', label: 'OpenClaw', desc: 'Gateway config + status' },
+              { href: '/settings', label: 'Settings', desc: 'Setup checklist + theme' },
             ].map((item) => (
               <Link key={item.href} href={item.href} className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4 transition hover:-translate-y-0.5 hover:shadow-sm">
                 <div className="text-sm font-semibold">{item.label}</div>

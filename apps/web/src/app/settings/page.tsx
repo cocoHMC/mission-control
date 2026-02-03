@@ -3,13 +3,30 @@ import { Topbar } from '@/components/shell/Topbar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ThemeToggle } from '@/app/settings/ThemeToggle';
 import { WebNotifications } from '@/app/settings/WebNotifications';
+import { SetupChecklist } from '@/app/settings/SetupChecklist';
 
 export default function SettingsPage() {
   const leadName = process.env.MC_LEAD_AGENT_NAME || process.env.MC_LEAD_AGENT_ID || 'Lead';
+  const leadId = process.env.MC_LEAD_AGENT_ID || process.env.MC_LEAD_AGENT || 'coco';
+  const webHost = process.env.MC_BIND_HOST || '127.0.0.1';
+  const webPort = process.env.MC_WEB_PORT || '4010';
+  const pbUrl = process.env.PB_URL || 'http://127.0.0.1:8090';
+  const gatewayUrl = process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789';
+  const gatewayHostHint = process.env.MC_GATEWAY_HOST_HINT || '<gateway-tailnet-ip>';
+  const gatewayPortHint = process.env.MC_GATEWAY_PORT_HINT || '18789';
   return (
     <AppShell>
       <Topbar title="Settings" subtitle="Local-only configuration and operational notes." />
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <SetupChecklist
+          leadAgentId={leadId}
+          leadAgentName={leadName}
+          webUrl={`http://${webHost}:${webPort}`}
+          pbUrl={pbUrl}
+          gatewayUrl={gatewayUrl}
+          gatewayHostHint={gatewayHostHint}
+          gatewayPortHint={gatewayPortHint}
+        />
         <Card>
           <CardHeader>
             <CardTitle>Headscale + Tailnet</CardTitle>

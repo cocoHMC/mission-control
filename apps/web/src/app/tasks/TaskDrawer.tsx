@@ -6,7 +6,7 @@ import { TaskDetail } from '@/app/tasks/[id]/TaskDetail';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { getPocketBaseClient, type PBRealtimeEvent } from '@/lib/pbClient';
-import type { Agent, DocumentRecord, Message, NodeRecord, PBList, Task } from '@/lib/types';
+import type { Agent, DocumentRecord, Message, NodeRecord, PBList, Subtask, Task } from '@/lib/types';
 
 type DrawerProps = {
   open: boolean;
@@ -30,6 +30,7 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
   const [task, setTask] = React.useState<Task | null>(null);
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [documents, setDocuments] = React.useState<DocumentRecord[]>([]);
+  const [subtasks, setSubtasks] = React.useState<Subtask[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -87,14 +88,22 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
     setLoading(true);
     setError(null);
     try {
-      const [taskData, messageList, docList] = await Promise.all([
+      const [taskData, messageList, docList, subtaskList] = await Promise.all([
         fetchJson<Task>(`/api/tasks/${liveTaskId}`),
-        fetchJson<PBList<Message>>(`/api/messages?${new URLSearchParams({ page: '1', perPage: '200', filter: `taskId = \"${liveTaskId}\"` }).toString()}`),
-        fetchJson<PBList<DocumentRecord>>(`/api/documents?${new URLSearchParams({ page: '1', perPage: '100', filter: `taskId = \"${liveTaskId}\"` }).toString()}`),
+        fetchJson<PBList<Message>>(
+          `/api/messages?${new URLSearchParams({ page: '1', perPage: '200', filter: `taskId = \"${liveTaskId}\"`, sort: 'createdAt' }).toString()}`
+        ),
+        fetchJson<PBList<DocumentRecord>>(
+          `/api/documents?${new URLSearchParams({ page: '1', perPage: '100', filter: `taskId = \"${liveTaskId}\"`, sort: '-updatedAt' }).toString()}`
+        ),
+        fetchJson<PBList<Subtask>>(
+          `/api/subtasks?${new URLSearchParams({ page: '1', perPage: '200', filter: `taskId = \"${liveTaskId}\"`, sort: 'order' }).toString()}`
+        ),
       ]);
       setTask(taskData);
       setMessages(messageList.items ?? []);
       setDocuments(docList.items ?? []);
+      setSubtasks(subtaskList.items ?? []);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load task');
     } finally {
@@ -113,6 +122,7 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
     let unsubscribeTasks: (() => Promise<void>) | null = null;
     let unsubscribeMessages: (() => Promise<void>) | null = null;
     let unsubscribeDocs: (() => Promise<void>) | null = null;
+    let unsubscribeSubtasks: (() => Promise<void>) | null = null;
 
     const upsert = <T extends { id: string }>(list: T[], record: T) => {
       const idx = list.findIndex((item) => item.id === record.id);
@@ -150,10 +160,19 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
             setDocuments((prev) => upsert(prev, e.record as DocumentRecord));
           }
         });
+        await pb.collection('subtasks').subscribe('*', (e: PBRealtimeEvent<Subtask>) => {
+          if (e?.record?.taskId !== liveTaskId) return;
+          if (e.action === 'delete') {
+            setSubtasks((prev) => prev.filter((s) => s.id !== e.record.id));
+          } else {
+            setSubtasks((prev) => upsert(prev, e.record as Subtask));
+          }
+        });
 
         unsubscribeTasks = async () => pb.collection('tasks').unsubscribe(liveTaskId);
         unsubscribeMessages = async () => pb.collection('messages').unsubscribe('*');
         unsubscribeDocs = async () => pb.collection('documents').unsubscribe('*');
+        unsubscribeSubtasks = async () => pb.collection('subtasks').unsubscribe('*');
       })
       .catch(() => {
         // fallback to polling
@@ -165,6 +184,7 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
       if (unsubscribeTasks) void unsubscribeTasks().catch(() => {});
       if (unsubscribeMessages) void unsubscribeMessages().catch(() => {});
       if (unsubscribeDocs) void unsubscribeDocs().catch(() => {});
+      if (unsubscribeSubtasks) void unsubscribeSubtasks().catch(() => {});
     };
   }, [open, liveTaskId, refresh]);
 
@@ -219,7 +239,7 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
               <div className="h-40 rounded-2xl border border-[var(--border)] bg-[var(--surface)]" />
             </div>
           ) : (
-            <TaskDetail task={task} agents={agents} nodes={nodes} messages={messages} documents={documents} onUpdated={refresh} />
+            <TaskDetail task={task} agents={agents} nodes={nodes} messages={messages} documents={documents} subtasks={subtasks} onUpdated={refresh} />
           )}
         </div>
       </div>

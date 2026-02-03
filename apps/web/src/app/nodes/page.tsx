@@ -2,6 +2,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { Topbar } from '@/components/shell/Topbar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CopyButton } from '@/components/ui/copy-button';
 import { pbFetch } from '@/lib/pbServer';
 import { formatShortDate } from '@/lib/utils';
 import type { NodeRecord, PBList } from '@/lib/types';
@@ -16,6 +17,9 @@ export default async function NodesPage() {
     .split(',')
     .map((cmd) => cmd.trim())
     .filter(Boolean);
+  const gatewayHostHint = process.env.MC_GATEWAY_HOST_HINT || '<gateway-tailnet-ip>';
+  const gatewayPortHint = process.env.MC_GATEWAY_PORT_HINT || '18789';
+  const installCmd = `openclaw node install --host ${gatewayHostHint} --port ${gatewayPortHint} --display-name "<node-name>"`;
 
   return (
     <AppShell>
@@ -54,7 +58,11 @@ export default async function NodesPage() {
             </div>
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
               <div className="text-xs uppercase tracking-[0.2em]">Step 2</div>
-              <div className="mt-2 text-sm text-[var(--foreground)]">Run: openclaw node install --host &lt;gateway-tailnet-ip&gt; --port 18789 --display-name &lt;name&gt;</div>
+              <div className="mt-2 text-sm text-[var(--foreground)]">Run on the node:</div>
+              <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2">
+                <div className="min-w-0 truncate font-mono text-xs text-[var(--foreground)]">{installCmd}</div>
+                <CopyButton value={installCmd} />
+              </div>
             </div>
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
               <div className="text-xs uppercase tracking-[0.2em]">Step 3</div>
@@ -68,9 +76,18 @@ export default async function NodesPage() {
             <CardTitle>CLI reference</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted">
-            <div><span className="font-mono">openclaw nodes pending</span> to list requests.</div>
-            <div><span className="font-mono">openclaw nodes approve &lt;requestId&gt;</span> to pair.</div>
-            <div><span className="font-mono">openclaw nodes list</span> to inspect paired nodes.</div>
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+              <span className="min-w-0 truncate font-mono text-xs">openclaw nodes pending</span>
+              <CopyButton value="openclaw nodes pending" />
+            </div>
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+              <span className="min-w-0 truncate font-mono text-xs">openclaw nodes approve &lt;requestId&gt;</span>
+              <CopyButton value="openclaw nodes approve <requestId>" />
+            </div>
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+              <span className="min-w-0 truncate font-mono text-xs">openclaw nodes list</span>
+              <CopyButton value="openclaw nodes list" />
+            </div>
             <div className="text-xs">Set allowlists before running remote commands.</div>
           </CardContent>
         </Card>

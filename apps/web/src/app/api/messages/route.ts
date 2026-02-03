@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
   if (!content) return new NextResponse('content required', { status: 400 });
   if (!taskId) return new NextResponse('taskId required', { status: 400 });
 
+  const now = new Date().toISOString();
   const mentions = extractMentions(content);
   const created = await pbFetch('/api/collections/messages/records', {
     method: 'POST',
@@ -32,6 +33,8 @@ export async function POST(req: NextRequest) {
       fromAgentId,
       content,
       mentions,
+      createdAt: now,
+      updatedAt: now,
     },
   });
 

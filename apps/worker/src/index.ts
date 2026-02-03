@@ -288,7 +288,7 @@ async function createActivity(token: string, type: string, summary: string, task
   await pbFetch('/api/collections/activities/records', {
     method: 'POST',
     token,
-    body: { type, summary, taskId: taskId ?? '', actorAgentId: actor ?? '' },
+    body: { type, summary, taskId: taskId ?? '', actorAgentId: actor ?? '', createdAt: nowIso() },
   });
 }
 
@@ -331,7 +331,7 @@ async function createNotification(token: string, toAgentId: string, content: str
 async function listPushSubscriptions(token: string) {
   if (!webPushEnabled) return [] as any[];
   const q = new URLSearchParams({ page: '1', perPage: '200', filter: 'enabled = true' });
-  const data = await pbFetch<{ items: any[] }>(`/api/collections/push_subscriptions/records?${q.toString()}`, { token });
+  const data = await pbFetch(`/api/collections/push_subscriptions/records?${q.toString()}`, { token });
   return data.items ?? [];
 }
 
@@ -500,6 +500,28 @@ async function handleTaskEvent(token: string, record: any, action: string) {
     );
   }
 
+  // Auto-done policy: tasks only stay in review when explicitly required.
+  if (record.status === 'review' && !record.requiresReview) {
+    const now = nowIso();
+    await pbFetch(`/api/collections/tasks/records/${record.id}`, {
+      method: 'PATCH',
+      token,
+      body: { status: 'done', completedAt: now, lastProgressAt: now, updatedAt: now },
+    });
+    await createActivity(token, 'auto_done', `Auto-completed "${record.title}" (review not required)`, record.id, record.leaseOwnerAgentId || '');
+    return;
+  }
+
+  // Ensure completedAt is stamped when a task reaches done.
+  if (record.status === 'done' && !record.completedAt) {
+    const now = nowIso();
+    await pbFetch(`/api/collections/tasks/records/${record.id}`, {
+      method: 'PATCH',
+      token,
+      body: { completedAt: now, lastProgressAt: now, updatedAt: now },
+    });
+  }
+
   if (record.status === 'in_progress' && !record.leaseOwnerAgentId) {
     const assignees = normalizeAgentIds(record.assigneeIds ?? []);
     const owner = assignees[0] || normalizeAgentId(record.leaseOwnerAgentId) || leadAgentId;
@@ -510,6 +532,7 @@ async function handleTaskEvent(token: string, record: any, action: string) {
         leaseOwnerAgentId: owner,
         leaseExpiresAt: minutesFromNow(env.LEASE_MINUTES),
         lastProgressAt: nowIso(),
+        updatedAt: nowIso(),
       },
     });
   }
@@ -518,7 +541,7 @@ async function handleTaskEvent(token: string, record: any, action: string) {
     await pbFetch(`/api/collections/tasks/records/${record.id}`, {
       method: 'PATCH',
       token,
-      body: { leaseExpiresAt: '', attemptCount: 0 },
+      body: { leaseExpiresAt: '', attemptCount: 0, updatedAt: nowIso() },
     });
   }
 
@@ -542,7 +565,7 @@ async function handleMessageEvent(token: string, record: any) {
   await pbFetch(`/api/collections/tasks/records/${taskId}`, {
     method: 'PATCH',
     token,
-    body: { lastProgressAt: nowIso(), leaseExpiresAt: minutesFromNow(env.LEASE_MINUTES) },
+    body: { lastProgressAt: nowIso(), leaseExpiresAt: minutesFromNow(env.LEASE_MINUTES), updatedAt: nowIso() },
   });
 
   await createActivity(token, 'message_sent', `Message posted on task`, taskId, fromAgentId);
@@ -596,11 +619,52 @@ async function handleDocumentEvent(token: string, record: any, action: string) {
   await pbFetch(`/api/collections/tasks/records/${taskId}`, {
     method: 'PATCH',
     token,
-    body: { lastProgressAt: nowIso(), leaseExpiresAt: minutesFromNow(env.LEASE_MINUTES) },
+    body: { lastProgressAt: nowIso(), leaseExpiresAt: minutesFromNow(env.LEASE_MINUTES), updatedAt: nowIso() },
   });
 
   const type = action === 'create' ? 'document_created' : 'document_updated';
   await createActivity(token, type, `Document ${action}d: ${record.title}`, taskId, record.authorAgentId || '');
+}
+
+async function handleSubtaskEvent(token: string, record: any, action: string) {
+  const taskId = String(record.taskId || '').trim();
+  if (!taskId) return;
+
+  let total = 0;
+  let done = 0;
+  try {
+    const q = new URLSearchParams({ page: '1', perPage: '200', filter: `taskId = "${taskId}"` });
+    const list = await pbFetch(`/api/collections/subtasks/records?${q.toString()}`, { token });
+    const items = (list.items ?? []) as any[];
+    total = items.length;
+    done = items.reduce((acc, s) => acc + (s?.done ? 1 : 0), 0);
+  } catch (err: any) {
+    console.error('[worker] subtask aggregate query failed', err?.message || err);
+    return;
+  }
+
+  const now = nowIso();
+  const cachedTask = taskCache.get(taskId);
+  const patch: any = { subtasksTotal: total, subtasksDone: done, updatedAt: now };
+  if (cachedTask?.status === 'in_progress') {
+    patch.lastProgressAt = now;
+    patch.leaseExpiresAt = minutesFromNow(env.LEASE_MINUTES);
+  }
+
+  try {
+    await pbFetch(`/api/collections/tasks/records/${taskId}`, { method: 'PATCH', token, body: patch });
+  } catch (err: any) {
+    console.error('[worker] subtask aggregate patch failed', err?.message || err);
+  }
+
+  const title = String(record.title || '').trim() || 'subtask';
+  let summary = '';
+  if (action === 'create') summary = `Subtask added: ${title}`;
+  else if (action === 'delete') summary = `Subtask deleted: ${title}`;
+  else if (record.done) summary = `Subtask completed: ${title}`;
+  else summary = `Subtask updated: ${title}`;
+
+  await createActivity(token, 'subtask_updated', summary, taskId);
 }
 
 async function enforceLeases(token: string) {
@@ -626,7 +690,7 @@ async function enforceLeases(token: string) {
       await pbFetch(`/api/collections/tasks/records/${t.id}`, {
         method: 'PATCH',
         token,
-        body: { leaseExpiresAt: minutesFromNow(env.LEASE_MINUTES) },
+        body: { leaseExpiresAt: minutesFromNow(env.LEASE_MINUTES), updatedAt: nowIso() },
       });
       continue;
     }
@@ -636,7 +700,7 @@ async function enforceLeases(token: string) {
       await pbFetch(`/api/collections/tasks/records/${t.id}`, {
         method: 'PATCH',
         token,
-        body: { attemptCount: attempt, leaseExpiresAt: minutesFromNow(env.LEASE_MINUTES) },
+        body: { attemptCount: attempt, leaseExpiresAt: minutesFromNow(env.LEASE_MINUTES), updatedAt: nowIso() },
       });
       await createActivity(token, 'lease_nudge', `Nudged ${owner} for "${t.title}"`, t.id, owner);
     } else {
@@ -646,7 +710,7 @@ async function enforceLeases(token: string) {
         const msgQ = new URLSearchParams({
           page: '1',
           perPage: '1',
-          sort: '-created',
+          sort: '-createdAt',
           filter: `taskId = "${t.id}"`,
         });
         const msgs = await pbFetch(`/api/collections/messages/records?${msgQ.toString()}`, { token });
@@ -672,7 +736,7 @@ async function enforceLeases(token: string) {
         method: 'PATCH',
         token,
         // attemptCount is set to max+1 on first escalation; further runs won't re-escalate.
-        body: { leaseExpiresAt: minutesFromNow(env.LEASE_MINUTES), attemptCount: attempt },
+        body: { leaseExpiresAt: minutesFromNow(env.LEASE_MINUTES), attemptCount: attempt, updatedAt: nowIso() },
       });
     }
   }
@@ -727,10 +791,11 @@ async function maybeStandup(token: string) {
     ...((blocked.items ?? []).map((t: any) => `- ${t.title}`)),
   ].join('\n');
 
+  const nowStamp = nowIso();
   await pbFetch('/api/collections/documents/records', {
     method: 'POST',
     token,
-    body: { title: `Daily Standup ${dateKey}`, content: lines, type: 'deliverable' },
+    body: { title: `Daily Standup ${dateKey}`, content: lines, type: 'deliverable', createdAt: nowStamp, updatedAt: nowStamp },
   });
   await createActivity(token, 'standup', `Daily standup generated for ${dateKey}`);
 
@@ -793,6 +858,7 @@ async function subscribeWithRetry(token: string) {
         await handleDocumentEvent(token, e.record, e.action);
       }
     });
+    await pb.collection('subtasks').subscribe('*', async (e) => handleSubtaskEvent(token, e.record, e.action));
     await pb.collection('notifications').subscribe('*', async () => scheduleDeliver(token));
   };
 

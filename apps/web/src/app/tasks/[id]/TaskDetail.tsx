@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { formatShortDate } from '@/lib/utils';
-import type { Agent, DocumentRecord, Message, NodeRecord, Task } from '@/lib/types';
+import { MentionsTextarea } from '@/components/mentions/MentionsTextarea';
+import { Textarea } from '@/components/ui/textarea';
+import { cn, formatShortDate, fromDateTimeLocalValue, toDateTimeLocalValue } from '@/lib/utils';
+import type { Agent, DocumentRecord, Message, NodeRecord, Subtask, Task } from '@/lib/types';
 
 const STATUSES = ['inbox', 'assigned', 'in_progress', 'review', 'blocked', 'done'];
 type Status = (typeof STATUSES)[number];
@@ -19,6 +20,7 @@ export function TaskDetail({
   agents,
   messages,
   documents,
+  subtasks,
   nodes = [],
   onUpdated,
 }: {
@@ -26,6 +28,7 @@ export function TaskDetail({
   agents: Agent[];
   messages: Message[];
   documents: DocumentRecord[];
+  subtasks: Subtask[];
   nodes?: NodeRecord[];
   onUpdated?: () => void | Promise<void>;
 }) {
@@ -40,6 +43,11 @@ export function TaskDetail({
   const [requiredNodeId, setRequiredNodeId] = React.useState(task.requiredNodeId ?? '');
   const [blockReason, setBlockReason] = React.useState('');
   const [archived, setArchived] = React.useState(Boolean(task.archived));
+  const [requiresReview, setRequiresReview] = React.useState(Boolean(task.requiresReview));
+  const [startAt, setStartAt] = React.useState(toDateTimeLocalValue(task.startAt));
+  const [dueAt, setDueAt] = React.useState(toDateTimeLocalValue(task.dueAt));
+  const [subtaskItems, setSubtaskItems] = React.useState<Subtask[]>(subtasks ?? []);
+  const [newSubtaskTitle, setNewSubtaskTitle] = React.useState('');
 
   React.useEffect(() => {
     setStatus(task.status);
@@ -47,7 +55,24 @@ export function TaskDetail({
     setLabelsInput((task.labels ?? []).join(', '));
     setRequiredNodeId(task.requiredNodeId ?? '');
     setArchived(Boolean(task.archived));
-  }, [task.id, task.status, task.assigneeIds, task.labels, task.requiredNodeId, task.archived]);
+    setRequiresReview(Boolean(task.requiresReview));
+    setStartAt(toDateTimeLocalValue(task.startAt));
+    setDueAt(toDateTimeLocalValue(task.dueAt));
+  }, [
+    task.id,
+    task.status,
+    task.assigneeIds,
+    task.labels,
+    task.requiredNodeId,
+    task.archived,
+    task.requiresReview,
+    task.startAt,
+    task.dueAt,
+  ]);
+
+  React.useEffect(() => {
+    setSubtaskItems(subtasks ?? []);
+  }, [task.id, subtasks]);
 
   async function updateTask(payload: Record<string, unknown>) {
     await fetch(`/api/tasks/${task.id}`, {
@@ -58,6 +83,19 @@ export function TaskDetail({
     router.refresh();
     if (onUpdated) await onUpdated();
   }
+
+  const mentionables = React.useMemo(() => {
+    return [
+      { id: 'all', label: 'Notify lead' },
+      ...agents
+        .map((agent) => {
+          const id = agent.openclawAgentId ?? agent.id;
+          const label = agent.displayName ?? id;
+          return { id, label };
+        })
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    ];
+  }, [agents]);
 
   async function archiveTask(nextArchived: boolean) {
     await updateTask({ archived: nextArchived });
@@ -103,6 +141,20 @@ export function TaskDetail({
     await updateTask({ labels: next });
   }
 
+  async function onUpdateDates() {
+    const nextStart = fromDateTimeLocalValue(startAt);
+    const nextDue = fromDateTimeLocalValue(dueAt);
+    await updateTask({
+      startAt: nextStart || '',
+      dueAt: nextDue || '',
+    });
+  }
+
+  async function onToggleRequiresReview(next: boolean) {
+    setRequiresReview(next);
+    await updateTask({ requiresReview: next });
+  }
+
   async function onSendMessage(event: React.FormEvent) {
     event.preventDefault();
     if (!message.trim()) return;
@@ -112,6 +164,70 @@ export function TaskDetail({
       body: JSON.stringify({ taskId: task.id, content: message, fromAgentId: leadAgentId }),
     });
     setMessage('');
+    router.refresh();
+    if (onUpdated) await onUpdated();
+  }
+
+  async function createSubtask(event: React.FormEvent) {
+    event.preventDefault();
+    const title = newSubtaskTitle.trim();
+    if (!title) return;
+    await fetch('/api/subtasks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ taskId: task.id, title }),
+    });
+    setNewSubtaskTitle('');
+    router.refresh();
+    if (onUpdated) await onUpdated();
+  }
+
+  async function toggleSubtask(subtaskId: string, done: boolean) {
+    setSubtaskItems((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, done } : s)));
+    await fetch(`/api/subtasks/${subtaskId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ done }),
+    });
+    router.refresh();
+    if (onUpdated) await onUpdated();
+  }
+
+  async function deleteSubtask(subtaskId: string) {
+    await fetch(`/api/subtasks/${subtaskId}`, { method: 'DELETE' });
+    router.refresh();
+    if (onUpdated) await onUpdated();
+  }
+
+  async function moveSubtask(subtaskId: string, dir: -1 | 1) {
+    const sorted = [...subtaskItems].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const idx = sorted.findIndex((s) => s.id === subtaskId);
+    if (idx === -1) return;
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    const a = sorted[idx];
+    const b = sorted[swapIdx];
+    const nextA = b.order ?? 0;
+    const nextB = a.order ?? 0;
+    setSubtaskItems((prev) =>
+      prev.map((s) => {
+        if (s.id === a.id) return { ...s, order: nextA };
+        if (s.id === b.id) return { ...s, order: nextB };
+        return s;
+      })
+    );
+    await Promise.all([
+      fetch(`/api/subtasks/${a.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ order: nextA }),
+      }),
+      fetch(`/api/subtasks/${b.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ order: nextB }),
+      }),
+    ]);
     router.refresh();
     if (onUpdated) await onUpdated();
   }
@@ -130,6 +246,9 @@ export function TaskDetail({
     if (onUpdated) await onUpdated();
   }
 
+  const subtaskTotal = subtaskItems.length;
+  const subtaskDone = subtaskItems.reduce((acc, s) => acc + (s.done ? 1 : 0), 0);
+
   return (
     <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
       <div className="space-y-6">
@@ -141,6 +260,23 @@ export function TaskDetail({
             </div>
             <Badge className="border-none bg-[var(--accent)] text-[var(--background)]">{status.replace('_', ' ')}</Badge>
           </div>
+          {(task.startAt || task.dueAt) && (
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
+              {task.startAt && (
+                <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
+                  starts {formatShortDate(task.startAt)}
+                </span>
+              )}
+              {task.dueAt && (
+                <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
+                  due {formatShortDate(task.dueAt)}
+                </span>
+              )}
+              {task.requiresReview ? (
+                <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-1">requires review</span>
+              ) : null}
+            </div>
+          )}
           <div className="mt-4 text-sm text-muted">{task.description ? null : 'No description yet.'}</div>
           {task.description ? (
             <div className="mt-4 prose prose-sm max-w-none">
@@ -170,8 +306,65 @@ export function TaskDetail({
             {!messages.length && <div className="text-sm text-muted">No messages yet.</div>}
           </div>
           <form onSubmit={onSendMessage} className="mt-6 space-y-3">
-            <Textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Add an update, @mention an agent, or paste a log." />
+            <MentionsTextarea
+              value={message}
+              onChange={setMessage}
+              mentionables={mentionables}
+              placeholder="Add an update, @mention an agent, or paste a log."
+            />
             <Button type="submit">Send update</Button>
+          </form>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="text-sm font-semibold">Subtasks</div>
+            <div className="text-xs text-muted">
+              {subtaskDone}/{subtaskTotal}
+            </div>
+          </div>
+          <div className="mt-4 space-y-2">
+            {[...subtaskItems]
+              .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+              .map((s, idx, arr) => (
+                <div
+                  key={s.id}
+                  className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
+                >
+                  <input type="checkbox" checked={Boolean(s.done)} onChange={(e) => void toggleSubtask(s.id, e.target.checked)} />
+                  <div className={cn('flex-1', s.done ? 'line-through text-muted' : '')}>{s.title}</div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void moveSubtask(s.id, -1)}
+                      disabled={idx === 0}
+                    >
+                      Up
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void moveSubtask(s.id, 1)}
+                      disabled={idx === arr.length - 1}
+                    >
+                      Down
+                    </Button>
+                    <Button type="button" size="sm" variant="destructive" onClick={() => void deleteSubtask(s.id)}>
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            {!subtaskItems.length && <div className="text-sm text-muted">No subtasks yet.</div>}
+          </div>
+          <form onSubmit={createSubtask} className="mt-4 flex items-center gap-2">
+            <Input value={newSubtaskTitle} onChange={(e) => setNewSubtaskTitle(e.target.value)} placeholder="New subtask..." />
+            <Button type="submit" variant="secondary">
+              Add
+            </Button>
           </form>
         </div>
 
@@ -182,7 +375,7 @@ export function TaskDetail({
               <div key={doc.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
                 <div className="text-xs uppercase tracking-[0.2em] text-muted">{doc.type}</div>
                 <div className="mt-2 text-sm font-medium">{doc.title}</div>
-                <div className="mt-2 text-xs text-muted">Updated {formatShortDate(doc.updated)}</div>
+                <div className="mt-2 text-xs text-muted">Updated {formatShortDate(doc.updatedAt)}</div>
               </div>
             ))}
             {!documents.length && <div className="text-sm text-muted">No documents yet.</div>}
@@ -251,6 +444,34 @@ export function TaskDetail({
 
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 space-y-3">
           <div className="text-sm font-semibold">Task metadata</div>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-xs uppercase tracking-[0.2em] text-muted">Review policy</div>
+                <div className="mt-1 text-sm">{requiresReview ? 'Requires review' : 'Auto-done'}</div>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={requiresReview} onChange={(e) => void onToggleRequiresReview(e.target.checked)} />
+                Requires review
+              </label>
+            </div>
+          </div>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+            <div className="text-xs uppercase tracking-[0.2em] text-muted">Dates</div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs uppercase tracking-[0.2em] text-muted">Start</label>
+                <Input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} className="mt-2" />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-[0.2em] text-muted">Due</label>
+                <Input type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} className="mt-2" />
+              </div>
+            </div>
+            <Button type="button" size="sm" variant="secondary" className="mt-3" onClick={onUpdateDates}>
+              Save dates
+            </Button>
+          </div>
           <div>
             <label className="text-xs uppercase tracking-[0.2em] text-muted">Required node</label>
             <select

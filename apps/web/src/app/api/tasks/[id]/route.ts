@@ -16,8 +16,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   delete payload.blockReason;
   delete payload.blockActorId;
   const now = new Date();
-  if (payload.status && payload.status !== 'done') {
-    payload.lastProgressAt = now.toISOString();
+  payload.updatedAt = now.toISOString();
+  if (payload.status) {
+    if (payload.status === 'done') {
+      payload.lastProgressAt = now.toISOString();
+      payload.completedAt = payload.completedAt ?? now.toISOString();
+      payload.leaseExpiresAt = payload.leaseExpiresAt ?? '';
+    } else {
+      payload.lastProgressAt = now.toISOString();
+      // If a task is moved back out of done, clear completedAt unless explicitly set.
+      if (payload.status !== 'done' && payload.completedAt === undefined) payload.completedAt = '';
+    }
   }
   const isClaim = payload.status === 'in_progress' && !!payload.leaseOwnerAgentId;
   if (isClaim) {
@@ -41,6 +50,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         fromAgentId: blockActorId ?? '',
         content: `BLOCKED: ${blockReason}`,
         mentions: [],
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
       },
     });
   }
@@ -53,6 +64,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         actorAgentId: payload.leaseOwnerAgentId,
         taskId: id,
         summary: `Task claimed by ${payload.leaseOwnerAgentId}`,
+        createdAt: now.toISOString(),
       },
     });
     await ensureTaskSubscription({ taskId: id, agentId: payload.leaseOwnerAgentId, reason: 'assigned' });

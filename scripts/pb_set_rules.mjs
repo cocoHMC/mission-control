@@ -42,6 +42,7 @@ async function main() {
     'agents',
     'nodes',
     'tasks',
+    'subtasks',
     'messages',
     'documents',
     'activities',

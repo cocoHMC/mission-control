@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { fromDateTimeLocalValue } from '@/lib/utils';
 
 type Agent = { id: string; displayName?: string; openclawAgentId?: string };
 type NodeRecord = { id: string; displayName?: string; nodeId?: string };
@@ -18,6 +19,9 @@ export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord
   const [assignees, setAssignees] = React.useState<string[]>([]);
   const [labels, setLabels] = React.useState('');
   const [requiredNodeId, setRequiredNodeId] = React.useState('');
+  const [startAt, setStartAt] = React.useState('');
+  const [dueAt, setDueAt] = React.useState('');
+  const [requiresReview, setRequiresReview] = React.useState(false);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -38,6 +42,9 @@ export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord
         status: assignees.length ? 'assigned' : 'inbox',
         labels: labelList,
         requiredNodeId: requiredNodeId || '',
+        startAt: fromDateTimeLocalValue(startAt) || '',
+        dueAt: fromDateTimeLocalValue(dueAt) || '',
+        requiresReview,
       }),
     });
     setPending(false);
@@ -121,6 +128,20 @@ export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord
             placeholder="comma, separated, tags"
             className="mt-2"
           />
+        </div>
+        <div>
+          <label className="text-sm font-medium">Start</label>
+          <Input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} className="mt-2" />
+        </div>
+        <div>
+          <label className="text-sm font-medium">Due</label>
+          <Input type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} className="mt-2" />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-sm">
+            <input type="checkbox" checked={requiresReview} onChange={(e) => setRequiresReview(e.target.checked)} />
+            Requires review (otherwise auto-done)
+          </label>
         </div>
       </div>
       <Button type="submit" size="lg" disabled={pending}>

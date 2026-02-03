@@ -9,11 +9,13 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-set -a
-source .env
-set +a
+DOTENV_BIN="$ROOT_DIR/node_modules/.bin/dotenv"
+if [ ! -x "$DOTENV_BIN" ]; then
+  echo "dotenv-cli missing. Run scripts/install.sh first." >&2
+  exit 1
+fi
 
-pnpm build
+"$DOTENV_BIN" -e "$ROOT_DIR/.env" -- pnpm build
 
 cat <<'MSG'
 Build complete.

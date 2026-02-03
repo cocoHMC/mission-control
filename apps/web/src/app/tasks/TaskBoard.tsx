@@ -2,9 +2,11 @@
 
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { DndContext, DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, closestCenter, useDroppable } from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Badge } from '@/components/ui/badge';
-import { cn, titleCase } from '@/lib/utils';
+import { cn, formatShortDate, titleCase } from '@/lib/utils';
 import { TaskDrawer } from '@/app/tasks/TaskDrawer';
 import { getPocketBaseClient, type PBRealtimeEvent } from '@/lib/pbClient';
 
@@ -23,6 +25,10 @@ type Task = {
   priority?: string;
   status: string;
   archived?: boolean;
+  order?: number;
+  dueAt?: string;
+  subtasksTotal?: number;
+  subtasksDone?: number;
   assigneeIds?: string[];
   labels?: string[];
   requiredNodeId?: string;
@@ -41,15 +47,14 @@ type NodeRecord = {
 };
 
 function TaskCard({ task, onOpen }: { task: Task; onOpen: (taskId: string) => void }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { status: task.status },
   });
-  const style = transform
-    ? {
-        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-      }
-    : undefined;
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   return (
     <div
@@ -62,6 +67,7 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (taskId: string) => vo
     >
       <div className="flex items-stretch gap-3">
         <button
+          ref={setActivatorNodeRef}
           type="button"
           aria-label="Drag task"
           className="group relative h-full w-2 shrink-0 cursor-grab rounded-full border border-[var(--border)] bg-[var(--surface)]/60 opacity-50 transition hover:opacity-90 active:cursor-grabbing"
@@ -102,6 +108,12 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (taskId: string) => vo
           )}
           <div className="mt-2 flex items-center gap-2 text-xs text-muted">
             <Badge className="border-none bg-[var(--highlight)] text-[var(--foreground)]">{task.priority ?? 'p2'}</Badge>
+            {task.subtasksTotal ? (
+              <span>
+                {task.subtasksDone ?? 0}/{task.subtasksTotal}
+              </span>
+            ) : null}
+            {task.dueAt ? <span>due {formatShortDate(task.dueAt)}</span> : null}
             <span>{task.assigneeIds?.length ? `${task.assigneeIds.length} assignee(s)` : 'Unassigned'}</span>
           </div>
         </button>
@@ -150,6 +162,12 @@ function TaskCardStatic({ task, onOpen }: { task: Task; onOpen: (taskId: string)
           )}
           <div className="mt-2 flex items-center gap-2 text-xs text-muted">
             <Badge className="border-none bg-[var(--highlight)] text-[var(--foreground)]">{task.priority ?? 'p2'}</Badge>
+            {task.subtasksTotal ? (
+              <span>
+                {task.subtasksDone ?? 0}/{task.subtasksTotal}
+              </span>
+            ) : null}
+            {task.dueAt ? <span>due {formatShortDate(task.dueAt)}</span> : null}
             <span>{task.assigneeIds?.length ? `${task.assigneeIds.length} assignee(s)` : 'Unassigned'}</span>
           </div>
         </button>
@@ -172,9 +190,11 @@ function Column({ status, tasks, onOpen }: { status: string; tasks: Task[]; onOp
         className={cn('space-y-3 p-3 transition', isOver ? 'bg-[color:var(--card)]/70' : '')}
         style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}
       >
-        {tasks.map((task) => (
-          <TaskCard key={task.id} task={task} onOpen={onOpen} />
-        ))}
+        <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+          {tasks.map((task) => (
+            <TaskCard key={task.id} task={task} onOpen={onOpen} />
+          ))}
+        </SortableContext>
         {!tasks.length && <div className="rounded-xl border border-dashed border-[var(--border)] p-4 text-xs text-muted">Drop tasks here</div>}
       </div>
     </div>
@@ -272,26 +292,65 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
     if (typeof overrideTaskId === 'string' && taskParam === overrideTaskId) setOverrideTaskId(undefined);
   }, [overrideTaskId, taskParam]);
 
-  async function updateStatus(taskId: string, status: string) {
+  async function updateTask(taskId: string, patch: Record<string, unknown>) {
     await fetch(`/api/tasks/${taskId}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(patch),
     });
   }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over) return;
-    const status = String(over.id);
-    const task = tasks.find((t) => t.id === active.id);
-    if (!task || task.status === status) return;
-    setTasks((prev) => prev.map((t) => (t.id === active.id ? { ...t, status } : t)));
-    void updateStatus(String(active.id), status);
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    const task = tasks.find((t) => t.id === activeId);
+    if (!task) return;
+
+    const columnIds = new Set(columns.map((c) => c.id));
+    let nextStatus = task.status;
+    let insertBeforeTaskId: string | null = null;
+
+    if (columnIds.has(overId)) {
+      nextStatus = overId;
+    } else {
+      const overTask = tasks.find((t) => t.id === overId);
+      if (!overTask) return;
+      nextStatus = overTask.status;
+      insertBeforeTaskId = overTask.id;
+    }
+
+    const currentColumn = (grouped[nextStatus] ?? [])
+      .filter((t) => t.id !== activeId)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const insertIdx = insertBeforeTaskId ? currentColumn.findIndex((t) => t.id === insertBeforeTaskId) : currentColumn.length;
+    const idx = insertIdx === -1 ? currentColumn.length : insertIdx;
+    const prev = idx > 0 ? currentColumn[idx - 1] : null;
+    const next = idx < currentColumn.length ? currentColumn[idx] : null;
+    const prevOrder = prev?.order ?? 0;
+    const nextOrder = next?.order ?? prevOrder + 1000;
+    let nextOrderValue: number;
+    if (!prev && !next) nextOrderValue = Date.now();
+    else if (!prev) nextOrderValue = nextOrder - 1000;
+    else if (!next) nextOrderValue = prevOrder + 1000;
+    else nextOrderValue = (prevOrder + nextOrder) / 2;
+
+    // Avoid a degenerate order that doesn't move the task.
+    if (Number.isFinite(task.order) && task.order === nextOrderValue && task.status === nextStatus) return;
+
+    setTasks((prevTasks) =>
+      prevTasks.map((t) => (t.id === activeId ? { ...t, status: nextStatus, order: nextOrderValue } : t))
+    );
+    const patch: Record<string, unknown> = { order: nextOrderValue };
+    if (nextStatus !== task.status) patch.status = nextStatus;
+    void updateTask(activeId, patch);
   }
 
   const grouped = columns.reduce<Record<string, Task[]>>((acc, col) => {
-    acc[col.id] = tasks.filter((task) => task.status === col.id && !task.archived);
+    acc[col.id] = tasks
+      .filter((task) => task.status === col.id && !task.archived)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     return acc;
   }, {});
 
@@ -315,7 +374,7 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
         <span>Drag tasks across columns to update status.</span>
       </div>
       {mounted ? (
-        <DndContext onDragEnd={handleDragEnd}>
+        <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <div className="-mx-4 overflow-x-auto pb-4">
             <div className="flex w-max gap-4 px-4">
               {columns.map((col) => (
