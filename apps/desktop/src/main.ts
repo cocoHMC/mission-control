@@ -4,9 +4,12 @@ import log from 'electron-log';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // electron-updater is CommonJS; default import gives us module.exports.
 const { autoUpdater } = updaterPkg as unknown as { autoUpdater: typeof import('electron-updater').autoUpdater };
+
+const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 type UpdateState =
   | { status: 'idle' }
@@ -73,7 +76,7 @@ async function readFileIfExists(filePath: string) {
 
 function repoRootFromDistDir() {
   // apps/desktop/dist -> repo root is ../../..
-  return path.resolve(__dirname, '../../..');
+  return path.resolve(THIS_DIR, '../../..');
 }
 
 function appResourceRoot() {
@@ -368,7 +371,7 @@ function setupAutoUpdater() {
 }
 
 async function createMainWindow(webPort: number) {
-  const preloadPath = path.join(__dirname, 'preload.js');
+  const preloadPath = path.join(THIS_DIR, 'preload.js');
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
