@@ -9,6 +9,7 @@ pb/pocketbase.log
 apps/*/dev.log
 backups/
 ops/openclaw/
+ops/vaultwarden/
 node_modules/
 apps/*/node_modules/
 dist/
