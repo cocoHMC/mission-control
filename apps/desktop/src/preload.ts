@@ -12,6 +12,10 @@ type UpdateState =
 contextBridge.exposeInMainWorld('MissionControlDesktop', {
   getVersion: () => ipcRenderer.invoke('mc:getVersion') as Promise<string>,
   getUpdateState: () => ipcRenderer.invoke('mc:getUpdateState') as Promise<UpdateState>,
+  getUpdateAuth: () => ipcRenderer.invoke('mc:getUpdateAuth') as Promise<{ githubTokenConfigured: boolean }>,
+  setGithubToken: (token: string) =>
+    ipcRenderer.invoke('mc:setGithubToken', { token }) as Promise<{ ok: boolean; configured?: boolean; error?: string }>,
+  clearGithubToken: () => ipcRenderer.invoke('mc:clearGithubToken') as Promise<{ ok: boolean; error?: string }>,
   checkForUpdates: () => ipcRenderer.invoke('mc:checkForUpdates') as Promise<{ ok: boolean; error?: string }>,
   downloadUpdate: () => ipcRenderer.invoke('mc:downloadUpdate') as Promise<{ ok: boolean; error?: string }>,
   quitAndInstall: () => ipcRenderer.invoke('mc:quitAndInstall') as Promise<{ ok: boolean; error?: string }>,
@@ -21,4 +25,3 @@ contextBridge.exposeInMainWorld('MissionControlDesktop', {
     return () => ipcRenderer.off('mc:update', listener);
   },
 });
-

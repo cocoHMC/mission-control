@@ -22,6 +22,9 @@ let workerProc: ChildProcess | null = null;
 
 let mainWindow: BrowserWindow | null = null;
 let updateState: UpdateState = { status: 'idle' };
+let updaterTokenConfigured = false;
+
+type UpdaterConfig = { githubToken?: string };
 
 function isPlaceholderSecret(value: string | undefined) {
   if (!value) return true;
@@ -69,6 +72,34 @@ function appResourceRoot() {
 function dataRoot() {
   // Keep all mutable state under userData so the app is "install-and-go".
   return path.join(app.getPath('userData'), 'data');
+}
+
+function updaterConfigPath() {
+  return path.join(dataRoot(), 'updater.json');
+}
+
+async function loadUpdaterConfig(): Promise<UpdaterConfig> {
+  const raw = await readFileIfExists(updaterConfigPath());
+  if (!raw) return {};
+  try {
+    const json = JSON.parse(raw);
+    if (typeof json?.githubToken === 'string') return { githubToken: json.githubToken };
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+async function saveUpdaterConfig(next: UpdaterConfig) {
+  await fs.mkdir(dataRoot(), { recursive: true });
+  const payload = JSON.stringify({ githubToken: next.githubToken || '' }, null, 2);
+  await fs.writeFile(updaterConfigPath(), payload, 'utf8');
+  // Best-effort: tighten perms (macOS/Linux).
+  try {
+    await fs.chmod(updaterConfigPath(), 0o600);
+  } catch {
+    // ignore
+  }
 }
 
 async function loadEffectiveEnv() {
@@ -252,6 +283,16 @@ function setupAutoUpdater() {
   autoUpdater.logger = log;
   autoUpdater.autoDownload = false;
 
+  // Private GitHub repos require auth to download release assets.
+  // We keep this optional to avoid complicating first-run setup.
+  void loadUpdaterConfig().then((cfg) => {
+    const token = cfg.githubToken?.trim();
+    updaterTokenConfigured = Boolean(token);
+    if (token) {
+      autoUpdater.requestHeaders = { Authorization: `token ${token}` };
+    }
+  });
+
   autoUpdater.on('checking-for-update', () => setUpdateState({ status: 'checking' }));
   autoUpdater.on('update-available', (info) =>
     setUpdateState({
@@ -275,6 +316,20 @@ function setupAutoUpdater() {
 
   ipcMain.handle('mc:getVersion', () => app.getVersion());
   ipcMain.handle('mc:getUpdateState', () => updateState);
+  ipcMain.handle('mc:getUpdateAuth', () => ({ githubTokenConfigured: updaterTokenConfigured }));
+  ipcMain.handle('mc:setGithubToken', async (_evt, payload: { token: string }) => {
+    const token = String(payload?.token || '').trim();
+    await saveUpdaterConfig({ githubToken: token });
+    updaterTokenConfigured = Boolean(token);
+    autoUpdater.requestHeaders = token ? { Authorization: `token ${token}` } : {};
+    return { ok: true, configured: updaterTokenConfigured };
+  });
+  ipcMain.handle('mc:clearGithubToken', async () => {
+    await saveUpdaterConfig({ githubToken: '' });
+    updaterTokenConfigured = false;
+    autoUpdater.requestHeaders = {};
+    return { ok: true };
+  });
   ipcMain.handle('mc:checkForUpdates', async () => {
     try {
       await autoUpdater.checkForUpdates();

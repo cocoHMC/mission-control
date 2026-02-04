@@ -15,6 +15,9 @@ type UpdateState =
 type DesktopBridge = {
   getVersion: () => Promise<string>;
   getUpdateState: () => Promise<UpdateState>;
+  getUpdateAuth: () => Promise<{ githubTokenConfigured: boolean }>;
+  setGithubToken: (token: string) => Promise<{ ok: boolean; configured?: boolean; error?: string }>;
+  clearGithubToken: () => Promise<{ ok: boolean; error?: string }>;
   checkForUpdates: () => Promise<{ ok: boolean; error?: string }>;
   downloadUpdate: () => Promise<{ ok: boolean; error?: string }>;
   quitAndInstall: () => Promise<{ ok: boolean; error?: string }>;
@@ -31,12 +34,15 @@ export function DesktopUpdates() {
   const [version, setVersion] = React.useState<string | null>(null);
   const [state, setState] = React.useState<UpdateState>({ status: 'idle' });
   const [busy, setBusy] = React.useState(false);
+  const [githubTokenConfigured, setGithubTokenConfigured] = React.useState<boolean | null>(null);
+  const [githubToken, setGithubToken] = React.useState('');
 
   React.useEffect(() => {
     if (!bridge) return;
     let unsub: (() => void) | null = null;
     bridge.getVersion().then(setVersion).catch(() => {});
     bridge.getUpdateState().then(setState).catch(() => {});
+    bridge.getUpdateAuth().then((v) => setGithubTokenConfigured(v.githubTokenConfigured)).catch(() => {});
     unsub = bridge.onUpdate(setState);
     return () => unsub?.();
   }, [bridge]);
@@ -118,6 +124,71 @@ export function DesktopUpdates() {
         </div>
       </div>
       {version ? <div className="text-xs">Current version: {version}</div> : null}
+
+      <details className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+        <summary className="cursor-pointer text-xs font-semibold text-[var(--foreground)]">
+          Private GitHub Updates (Advanced)
+        </summary>
+        <div className="mt-2 space-y-2 text-xs text-muted">
+          <div>
+            If your repo is private, the desktop app may need a GitHub token to download release assets.
+          </div>
+          <div className="text-[11px]">
+            Status:{' '}
+            <span className="font-semibold text-[var(--foreground)]">
+              {githubTokenConfigured === null ? 'unknown' : githubTokenConfigured ? 'token set' : 'no token'}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              className="h-10 flex-1 min-w-[220px] rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 font-mono text-[11px] text-[var(--foreground)]"
+              value={githubToken}
+              onChange={(e) => setGithubToken(e.target.value)}
+              placeholder="ghp_… (read-only token)"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={busy || !githubToken.trim()}
+              onClick={async () => {
+                const b = bridge;
+                if (!b) return;
+                setBusy(true);
+                try {
+                  const res = await b.setGithubToken(githubToken.trim());
+                  setGithubTokenConfigured(Boolean(res.configured));
+                  setGithubToken('');
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Save token
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={busy || !githubTokenConfigured}
+              onClick={async () => {
+                const b = bridge;
+                if (!b) return;
+                setBusy(true);
+                try {
+                  await b.clearGithubToken();
+                  setGithubTokenConfigured(false);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Clear
+            </Button>
+          </div>
+        </div>
+      </details>
+
       {state.status === 'available' || state.status === 'downloaded' ? (
         state.releaseNotes ? (
           <details className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
