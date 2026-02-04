@@ -188,6 +188,43 @@ async function waitForOk(url: string, timeoutMs = 20_000) {
   throw new Error(`Timed out waiting for ${url}`);
 }
 
+async function waitForOkOrExit(
+  url: string,
+  proc: ChildProcess,
+  timeoutMs: number,
+  opts: { name: string }
+): Promise<void> {
+  let procErr: Error | null = null;
+
+  const onError = (err: any) => {
+    procErr = err instanceof Error ? err : new Error(String(err));
+  };
+  const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+    procErr = new Error(`${opts.name} exited (code=${code ?? 'null'} signal=${signal ?? 'null'})`);
+  };
+
+  proc.once('error', onError);
+  proc.once('exit', onExit);
+
+  try {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      if (procErr) throw procErr;
+      try {
+        const res = await fetch(url, { method: 'GET' });
+        if (res.ok) return;
+      } catch {
+        // ignore
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    throw new Error(`Timed out waiting for ${url}`);
+  } finally {
+    proc.removeListener('error', onError);
+    proc.removeListener('exit', onExit);
+  }
+}
+
 async function execFileText(file: string, args: string[]) {
   return await new Promise<string>((resolve, reject) => {
     execFile(file, args, { encoding: 'utf8' }, (err, stdout) => {
@@ -410,7 +447,9 @@ async function startStack() {
       void pbOut?.appendFile(s).catch(() => {});
     });
 
-    await waitForOk(`http://127.0.0.1:${pbPort}/api/health`, 20_000);
+    // PocketBase can take a while to start on first launch or with large DBs.
+    // Wait longer than the web server to avoid false failures.
+    await waitForOkOrExit(`http://127.0.0.1:${pbPort}/api/health`, pbProc, 120_000, { name: 'PocketBase' });
 
   const envForChildren: NodeJS.ProcessEnv = {
     ...process.env,
@@ -447,7 +486,10 @@ async function startStack() {
   webProc.on('exit', (code) => {
     log.warn('[desktop] web exited', code);
     if (code === RESTART_EXIT_CODE) {
-      void restartStack();
+      void restartStack().catch((err) => {
+        log.error('[desktop] restartStack failed', err);
+        void createErrorWindow('Mission Control failed to restart', err?.message || String(err)).catch(() => {});
+      });
     }
   });
 
@@ -929,12 +971,18 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    void ensureMainWindow();
+    void ensureMainWindow().catch((err) => {
+      log.error('[desktop] ensureMainWindow failed (second-instance)', err);
+      void createErrorWindow('Mission Control failed to start', err?.message || String(err)).catch(() => {});
+    });
   });
 }
 
 app.on('activate', () => {
-  void ensureMainWindow();
+  void ensureMainWindow().catch((err) => {
+    log.error('[desktop] ensureMainWindow failed (activate)', err);
+    void createErrorWindow('Mission Control failed to start', err?.message || String(err)).catch(() => {});
+  });
 });
 
 app
