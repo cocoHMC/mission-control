@@ -11,6 +11,7 @@ FROM node:22-alpine AS build
 WORKDIR /repo
 RUN corepack enable
 COPY --from=deps /repo/node_modules ./node_modules
+COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
 COPY --from=deps /repo/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=deps /repo/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=deps /repo/package.json ./package.json
