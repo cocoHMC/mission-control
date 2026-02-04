@@ -80,6 +80,24 @@ echo
 echo "Open setup: http://127.0.0.1:4010/setup"
 ```
 
+## macOS Desktop App (.dmg)
+If you want Mission Control as a real macOS app (not just a browser tab), we ship an Electron desktop wrapper that:
+- starts PocketBase + worker + web automatically
+- opens `/setup` on first launch
+- auto-restarts after setup
+- includes an in-app update UI (Release-based)
+
+### Build The DMG (Apple Silicon)
+```bash
+pnpm -C apps/desktop dist:mac
+```
+
+Build output:
+- `apps/desktop/dist/Mission Control-<version>-arm64.dmg`
+
+### Updates
+The desktop app checks for updates via **GitHub Releases** (not raw `main` commits). For private repos, end-users typically need access to the release assets (or you need to publish release artifacts somewhere they can fetch).
+
 ### Prereqs
 - Node.js 22+
 - pnpm (via Corepack)

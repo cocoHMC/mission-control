@@ -72,7 +72,7 @@ export function SetupClient() {
     mcAdminPassword: '',
     leadAgentId: 'main',
     leadAgentName: 'Coco (Main)',
-    // PocketBase is normally local (started by scripts/dev.sh). Values below are
+    // PocketBase is normally local (started by scripts/run.sh). Values below are
     // used for first-run bootstrap; we keep them in "Advanced" for most users.
     pbUrl: 'http://127.0.0.1:8090',
     pbServiceEmail: 'service@local.mc',
@@ -276,8 +276,8 @@ export function SetupClient() {
         <div className="text-xs uppercase tracking-[0.2em] text-muted">Mission Control</div>
         <div className="mt-2 text-3xl font-semibold headline">First-run Setup</div>
         <div className="mt-2 text-sm text-muted">
-          This configures Basic Auth, bootstraps PocketBase, and (optionally) connects to OpenClaw. Restart is required
-          after applying.
+          This configures Basic Auth, bootstraps PocketBase, and (optionally) connects to OpenClaw. Mission Control
+          will restart automatically after applying.
         </div>
       </div>
 
@@ -458,8 +458,8 @@ export function SetupClient() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="text-xs text-muted">
-              PocketBase runs locally and stores all tasks/agents/documents. In dev it is started by{' '}
-              <span className="font-mono">./scripts/dev.sh</span> at <span className="font-mono">{form.pbUrl}</span>.
+              PocketBase runs locally and stores all tasks/agents/documents. It is normally started by{' '}
+              <span className="font-mono">./scripts/run.sh</span> at <span className="font-mono">{form.pbUrl}</span>.
             </div>
             <details className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
               <summary className="cursor-pointer text-xs font-semibold text-[var(--foreground)]">

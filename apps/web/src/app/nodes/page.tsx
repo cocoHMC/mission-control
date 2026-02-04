@@ -24,7 +24,7 @@ export default async function NodesPage() {
   return (
     <AppShell>
       <Topbar title="Nodes" subtitle="Pair new devices through headscale + OpenClaw." />
-      <div className="mt-8 grid gap-6 lg:grid-cols-[2fr,1fr]">
+      <div className="mt-4 grid gap-6 sm:mt-8 lg:grid-cols-[2fr,1fr]">
         <Card>
           <CardHeader>
             <CardTitle>Connected nodes</CardTitle>
@@ -93,7 +93,7 @@ export default async function NodesPage() {
         </Card>
       </div>
 
-      <div className="mt-8">
+      <div className="mt-4 sm:mt-8">
         <NodeActions nodes={nodes} actionsEnabled={actionsEnabled} healthCmds={healthCmds} />
       </div>
     </AppShell>

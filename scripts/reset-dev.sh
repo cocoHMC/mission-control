@@ -30,9 +30,8 @@ if [ -f "$ROOT_DIR/apps/worker/dev.log" ]; then
 fi
 
 echo ""
-echo "Dev reset complete."
+echo "Reset complete."
 echo "Next:"
 echo "  1) ./scripts/install.sh"
-echo "  2) ./scripts/dev.sh"
+echo "  2) ./scripts/run.sh"
 echo "  3) Open http://127.0.0.1:4010/setup"
-

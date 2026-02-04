@@ -2,6 +2,8 @@ packages:
   - apps/*
 
 onlyBuiltDependencies:
+  - electron
+  - electron-winstaller
   - esbuild
   - sharp
   - unrs-resolver

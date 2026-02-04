@@ -5,6 +5,7 @@ import { ThemeToggle } from '@/app/settings/ThemeToggle';
 import { WebNotifications } from '@/app/settings/WebNotifications';
 import { SetupChecklist } from '@/app/settings/SetupChecklist';
 import { TailscaleStatusCard } from '@/app/settings/TailscaleStatus';
+import { DesktopUpdates } from '@/app/settings/DesktopUpdates';
 
 export default function SettingsPage() {
   const leadName = process.env.MC_LEAD_AGENT_NAME || process.env.MC_LEAD_AGENT_ID || 'Lead';
@@ -18,7 +19,7 @@ export default function SettingsPage() {
   return (
     <AppShell>
       <Topbar title="Settings" subtitle="Local-only configuration and operational notes." />
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+      <div className="mt-4 grid gap-6 sm:mt-8 lg:grid-cols-2">
         <SetupChecklist
           leadAgentId={leadId}
           leadAgentName={leadName}
@@ -35,6 +36,14 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <ThemeToggle />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Desktop App</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DesktopUpdates />
           </CardContent>
         </Card>
         <Card>

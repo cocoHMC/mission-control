@@ -8,7 +8,7 @@ export default function OpenClawSettingsPage() {
   return (
     <AppShell>
       <Topbar title="OpenClaw" subtitle="Review and apply gateway configuration changes." />
-      <div className="mt-8">
+      <div className="mt-4 sm:mt-8">
         <OpenClawConfigClient />
       </div>
     </AppShell>

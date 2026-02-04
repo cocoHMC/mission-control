@@ -12,7 +12,7 @@ export default async function DocsPage() {
   return (
     <AppShell>
       <Topbar title="Documents" subtitle="Shared deliverables, protocols, and research." />
-      <div className="mt-8">
+      <div className="mt-4 sm:mt-8">
         <DocumentsList initialDocs={docs} />
       </div>
     </AppShell>

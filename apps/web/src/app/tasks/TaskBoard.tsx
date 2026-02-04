@@ -331,7 +331,10 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
     const prevOrder = prev?.order ?? 0;
     const nextOrder = next?.order ?? prevOrder + 1000;
     let nextOrderValue: number;
-    if (!prev && !next) nextOrderValue = Date.now();
+    if (!prev && !next) {
+      const maxOrder = tasks.reduce((acc, t) => Math.max(acc, Number(t.order ?? 0)), 0);
+      nextOrderValue = maxOrder + 1000;
+    }
     else if (!prev) nextOrderValue = nextOrder - 1000;
     else if (!next) nextOrderValue = prevOrder + 1000;
     else nextOrderValue = (prevOrder + nextOrder) / 2;
@@ -369,14 +372,14 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap gap-3 text-xs text-muted">
+      <div className="mb-4 hidden flex-wrap gap-3 text-xs text-muted sm:flex">
         <span>Active agents: {agents.length}</span>
         <span>Drag tasks across columns to update status.</span>
       </div>
       {mounted ? (
         <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <div className="-mx-4 overflow-x-auto pb-4">
-            <div className="flex w-max gap-4 px-4">
+          <div className="-mx-3 overflow-x-auto pb-4 sm:-mx-4">
+            <div className="flex w-max gap-4 px-3 sm:px-4">
               {columns.map((col) => (
                 <Column key={col.id} status={col.id} tasks={grouped[col.id] ?? []} onOpen={openDrawer} />
               ))}
@@ -384,8 +387,8 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
           </div>
         </DndContext>
       ) : (
-        <div className="-mx-4 overflow-x-auto pb-4">
-          <div className="flex w-max gap-4 px-4">
+        <div className="-mx-3 overflow-x-auto pb-4 sm:-mx-4">
+          <div className="flex w-max gap-4 px-3 sm:px-4">
             {columns.map((col) => (
               <ColumnStatic key={col.id} status={col.id} tasks={grouped[col.id] ?? []} onOpen={openDrawer} />
             ))}

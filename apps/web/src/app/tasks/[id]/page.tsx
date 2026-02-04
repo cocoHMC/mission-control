@@ -52,7 +52,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
   return (
     <AppShell>
       <Topbar title="Task" subtitle={`Task ID: ${task.id}`} />
-      <div className="mt-8">
+      <div className="mt-4 sm:mt-8">
         <TaskDetail
           task={task}
           agents={agents.items ?? []}

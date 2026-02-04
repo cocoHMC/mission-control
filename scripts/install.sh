@@ -22,4 +22,4 @@ if [ "${SKIP_PB_INSTALL:-0}" != "1" ]; then
 fi
 
 echo "Install complete."
-echo "Next: ./scripts/dev.sh (then open http://127.0.0.1:4010/setup)"
+echo "Next: ./scripts/run.sh (then open http://127.0.0.1:4010/setup)"

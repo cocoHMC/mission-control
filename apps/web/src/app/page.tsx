@@ -30,7 +30,7 @@ export default async function DashboardPage() {
     <AppShell>
       <Topbar title="Mission Control" subtitle={`Push-based orchestration for ${leadName} + future nodes`} actionHref="/tasks/new" actionLabel="New task" />
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-3">
+      <div className="mt-4 grid gap-6 sm:mt-8 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Task Pulse</CardTitle>
@@ -66,7 +66,7 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+      <div className="mt-4 grid gap-6 sm:mt-8 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Recent Activity</CardTitle>

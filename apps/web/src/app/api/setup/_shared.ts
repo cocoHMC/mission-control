@@ -49,8 +49,11 @@ export function formatEnvValue(value: string) {
 }
 
 export async function writeEnvFromTemplate(rootDir: string, replacements: Map<string, string>) {
-  const examplePath = path.join(rootDir, '.env.example');
-  const envPath = path.join(rootDir, '.env');
+  const templateDir = process.env.MC_APP_DIR ? path.resolve(process.env.MC_APP_DIR) : rootDir;
+  const outputDir = process.env.MC_DATA_DIR ? path.resolve(process.env.MC_DATA_DIR) : rootDir;
+
+  const examplePath = path.join(templateDir, '.env.example');
+  const envPath = path.join(outputDir, '.env');
   const raw = await fs.readFile(examplePath, 'utf8');
   const lines = raw.split(/\r?\n/);
   const out = lines.map((line) => {
@@ -71,6 +74,7 @@ export async function writeEnvFromTemplate(rootDir: string, replacements: Map<st
     out.push(`${key}=${formatEnvValue(val)}`);
   }
 
+  await fs.mkdir(outputDir, { recursive: true });
   await fs.writeFile(envPath, out.join('\n'), 'utf8');
   return envPath;
 }
@@ -79,4 +83,3 @@ export function isLoopbackHost(hostname: string) {
   const h = hostname.trim().toLowerCase();
   return h === '127.0.0.1' || h === 'localhost' || h === '::1';
 }
-

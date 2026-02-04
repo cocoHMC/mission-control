@@ -1,0 +1,95 @@
+{
+  "name": "@mission-control/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "pnpm -w build && tsc -p tsconfig.json && electron .",
+    "build": "tsc -p tsconfig.json",
+    "start": "electron .",
+    "dist:mac": "pnpm -w build && pnpm build && electron-builder --mac dmg"
+  },
+  "dependencies": {
+    "electron-log": "^5.4.0",
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.30",
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.18",
+    "typescript": "^5.9.3"
+  },
+  "build": {
+    "appId": "com.hmcf.missioncontrol",
+    "productName": "Mission Control",
+    "asar": true,
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../../.env.example",
+        "to": ".env.example"
+      },
+      {
+        "from": "../../scripts",
+        "to": "scripts",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../../pb/pocketbase",
+        "to": "pb/pocketbase"
+      },
+      {
+        "from": "../../pb/pb_migrations",
+        "to": "pb/pb_migrations"
+      },
+      {
+        "from": "../../apps/worker/dist",
+        "to": "worker"
+      },
+      {
+        "from": "../../apps/web/.next/standalone",
+        "to": "web",
+        "filter": [
+          "**/*",
+          "**/.pnpm/**"
+        ]
+      },
+      {
+        "from": "../../apps/web/.next/standalone/node_modules/.pnpm",
+        "to": "web/node_modules/.pnpm",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../../apps/web/.next/static",
+        "to": "web/apps/web/.next/static",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ]
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.dmg"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "cocoHMC",
+        "repo": "mission-control"
+      }
+    ]
+  }
+}

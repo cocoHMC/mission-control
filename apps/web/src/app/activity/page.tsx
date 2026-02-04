@@ -14,7 +14,7 @@ export default async function ActivityPage() {
   return (
     <AppShell>
       <Topbar title="Activity" subtitle="Append-only system record." />
-      <div className="mt-8">
+      <div className="mt-4 sm:mt-8">
         <ActivityFeed initialItems={items} />
       </div>
     </AppShell>

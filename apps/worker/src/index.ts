@@ -10,6 +10,21 @@ const execAsync = promisify(exec);
 
 (global as any).EventSource = EventSource;
 
+function parseEnvBool(value: unknown, defaultValue: boolean) {
+  if (value === undefined || value === null) return defaultValue;
+  if (typeof value === 'boolean') return value;
+  const s = String(value).trim().toLowerCase();
+  if (!s) return defaultValue;
+  if (['1', 'true', 'yes', 'y', 'on'].includes(s)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(s)) return false;
+  return defaultValue;
+}
+
+const EnvBool = z
+  .preprocess((v) => parseEnvBool(v, false), z.boolean())
+  .optional()
+  .default(false);
+
 const Env = z.object({
   PB_URL: z.string().url().default('http://127.0.0.1:8090'),
   PB_SERVICE_EMAIL: z.string().email(),
@@ -17,10 +32,10 @@ const Env = z.object({
 
   OPENCLAW_GATEWAY_URL: z.string().url().default('http://127.0.0.1:18789'),
   OPENCLAW_GATEWAY_TOKEN: z.string().optional(),
-  OPENCLAW_GATEWAY_DISABLED: z.coerce.boolean().default(false),
+  OPENCLAW_GATEWAY_DISABLED: EnvBool,
   OPENCLAW_TOOLS_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
 
-  WEB_PUSH_ENABLED: z.coerce.boolean().default(false),
+  WEB_PUSH_ENABLED: EnvBool,
   WEB_PUSH_PUBLIC_KEY: z.string().optional(),
   WEB_PUSH_PRIVATE_KEY: z.string().optional(),
   WEB_PUSH_SUBJECT: z.string().optional(),
@@ -106,6 +121,13 @@ if (webPushEnabled) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function pbDateForFilter(date: Date) {
+  // PocketBase stores date fields like "YYYY-MM-DD HH:MM:SS.sssZ" (space separator),
+  // while JS Date#toISOString uses "T". If we compare mismatched formats in PB filters
+  // we can accidentally treat future leases as already expired (token-melting spam).
+  return date.toISOString().replace('T', ' ');
 }
 
 function minutesFromNow(mins: number) {
@@ -672,7 +694,7 @@ async function enforceLeases(token: string) {
   const q = new URLSearchParams({
     page: '1',
     perPage: '50',
-    filter: `status = "in_progress" && leaseExpiresAt != "" && leaseExpiresAt < "${now.toISOString()}"`,
+    filter: `status = "in_progress" && leaseExpiresAt != "" && leaseExpiresAt < "${pbDateForFilter(now)}"`,
   });
   const due = await pbFetch(`/api/collections/tasks/records?${q.toString()}`, { token });
 
@@ -770,7 +792,7 @@ async function maybeStandup(token: string) {
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
 
-  const completed = await pbFetch(`/api/collections/tasks/records?page=1&perPage=200&filter=${encodeURIComponent(`status = "done" && lastProgressAt >= "${start.toISOString()}"`)}`, { token });
+  const completed = await pbFetch(`/api/collections/tasks/records?page=1&perPage=200&filter=${encodeURIComponent(`status = "done" && lastProgressAt >= "${pbDateForFilter(start)}"`)}`, { token });
   const inProgress = await pbFetch('/api/collections/tasks/records?page=1&perPage=200&filter=status%20=%20"in_progress"', { token });
   const review = await pbFetch('/api/collections/tasks/records?page=1&perPage=200&filter=status%20=%20"review"', { token });
   const blocked = await pbFetch('/api/collections/tasks/records?page=1&perPage=200&filter=status%20=%20"blocked"', { token });

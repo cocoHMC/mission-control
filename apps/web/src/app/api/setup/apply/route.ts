@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { promises as fs } from 'node:fs';
 import { findRepoRoot, isAdminAuthConfigured, isLoopbackHost, writeEnvFromTemplate } from '@/app/api/setup/_shared';
 
 const execFileAsync = promisify(execFile);
@@ -93,7 +94,8 @@ export async function POST(req: NextRequest) {
     if (bad(body.openclawGatewayToken)) return NextResponse.json({ error: 'Missing openclawGatewayToken' }, { status: 400 });
   }
 
-  const rootDir = await findRepoRoot();
+  const appDir = process.env.MC_APP_DIR ? path.resolve(process.env.MC_APP_DIR) : await findRepoRoot();
+  const dataDir = process.env.MC_DATA_DIR ? path.resolve(process.env.MC_DATA_DIR) : appDir;
   const pbUrl = normalizeUrl(body.pbUrl || 'http://127.0.0.1:8090');
   const pbAdminEmail = (body.pbAdminEmail || derivePbAdminEmail(body.mcAdminUser)).trim();
   const pbAdminPassword =
@@ -123,7 +125,7 @@ export async function POST(req: NextRequest) {
   replacements.set('MC_GATEWAY_HOST_HINT', body.gatewayHostHint?.trim() || '');
   replacements.set('MC_GATEWAY_PORT_HINT', body.gatewayPortHint?.trim() || '18789');
 
-  const envPath = await writeEnvFromTemplate(rootDir, replacements);
+  const envPath = await writeEnvFromTemplate(appDir, replacements);
 
   // Ensure PocketBase is reachable before attempting to bootstrap.
   try {
@@ -136,11 +138,12 @@ export async function POST(req: NextRequest) {
   }
 
   // Create/Upsert the PocketBase superuser using the local binary if available.
-  const pbBin = process.platform === 'win32' ? path.join(rootDir, 'pb', 'pocketbase.exe') : path.join(rootDir, 'pb', 'pocketbase');
-  const pbDataDir = path.join(rootDir, 'pb', 'pb_data');
+  const pbBin = process.platform === 'win32' ? path.join(appDir, 'pb', 'pocketbase.exe') : path.join(appDir, 'pb', 'pocketbase');
+  const pbDataDir = path.join(dataDir, 'pb', 'pb_data');
+  await fs.mkdir(pbDataDir, { recursive: true });
   try {
     await execFileAsync(pbBin, ['superuser', 'upsert', pbAdminEmail, pbAdminPassword, '--dir', pbDataDir], {
-      cwd: rootDir,
+      cwd: appDir,
     });
   } catch (err: unknown) {
     // This is optional for Docker-based PB. If the binary isn't available, the user can create a superuser via /_/.
@@ -172,9 +175,9 @@ export async function POST(req: NextRequest) {
   // Bootstrap schema and seed lead agent.
   const nodeBin = process.execPath;
   try {
-    await execFileAsync(nodeBin, ['scripts/pb_bootstrap.mjs'], { cwd: rootDir, env: childEnv });
-    await execFileAsync(nodeBin, ['scripts/pb_set_rules.mjs'], { cwd: rootDir, env: childEnv });
-    await execFileAsync(nodeBin, ['scripts/pb_backfill_vnext.mjs'], { cwd: rootDir, env: childEnv });
+    await execFileAsync(nodeBin, [path.join(appDir, 'scripts', 'pb_bootstrap.mjs')], { cwd: appDir, env: childEnv });
+    await execFileAsync(nodeBin, [path.join(appDir, 'scripts', 'pb_set_rules.mjs')], { cwd: appDir, env: childEnv });
+    await execFileAsync(nodeBin, [path.join(appDir, 'scripts', 'pb_backfill_vnext.mjs')], { cwd: appDir, env: childEnv });
   } catch (err: unknown) {
     const anyErr = err as { message?: string; stderr?: string; stdout?: string };
     const message = anyErr?.stderr || anyErr?.stdout || anyErr?.message || 'Bootstrap failed';

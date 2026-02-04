@@ -27,7 +27,7 @@ export default async function TasksPage() {
   return (
     <AppShell>
       <Topbar title="Tasks" subtitle="Kanban control with lease enforcement." actionHref="/tasks/new" actionLabel="New task" />
-      <div className="mt-8">
+      <div className="mt-4 sm:mt-8">
         <TaskBoard initialTasks={tasks.items ?? []} agents={agents.items ?? []} nodes={nodes.items ?? []} />
       </div>
     </AppShell>

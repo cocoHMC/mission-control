@@ -13,7 +13,7 @@ export default async function AgentsPage() {
   return (
     <AppShell>
       <Topbar title="Agents" subtitle={`Lead agent: ${leadName}. Add more agents when ready.`} />
-      <div className="mt-8">
+      <div className="mt-4 sm:mt-8">
         <AgentsGrid initialAgents={agents} />
       </div>
     </AppShell>

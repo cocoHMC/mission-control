@@ -21,7 +21,7 @@ export default async function NewTaskPage() {
   return (
     <AppShell>
       <Topbar title="New Task" subtitle="Create a task with clear ownership." />
-      <div className="mt-8 max-w-3xl">
+      <div className="mt-4 max-w-3xl sm:mt-8">
         <Card>
           <CardHeader>
             <CardTitle>Task details</CardTitle>
