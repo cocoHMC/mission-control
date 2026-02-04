@@ -55,7 +55,7 @@ const Env = z.object({
   MC_STANDUP_HOUR: z.coerce.number().int().min(0).max(23).default(23),
   MC_STANDUP_MINUTE: z.coerce.number().int().min(0).max(59).default(30),
 
-  MC_NODE_SNAPSHOT_MODE: z.enum(['off', 'cli']).default('off'),
+  MC_NODE_SNAPSHOT_MODE: z.enum(['off', 'cli']).default('cli'),
   MC_NODE_SNAPSHOT_MINUTES: z.coerce.number().int().positive().default(10),
   MC_NODE_SNAPSHOT_CMD: z.string().optional(),
   OPENCLAW_CLI: z.string().optional(),
@@ -844,16 +844,24 @@ async function maybeStandup(token: string) {
 }
 
 async function snapshotNodes(token: string) {
+  if (env.OPENCLAW_GATEWAY_DISABLED) return;
   if (env.MC_NODE_SNAPSHOT_MODE === 'off') return;
 
-  const cmd = env.MC_NODE_SNAPSHOT_CMD || `${env.OPENCLAW_CLI || 'openclaw'} nodes list --json`;
+  // `nodes status` returns the connected/paired nodes list (what the dashboard shows).
+  const cmd = env.MC_NODE_SNAPSHOT_CMD || `${env.OPENCLAW_CLI || 'openclaw'} nodes status --json`;
   try {
-    const { stdout } = await execAsync(cmd);
-    const list = JSON.parse(stdout);
+    const childEnv: NodeJS.ProcessEnv = { ...process.env };
+    // Packaged desktop apps often have a minimal PATH, so include common locations.
+    if (process.platform === 'darwin') {
+      childEnv.PATH = [childEnv.PATH || '', '/usr/local/bin', '/opt/homebrew/bin'].filter(Boolean).join(':');
+    }
+    const { stdout } = await execAsync(cmd, { env: childEnv, timeout: 15_000, maxBuffer: 5 * 1024 * 1024 });
+    const parsed = JSON.parse(stdout);
+    const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.nodes) ? parsed.nodes : Array.isArray(parsed?.paired) ? parsed.paired : [];
     if (!Array.isArray(list)) return;
 
     for (const node of list) {
-      const nodeId = node.id || node.nodeId || node.name;
+      const nodeId = (node as any).nodeId || (node as any).id || (node as any).name;
       if (!nodeId) continue;
 
       const q = new URLSearchParams({ page: '1', perPage: '1', filter: `nodeId = "${nodeId}"` });
@@ -861,14 +869,24 @@ async function snapshotNodes(token: string) {
 
       const payload = {
         nodeId,
-        displayName: node.displayName || node.name || nodeId,
-        paired: node.paired ?? true,
-        lastSeenAt: node.lastSeenAt || nowIso(),
-        os: node.os || node.platform || 'unknown',
-        arch: node.arch || node.architecture || 'unknown',
-        capabilities: node.capabilities || {},
-        execPolicy: node.execPolicy || 'deny',
-        allowlistSummary: node.allowlistSummary || '',
+        displayName: (node as any).displayName || (node as any).name || nodeId,
+        paired: (node as any).paired ?? true,
+        lastSeenAt: (node as any).lastSeenAt || nowIso(),
+        os: (node as any).os || (node as any).platform || 'unknown',
+        arch: (node as any).arch || (node as any).architecture || 'unknown',
+        // Store the full node status snapshot for debugging and UI upgrades.
+        capabilities:
+          (node as any).capabilities || {
+            remoteIp: (node as any).remoteIp,
+            version: (node as any).version,
+            caps: (node as any).caps,
+            commands: (node as any).commands,
+            connected: (node as any).connected,
+            connectedAtMs: (node as any).connectedAtMs,
+            pathEnv: (node as any).pathEnv,
+          },
+        execPolicy: (node as any).execPolicy || 'deny',
+        allowlistSummary: (node as any).allowlistSummary || '',
       };
 
       if (existing?.items?.length) {

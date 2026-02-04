@@ -6,8 +6,7 @@ services:
     depends_on:
       - pb
     ports:
-      # Bind to loopback by default; expose via Tailscale/LAN as you choose.
-      - "127.0.0.1:4011:4011"
+      - "100.64.0.2:4011:4011"
     volumes:
       # Live-edit source on the host without rebuilding the image.
       - ./apps/web:/repo/apps/web

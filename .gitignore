@@ -14,3 +14,10 @@ apps/*/node_modules/
 dist/
 release/
 .next/
+
+# Local build/progress artifacts (may contain machine-specific info)
+docs/BUILD_STATUS.json
+docs/PROGRESS.log
+apps/web/dev.log
+ops/proof_of_work.sh
+ops/proof_ping.sh

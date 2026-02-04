@@ -7,6 +7,7 @@ import { pbFetch } from '@/lib/pbServer';
 import { formatShortDate } from '@/lib/utils';
 import type { NodeRecord, PBList } from '@/lib/types';
 import { NodeActions } from '@/app/nodes/NodeActions';
+import { NodeSync } from '@/app/nodes/NodeSync';
 
 export default async function NodesPage() {
   const q = new URLSearchParams({ page: '1', perPage: '200', sort: 'displayName' });
@@ -27,7 +28,10 @@ export default async function NodesPage() {
       <div className="mt-4 grid gap-6 sm:mt-8 lg:grid-cols-[2fr,1fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Connected nodes</CardTitle>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle>Connected nodes</CardTitle>
+              <NodeSync />
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {nodes.map((node) => (
@@ -43,7 +47,11 @@ export default async function NodesPage() {
                 <div className="mt-1 text-xs text-muted">Exec policy: {node.execPolicy ?? 'deny'}</div>
               </div>
             ))}
-            {!nodes.length && <div className="text-sm text-muted">No nodes paired yet.</div>}
+            {!nodes.length && (
+              <div className="text-sm text-muted">
+                No nodes synced yet. Click <span className="font-medium text-[var(--foreground)]">Sync from OpenClaw</span>.
+              </div>
+            )}
           </CardContent>
         </Card>
 

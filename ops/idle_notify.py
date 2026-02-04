@@ -6,7 +6,7 @@ import time
 from glob import glob
 from datetime import datetime, timezone
 
-OWNER = os.environ.get("IDLE_NOTIFY_TO", "")
+OWNER = os.environ.get("IDLE_NOTIFY_TO", "+12508697880")
 IDLE_MINUTES = int(os.environ.get("IDLE_NOTIFY_MINUTES", "15"))
 CHECK_EVERY_SECONDS = int(os.environ.get("IDLE_NOTIFY_CHECK_EVERY_SECONDS", "300"))
 STATE_PATH = os.path.expanduser(os.environ.get(
@@ -106,8 +106,6 @@ def save_state(st):
 
 def send_imessage(text: str):
   # Uses the same imsg CLI OpenClaw is configured with.
-  if not OWNER:
-    return
   subprocess.run([
     "imsg", "send",
     "--to", OWNER,
