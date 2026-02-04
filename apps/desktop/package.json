@@ -1,7 +1,7 @@
 {
   "name": "@mission-control/desktop",
   "private": true,
-  "version": "0.1.21",
+  "version": "0.1.22",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
@@ -97,7 +97,8 @@
       {
         "provider": "github",
         "owner": "cocoHMC",
-        "repo": "mission-control"
+        "repo": "mission-control",
+        "releaseType": "release"
       }
     ]
   }
