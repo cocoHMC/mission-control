@@ -6,6 +6,7 @@ import { WebNotifications } from '@/app/settings/WebNotifications';
 import { SetupChecklist } from '@/app/settings/SetupChecklist';
 import { TailscaleStatusCard } from '@/app/settings/TailscaleStatus';
 import { DesktopUpdates } from '@/app/settings/DesktopUpdates';
+import { OpenClawIntegration } from '@/app/settings/OpenClawIntegration';
 
 export default function SettingsPage() {
   const leadName = process.env.MC_LEAD_AGENT_NAME || process.env.MC_LEAD_AGENT_ID || 'Lead';
@@ -30,6 +31,7 @@ export default function SettingsPage() {
           gatewayPortHint={gatewayPortHint}
         />
         <TailscaleStatusCard webPort={webPort} />
+        <OpenClawIntegration />
         <Card>
           <CardHeader>
             <CardTitle>Theme</CardTitle>
@@ -68,7 +70,7 @@ export default function SettingsPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Web Notifications</CardTitle>
+            <CardTitle>Notifications</CardTitle>
           </CardHeader>
           <CardContent>
             <WebNotifications />

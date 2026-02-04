@@ -9,6 +9,14 @@ type VapidResponse = {
   enabled?: boolean;
 };
 
+type GenerateResponse = {
+  ok?: boolean;
+  alreadyConfigured?: boolean;
+  restartRequired?: boolean;
+  restartMode?: 'auto' | 'manual';
+  error?: string;
+};
+
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -25,12 +33,24 @@ export function WebNotifications() {
   const [deviceLabel, setDeviceLabel] = React.useState('');
   const [status, setStatus] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
+  const [vapid, setVapid] = React.useState<VapidResponse | null>(null);
+  const [configuringKeys, setConfiguringKeys] = React.useState(false);
 
   React.useEffect(() => {
     const ok = typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
     setSupported(ok);
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setPermission(Notification.permission);
+    }
+  }, []);
+
+  const refreshVapid = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/notifications/vapid', { cache: 'no-store' });
+      const json = (await res.json()) as VapidResponse;
+      setVapid(json);
+    } catch {
+      setVapid(null);
     }
   }, []);
 
@@ -46,8 +66,32 @@ export function WebNotifications() {
   }, [getRegistration, supported]);
 
   React.useEffect(() => {
-    if (supported) void refreshSubscription();
-  }, [refreshSubscription, supported]);
+    if (supported) {
+      void refreshSubscription();
+      void refreshVapid();
+    }
+  }, [refreshSubscription, refreshVapid, supported]);
+
+  async function configurePushKeys() {
+    setStatus(null);
+    setConfiguringKeys(true);
+    try {
+      const res = await fetch('/api/notifications/vapid/generate', { method: 'POST', headers: { 'content-type': 'application/json' } });
+      const json = (await res.json()) as GenerateResponse;
+      if (!res.ok || !json?.ok) throw new Error(json?.error || 'Failed to configure push keys');
+      setStatus(
+        json.restartMode === 'auto'
+          ? 'Push keys configured. Restarting Mission Control now…'
+          : 'Push keys configured. Restart Mission Control to enable web push.'
+      );
+      await refreshVapid();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setStatus(message || 'Failed to configure push keys.');
+    } finally {
+      setConfiguringKeys(false);
+    }
+  }
 
   async function enableNotifications() {
     if (!supported) return;
@@ -63,8 +107,9 @@ export function WebNotifications() {
 
       const vapidRes = await fetch('/api/notifications/vapid', { headers: { 'content-type': 'application/json' } });
       const vapid = (await vapidRes.json()) as VapidResponse;
+      setVapid(vapid);
       if (!vapid.publicKey || !vapid.enabled) {
-        setStatus('Push keys are not configured. Ask the admin to set WEB_PUSH_* in .env.');
+        setStatus('Push keys are not configured yet. Go to Settings → Notifications and click “Configure push keys”.');
         return;
       }
 
@@ -132,8 +177,16 @@ export function WebNotifications() {
 
   return (
     <div className="space-y-3 text-sm text-muted">
-      <div>Enable push notifications for this device. Works on installed PWAs (iOS, Android, desktop).</div>
+      <div>Enable notifications for this device (native OS notifications). Works on installed PWAs (iOS, Android, desktop).</div>
       {!supported ? <div className="text-xs text-red-600">This browser does not support web push.</div> : null}
+      {supported && vapid && !vapid.enabled ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={configurePushKeys} disabled={configuringKeys || loading}>
+            {configuringKeys ? 'Configuring…' : 'Configure push keys'}
+          </Button>
+          <div className="text-xs text-muted">Admin-only. Creates VAPID keys and restarts services if supported.</div>
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         <Input
           value={deviceLabel}

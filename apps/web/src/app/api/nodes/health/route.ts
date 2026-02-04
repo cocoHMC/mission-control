@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { exec, execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
+import { requireAdminAuth } from '@/lib/adminAuth';
+import { extraPathEntries, resolveOpenClawBin, runOpenClaw } from '@/app/api/openclaw/cli';
 
-const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
 
 function actionsEnabled() {
@@ -19,6 +19,9 @@ function allowedCommands() {
 }
 
 export async function POST(req: NextRequest) {
+  const guard = requireAdminAuth(req);
+  if (guard) return guard;
+
   if (!actionsEnabled()) {
     return NextResponse.json({ error: 'Node actions disabled' }, { status: 403 });
   }
@@ -33,28 +36,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Command not allowed. Allowed: ${allowed.join(', ')}` }, { status: 400 });
   }
 
-  const cli = process.env.OPENCLAW_CLI || 'openclaw';
-  if (cli.includes('/') && !existsSync(cli)) {
-    return NextResponse.json({ error: `OPENCLAW_CLI not found at ${cli}` }, { status: 500 });
-  }
   try {
+    const cli = await resolveOpenClawBin();
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    env.PATH = [env.PATH || '', ...extraPathEntries()].filter(Boolean).join(':');
+
     const template = process.env.MC_NODE_HEALTH_CMD_TEMPLATE;
     if (template) {
       const command = template
         .replace(/\{cli\}/g, cli)
         .replace(/\{node\}/g, String(nodeId))
         .replace(/\{cmd\}/g, cmd);
-      const { stdout } = await execAsync(command);
+      const { stdout } = await execAsync(command, { env });
       return NextResponse.json({ ok: true, output: stdout });
     }
 
-    try {
-      const { stdout } = await execFileAsync(cli, ['nodes', 'exec', '--node', String(nodeId), '--cmd', cmd, '--json']);
-      return NextResponse.json({ ok: true, output: stdout });
-    } catch {
-      const { stdout } = await execFileAsync(cli, ['nodes', 'exec', '--id', String(nodeId), '--cmd', cmd, '--json']);
-      return NextResponse.json({ ok: true, output: stdout });
-    }
+    const primary = await runOpenClaw(['nodes', 'exec', '--node', String(nodeId), '--cmd', cmd, '--json'], { timeoutMs: 20_000 });
+    if (primary.ok) return NextResponse.json({ ok: true, output: primary.stdout });
+    const fallback = await runOpenClaw(['nodes', 'exec', '--id', String(nodeId), '--cmd', cmd, '--json'], { timeoutMs: 20_000 });
+    if (fallback.ok) return NextResponse.json({ ok: true, output: fallback.stdout });
+    throw new Error((fallback.stderr || fallback.stdout || primary.stderr || primary.stdout || fallback.message || primary.message || 'Failed to run health command').trim());
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to run health command';
     return NextResponse.json({ error: message }, { status: 500 });

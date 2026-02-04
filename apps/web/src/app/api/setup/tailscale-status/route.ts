@@ -25,12 +25,17 @@ function extraPathEntries() {
 async function resolveTailscaleBin() {
   // Prefer whatever is on PATH, but GUI-launched apps on macOS often have a minimal PATH.
   // We fall back to common install locations.
-  const candidates = ['tailscale'];
+  const candidates: string[] = [];
   if (process.platform === 'darwin') {
-    candidates.push('/usr/local/bin/tailscale', '/opt/homebrew/bin/tailscale');
+    candidates.push(
+      '/usr/local/bin/tailscale',
+      '/opt/homebrew/bin/tailscale',
+      '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
+    );
   } else if (process.platform === 'linux') {
     candidates.push('/usr/bin/tailscale', '/usr/local/bin/tailscale');
   }
+  candidates.push('tailscale');
 
   for (const c of candidates) {
     if (c === 'tailscale') return c;
