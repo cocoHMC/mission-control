@@ -8,12 +8,18 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-desktop
+  cancel-in-progress: false
+
 jobs:
   mac:
     runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -25,6 +31,13 @@ jobs:
 
       - name: Pin pnpm
         run: corepack prepare pnpm@10.28.2 --activate
+
+      - name: Set Desktop Version From Tag
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          node -e "const fs=require('fs'); const p='apps/desktop/package.json'; const pkg=JSON.parse(fs.readFileSync(p,'utf8')); pkg.version=process.env.APP_VERSION; fs.writeFileSync(p, JSON.stringify(pkg,null,2)+'\\n'); console.log('desktop version ->', pkg.version);"
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
@@ -41,3 +54,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm -C apps/desktop exec electron-builder --mac dmg --arm64 --x64 --publish always
+
+      - name: Update Release Notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          PREV="$(git tag --list 'v*' --sort=-v:refname | grep -v "^${TAG}$" | head -n 1 || true)"
+          if [ -n "$PREV" ]; then
+            NOTES="$(git log --pretty=format:'- %s (%h)' "${PREV}..${TAG}")"
+          else
+            NOTES="$(git log --pretty=format:'- %s (%h)' "${TAG}")"
+          fi
+          gh release edit "$TAG" --title "$TAG" --notes "$NOTES"

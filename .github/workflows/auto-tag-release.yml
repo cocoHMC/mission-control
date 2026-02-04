@@ -1,0 +1,55 @@
+name: Auto Tag Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-tag-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute Next Tag
+        id: next
+        run: |
+          set -euo pipefail
+
+          if git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' >/dev/null; then
+            echo "already_tagged=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          last="$(git tag --list 'v*' --sort=-v:refname | head -n 1 || true)"
+          if [ -z "$last" ]; then
+            major=0
+            minor=1
+            patch=0
+          else
+            ver="${last#v}"
+            IFS='.' read -r major minor patch <<< "$ver"
+          fi
+
+          patch=$((patch+1))
+          next="v${major}.${minor}.${patch}"
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Create + Push Tag
+        if: steps.next.outputs.already_tagged != 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.next.outputs.tag }}"
+          git push origin "${{ steps.next.outputs.tag }}"
