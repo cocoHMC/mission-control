@@ -29,8 +29,10 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install PocketBase Binary (for packaging)
-        run: bash scripts/pb_install.sh
+      - name: Download PocketBase Binaries (macOS x64 + arm64)
+        run: |
+          PB_ARCH=amd64 PB_BIN_PATH=pb/pocketbase-darwin-amd64 bash scripts/pb_install.sh
+          PB_ARCH=arm64 PB_BIN_PATH=pb/pocketbase-darwin-arm64 bash scripts/pb_install.sh
 
       - name: Build Web + Worker + Desktop
         run: pnpm -r build
@@ -38,4 +40,4 @@ jobs:
       - name: Build + Publish Desktop DMGs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm -C apps/desktop dist:mac:publish
+        run: pnpm -C apps/desktop exec electron-builder --mac dmg --arm64 --x64 --publish always

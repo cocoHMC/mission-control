@@ -5,6 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 PB_VERSION="${PB_VERSION:-0.36.2}"
+# Optional overrides (useful for CI cross-builds).
+PB_OS_OVERRIDE="${PB_OS:-}"
+PB_ARCH_OVERRIDE="${PB_ARCH:-}"
+PB_BIN_PATH_OVERRIDE="${PB_BIN_PATH:-}"
 PB_DIR="$ROOT_DIR/pb"
 
 uname_s="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -23,10 +27,32 @@ case "$uname_m" in
   *) echo "Unsupported CPU arch: $uname_m" >&2; exit 1 ;;
 esac
 
+if [ -n "$PB_OS_OVERRIDE" ]; then
+  os="$PB_OS_OVERRIDE"
+fi
+
+if [ -n "$PB_ARCH_OVERRIDE" ]; then
+  arch="$PB_ARCH_OVERRIDE"
+fi
+
+case "$os" in
+  darwin|linux|windows) ;;
+  *) echo "Unsupported PB_OS: $os (expected darwin|linux|windows)" >&2; exit 1 ;;
+esac
+
+case "$arch" in
+  amd64|arm64) ;;
+  *) echo "Unsupported PB_ARCH: $arch (expected amd64|arm64)" >&2; exit 1 ;;
+esac
+
 if [ "$os" = "windows" ]; then
   PB_BIN="$PB_DIR/pocketbase.exe"
 else
   PB_BIN="$PB_DIR/pocketbase"
+fi
+
+if [ -n "$PB_BIN_PATH_OVERRIDE" ]; then
+  PB_BIN="$ROOT_DIR/$PB_BIN_PATH_OVERRIDE"
 fi
 
 if [ -x "$PB_BIN" ]; then
@@ -66,4 +92,3 @@ fi
 
 echo "Installed PocketBase at $PB_BIN"
 "$PB_BIN" --version
-
