@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: auto-tag-release
@@ -53,3 +54,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag "${{ steps.next.outputs.tag }}"
           git push origin "${{ steps.next.outputs.tag }}"
+
+      - name: Trigger Release Workflows
+        if: steps.next.outputs.already_tagged != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.next.outputs.tag }}"
+          # Tag pushes created by GITHUB_TOKEN don’t trigger other workflows.
+          # Explicitly dispatch the artifact pipelines against the tag ref.
+          gh workflow run release-desktop.yml --ref "$TAG"
+          gh workflow run publish-docker.yml --ref "$TAG"
