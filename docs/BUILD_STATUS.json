@@ -1,5 +1,0 @@
-{
-  "lastTurnAt": "2026-02-02T19:13:28Z",
-  "lastSummary": "Refactored task create + claim routes to use ensureTaskSubscription (deduped upsert) consistently for assignees; ensured new messages notify task subscribers (excluding author + mentions). Added minimal apps/worker ESLint v9 config so workspace lint passes. Verified via pnpm -r lint and apps/web build; ran ops/proof_of_work.sh.",
-  "nextPlanned": "Subscriptions + notification dedupe keys; shadcn UI + drag/drop kanban; task detail deliverables/docs; worker lease enforcement + standup; nodes UI."
-}
