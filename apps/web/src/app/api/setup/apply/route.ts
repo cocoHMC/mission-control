@@ -176,6 +176,7 @@ export async function POST(req: NextRequest) {
   const nodeBin = process.execPath;
   try {
     await execFileAsync(nodeBin, [path.join(appDir, 'scripts', 'pb_bootstrap.mjs')], { cwd: appDir, env: childEnv });
+    await execFileAsync(nodeBin, [path.join(appDir, 'scripts', 'pb_set_settings.mjs')], { cwd: appDir, env: childEnv });
     await execFileAsync(nodeBin, [path.join(appDir, 'scripts', 'pb_set_rules.mjs')], { cwd: appDir, env: childEnv });
     await execFileAsync(nodeBin, [path.join(appDir, 'scripts', 'pb_backfill_vnext.mjs')], { cwd: appDir, env: childEnv });
   } catch (err: unknown) {

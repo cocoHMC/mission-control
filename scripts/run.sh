@@ -93,6 +93,7 @@ console.log(needs ? "1" : "0");
     # A partially bootstrapped PB (e.g., service user password mismatch) leads to
     # "works in UI, but agents can't authenticate" failures and token-wasting loops.
     if "$DOTENV_BIN" -e "$ENV_PATH" -- node "$ROOT_DIR/scripts/pb_bootstrap.mjs"; then
+      "$DOTENV_BIN" -e "$ENV_PATH" -- node "$ROOT_DIR/scripts/pb_set_settings.mjs" || true
       "$DOTENV_BIN" -e "$ENV_PATH" -- node "$ROOT_DIR/scripts/pb_set_rules.mjs" || true
       "$DOTENV_BIN" -e "$ENV_PATH" -- node "$ROOT_DIR/scripts/pb_backfill_vnext.mjs" || true
     else

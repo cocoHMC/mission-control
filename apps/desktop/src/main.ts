@@ -470,6 +470,7 @@ async function startStack() {
     const scriptsDir = path.join(root, 'scripts');
     try {
       await runNodeOnce(path.join(scriptsDir, 'pb_bootstrap.mjs'), [], { cwd: root, env: envForChildren, name: 'pb_bootstrap' });
+      await runNodeOnce(path.join(scriptsDir, 'pb_set_settings.mjs'), [], { cwd: root, env: envForChildren, name: 'pb_set_settings' });
       await runNodeOnce(path.join(scriptsDir, 'pb_set_rules.mjs'), [], { cwd: root, env: envForChildren, name: 'pb_set_rules' });
       await runNodeOnce(path.join(scriptsDir, 'pb_backfill_vnext.mjs'), [], { cwd: root, env: envForChildren, name: 'pb_backfill' });
     } catch (err) {

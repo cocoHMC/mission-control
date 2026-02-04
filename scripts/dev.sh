@@ -71,6 +71,7 @@ console.log(needs ? "1" : "0");
     echo "Setup required. Open: http://127.0.0.1:${MC_WEB_PORT:-4010}/setup"
   else
     node "$ROOT_DIR/scripts/pb_bootstrap.mjs"
+    node "$ROOT_DIR/scripts/pb_set_settings.mjs" || true
     node "$ROOT_DIR/scripts/pb_set_rules.mjs" || true
     node "$ROOT_DIR/scripts/pb_backfill_vnext.mjs" || true
   fi
