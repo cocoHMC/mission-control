@@ -51,10 +51,10 @@ jobs:
       - name: Build Web + Worker + Desktop
         run: pnpm -r build
 
-      - name: Build + Publish Desktop DMGs
+      - name: Build + Publish Desktop (DMG + ZIP)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm -C apps/desktop exec electron-builder --mac dmg --arm64 --x64 --publish always
+        run: pnpm -C apps/desktop exec electron-builder --mac dmg zip --arm64 --x64 --publish always
 
       - name: Update Release Notes
         env:

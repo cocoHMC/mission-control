@@ -8,8 +8,8 @@
     "dev": "pnpm -w build && tsc -p tsconfig.json && electron .",
     "build": "tsc -p tsconfig.json",
     "start": "electron .",
-    "dist:mac": "pnpm -w build && pnpm build && electron-builder --mac dmg",
-    "dist:mac:publish": "pnpm -w build && pnpm build && electron-builder --mac dmg --publish always"
+    "dist:mac": "pnpm -w build && pnpm build && electron-builder --mac dmg zip",
+    "dist:mac:publish": "pnpm -w build && pnpm build && electron-builder --mac dmg zip --publish always"
   },
   "dependencies": {
     "electron-log": "^5.4.0",
@@ -87,7 +87,8 @@
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ]
     },
     "dmg": {
