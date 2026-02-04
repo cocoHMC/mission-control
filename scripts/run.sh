@@ -89,9 +89,16 @@ console.log(needs ? "1" : "0");
   if [ "$NEEDS_SETUP" = "1" ]; then
     echo "Setup required. Open: http://127.0.0.1:${MC_WEB_PORT:-4010}/setup"
   else
-    "$DOTENV_BIN" -e "$ENV_PATH" -- node "$ROOT_DIR/scripts/pb_bootstrap.mjs" || true
-    "$DOTENV_BIN" -e "$ENV_PATH" -- node "$ROOT_DIR/scripts/pb_set_rules.mjs" || true
-    "$DOTENV_BIN" -e "$ENV_PATH" -- node "$ROOT_DIR/scripts/pb_backfill_vnext.mjs" || true
+    # IMPORTANT: If PocketBase bootstrap fails, do NOT start the worker.
+    # A partially bootstrapped PB (e.g., service user password mismatch) leads to
+    # "works in UI, but agents can't authenticate" failures and token-wasting loops.
+    if "$DOTENV_BIN" -e "$ENV_PATH" -- node "$ROOT_DIR/scripts/pb_bootstrap.mjs"; then
+      "$DOTENV_BIN" -e "$ENV_PATH" -- node "$ROOT_DIR/scripts/pb_set_rules.mjs" || true
+      "$DOTENV_BIN" -e "$ENV_PATH" -- node "$ROOT_DIR/scripts/pb_backfill_vnext.mjs" || true
+    else
+      echo "[mission-control] pb_bootstrap failed; forcing setup mode. Open: http://127.0.0.1:${MC_WEB_PORT:-4010}/setup" >&2
+      NEEDS_SETUP="1"
+    fi
   fi
 
   if [ "$NEEDS_SETUP" != "1" ]; then
@@ -124,4 +131,3 @@ console.log(needs ? "1" : "0");
 
   exit "$WEB_EXIT"
 done
-

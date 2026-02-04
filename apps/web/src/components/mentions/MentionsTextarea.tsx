@@ -9,7 +9,7 @@ export type Mentionable = { id: string; label: string };
 function findMentionTrigger(value: string, caret: number) {
   const upto = value.slice(0, caret);
   // Match @mentions only when they are at the start of the string or preceded by a non-word char.
-  // This avoids false positives inside email addresses like `kyle@hmcf.ca`.
+  // This avoids false positives inside email addresses like `name@example.com`.
   const regex = /(^|[^a-zA-Z0-9_])@([a-zA-Z0-9_-]{0,64})$/;
   const match = regex.exec(upto);
   if (!match) return null;
@@ -165,4 +165,3 @@ export function MentionsTextarea({
     </div>
   );
 }
-

@@ -271,7 +271,7 @@ function normalizeAgentId(agentId?: string | null) {
   const byRecord = agentByRecordId.get(agentId);
   if (byRecord) return byRecord.openclawAgentId || byRecord.id || agentId;
   // Hard guardrail: never create notifications for unknown agent IDs.
-  // Otherwise, typos (or email addresses like kyle@hmcf.ca) can spawn
+  // Otherwise, typos (or email addresses like name@example.com) can spawn
   // unintended OpenClaw agents and burn tokens.
   return null;
 }
@@ -487,7 +487,7 @@ async function deliverPendingNotifications(token: string) {
 
 function extractMentions(content: string) {
   const mentions = new Set<string>();
-  // Avoid false positives for email addresses like "kyle@hmcf.ca".
+  // Avoid false positives for email addresses like "name@example.com".
   // We only treat @mentions as such when they are at the start of the string
   // or preceded by a non-word character.
   const regex = /(^|[^a-zA-Z0-9_])@([a-zA-Z0-9_-]{1,64})/g;
@@ -572,7 +572,17 @@ async function handleTaskEvent(token: string, record: any, action: string) {
   for (const agentId of nextAssignees) {
     if (!prevAssignees.has(agentId)) {
       await ensureTaskSubscription(token, record.id, agentId, 'assigned');
-      const desc = String(record.description || '').trim();
+      let desc = String(record.description || '').trim();
+      if (!desc) {
+        // PocketBase realtime payloads can occasionally omit large fields depending on transport/version.
+        // Fetch the record once so the assignee always receives enough context to act without opening the UI.
+        try {
+          const fetched = await pbFetch(`/api/collections/tasks/records/${record.id}`, { token });
+          desc = String(fetched?.description || '').trim();
+        } catch {
+          // ignore description fetch errors (we'll fall back to title-only notification)
+        }
+      }
       const snippetLimit = 220;
       const snippet = desc ? (desc.length > snippetLimit ? `${desc.slice(0, snippetLimit - 1)}…` : desc) : '';
       const content = snippet ? `Assigned: ${record.title} — ${snippet}` : `Assigned: ${record.title}`;

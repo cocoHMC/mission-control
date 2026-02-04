@@ -3,7 +3,7 @@ import { pbFetch } from '@/lib/pbServer';
 
 function extractMentions(content: string) {
   const mentions = new Set<string>();
-  // Avoid false positives for email addresses like "kyle@hmcf.ca".
+  // Avoid false positives for email addresses like "name@example.com".
   // We only treat @mentions as such when they are at the start of the string
   // or preceded by a non-word character.
   const regex = /(^|[^a-zA-Z0-9_])@([a-zA-Z0-9_-]{1,64})/g;

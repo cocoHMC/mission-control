@@ -117,11 +117,11 @@ Usage:
   missionctl create --title "..." [--desc "..."] [--priority p2] [--assignees lead,dev] [--startAt ISO] [--dueAt ISO] [--requiresReview true|false]
   missionctl claim <taskId> --agent <id>
   missionctl assign <taskId> --assignees coco,dev
-  missionctl say <taskId> --agent <id> --text "..."
+  missionctl say <taskId> --agent <id> (--text "..." | --text-file <path|->)
   missionctl status <taskId> --status <inbox|assigned|in_progress|review|done|blocked>
   missionctl task set <taskId> [--startAt ISO] [--dueAt ISO] [--requiresReview true|false]
   missionctl block <taskId> --agent <id> --reason "..."
-  missionctl doc <taskId> --title "..." --content "..." [--type deliverable]
+  missionctl doc <taskId> --title "..." (--content "..." | --content-file <path|->) [--type deliverable]
   missionctl subtasks list <taskId> [--json]
   missionctl subtasks add <taskId> --title "..."
   missionctl subtasks toggle <subtaskId> [--done true|false]
@@ -289,9 +289,17 @@ async function main() {
   if (cmd === 'say') {
     const taskId = process.argv[3];
     const agent = arg('--agent') || DEFAULT_AGENT;
-    const text = arg('--text');
+    let text = arg('--text');
+    const textFile = arg('--text-file');
     if (!taskId) throw new Error('taskId required');
-    if (!text) throw new Error('--text required');
+    if (!text && textFile) {
+      if (textFile === '-') {
+        text = readFileSync(0, 'utf8');
+      } else {
+        text = readFileSync(resolve(textFile), 'utf8');
+      }
+    }
+    if (!text) throw new Error('--text or --text-file required');
     const now = new Date().toISOString();
     const created = await pb('/api/collections/messages/records', {
       method: 'POST',
@@ -370,11 +378,19 @@ async function main() {
   if (cmd === 'doc') {
     const taskId = process.argv[3];
     const title = arg('--title');
-    const content = arg('--content');
+    let content = arg('--content');
+    const contentFile = arg('--content-file');
     const type = arg('--type') || 'deliverable';
     if (!taskId) throw new Error('taskId required');
     if (!title) throw new Error('--title required');
-    if (!content) throw new Error('--content required');
+    if (!content && contentFile) {
+      if (contentFile === '-') {
+        content = readFileSync(0, 'utf8');
+      } else {
+        content = readFileSync(resolve(contentFile), 'utf8');
+      }
+    }
+    if (!content) throw new Error('--content or --content-file required');
     const now = new Date().toISOString();
     const created = await pb('/api/collections/documents/records', {
       method: 'POST',

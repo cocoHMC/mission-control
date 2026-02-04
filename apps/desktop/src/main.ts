@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import { app, BrowserWindow, Menu, dialog, ipcMain, session } from 'electron';
 import updaterPkg from 'electron-updater';
 import log from 'electron-log';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -33,6 +33,7 @@ let currentWebPort: number | null = null;
 let starting: Promise<void> | null = null;
 let cachedBasicAuth: { user: string; pass: string } | null = null;
 let authHeaderInstalledForPort: number | null = null;
+let menuInstalled = false;
 
 type UpdaterConfig = { githubToken?: string };
 
@@ -358,6 +359,7 @@ function broadcastUpdateState() {
 function setUpdateState(next: UpdateState) {
   updateState = next;
   broadcastUpdateState();
+  refreshMenu();
 }
 
 function setupAutoUpdater() {
@@ -385,14 +387,35 @@ function setupAutoUpdater() {
   );
   autoUpdater.on('update-not-available', (info) => setUpdateState({ status: 'not_available', version: info.version }));
   autoUpdater.on('download-progress', (p) => setUpdateState({ status: 'downloading', percent: p.percent }));
-  autoUpdater.on('update-downloaded', (info) =>
-    setUpdateState({
+  autoUpdater.on('update-downloaded', async (info) => {
+    const next: UpdateState = {
       status: 'downloaded',
       version: info.version,
       releaseName: (info as any).releaseName,
       releaseNotes: typeof (info as any).releaseNotes === 'string' ? (info as any).releaseNotes : undefined,
-    })
-  );
+    };
+    setUpdateState(next);
+
+    // Give the user a clear, low-friction path to apply updates and see what's new.
+    try {
+      const res = await dialog.showMessageBox({
+        type: 'info',
+        title: 'Update Ready',
+        message: `Mission Control ${info.version} is ready to install.`,
+        detail: next.releaseName ? String(next.releaseName) : '',
+        buttons: ["What's New", 'Restart Now', 'Later'],
+        defaultId: 1,
+        cancelId: 2,
+      });
+      if (res.response === 0 && next.releaseNotes) {
+        await showReleaseNotes(`What's New in ${info.version}`, next.releaseNotes);
+      } else if (res.response === 1) {
+        autoUpdater.quitAndInstall();
+      }
+    } catch {
+      // ignore
+    }
+  });
   autoUpdater.on('error', (err) => setUpdateState({ status: 'error', message: err?.message || String(err) }));
 
   ipcMain.handle('mc:getVersion', () => app.getVersion());
@@ -433,6 +456,161 @@ function setupAutoUpdater() {
     autoUpdater.quitAndInstall();
     return { ok: true };
   });
+}
+
+function normalizeReleaseNotes(note?: string) {
+  if (!note) return '';
+  // GitHub releases often send HTML; keep it readable in a plain-text view.
+  return String(note)
+    .replaceAll(/<br\s*\/?>/gi, '\n')
+    .replaceAll(/<[^>]+>/g, '')
+    .trim();
+}
+
+async function showReleaseNotes(title: string, rawNotes: string) {
+  const notes = normalizeReleaseNotes(rawNotes);
+  if (!notes) return;
+
+  // Dialog is good enough for most notes, but keep it scrollable via a BrowserWindow when large.
+  if (notes.length < 2000) {
+    await dialog.showMessageBox({
+      type: 'info',
+      title,
+      message: title,
+      detail: notes,
+      buttons: ['OK'],
+      defaultId: 0,
+    });
+    return;
+  }
+
+  const win = new BrowserWindow({
+    width: 980,
+    height: 760,
+    backgroundColor: '#101010',
+    webPreferences: { contextIsolation: true, nodeIntegration: false },
+  });
+
+  const html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif; background: #0b0b0b; color: #f2f2f2; }
+      .wrap { padding: 22px; }
+      h1 { margin: 0 0 10px; font-size: 18px; letter-spacing: -0.02em; }
+      pre { margin: 0; background: #0f0f0f; border: 1px solid #222; border-radius: 10px; padding: 14px; overflow: auto; white-space: pre-wrap; word-break: break-word; color: #e6e6e6; line-height: 1.4; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>${escapeHtml(title)}</h1>
+      <pre><code>${escapeHtml(notes)}</code></pre>
+    </div>
+  </body>
+</html>`;
+
+  await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  win.show();
+  win.focus();
+}
+
+function refreshMenu() {
+  if (!app.isReady()) return;
+  const tpl: Electron.MenuItemConstructorOptions[] = [];
+
+  const updateAvailable = updateState.status === 'available';
+  const downloaded = updateState.status === 'downloaded';
+  const canShowNotes =
+    (updateAvailable || downloaded) && (updateState as any).releaseNotes && String((updateState as any).releaseNotes).trim().length > 0;
+
+  const updateItems: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: 'Check for Updates…',
+      click: () => {
+        void autoUpdater.checkForUpdates().catch((err) => setUpdateState({ status: 'error', message: err?.message || String(err) }));
+      },
+    },
+    {
+      label: updateAvailable ? 'Download Update…' : 'Download Update…',
+      enabled: updateAvailable,
+      click: () => {
+        void autoUpdater.downloadUpdate().catch((err) => setUpdateState({ status: 'error', message: err?.message || String(err) }));
+      },
+    },
+    {
+      label: 'Install Update + Restart…',
+      enabled: downloaded,
+      click: () => autoUpdater.quitAndInstall(),
+    },
+    {
+      label: "What's New",
+      enabled: canShowNotes,
+      click: () => {
+        const title =
+          updateState.status === 'available' || updateState.status === 'downloaded'
+            ? `What's New in ${updateState.version}`
+            : "What's New";
+        const notes = (updateState as any).releaseNotes as string | undefined;
+        if (notes) void showReleaseNotes(title, notes);
+      },
+    },
+  ];
+
+  if (process.platform === 'darwin') {
+    tpl.push({
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        ...updateItems,
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    });
+    tpl.push({ role: 'editMenu' });
+    tpl.push({ role: 'viewMenu' });
+    tpl.push({ role: 'windowMenu' });
+    tpl.push({
+      role: 'help',
+      submenu: [
+        {
+          label: 'Open Mission Control Logs',
+          click: () => {
+            const logPath = path.join(app.getPath('home'), 'Library/Logs/@mission-control/desktop/main.log');
+            void dialog.showMessageBox({
+              type: 'info',
+              title: 'Logs',
+              message: 'Mission Control logs path:',
+              detail: logPath,
+              buttons: ['OK'],
+            });
+          },
+        },
+      ],
+    });
+  } else {
+    tpl.push({
+      label: 'File',
+      submenu: [{ role: 'quit' }],
+    });
+    tpl.push({ label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }] });
+    tpl.push({ label: 'View', submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] });
+    tpl.push({ label: 'Updates', submenu: updateItems });
+    tpl.push({ label: 'Window', submenu: [{ role: 'minimize' }, { role: 'close' }] });
+  }
+
+  const menu = Menu.buildFromTemplate(tpl);
+  Menu.setApplicationMenu(menu);
+  menuInstalled = true;
 }
 
 async function createMainWindow(webPort: number) {
@@ -567,6 +745,9 @@ async function ensureMainWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // Ensure the menu exists once a window is ready (macOS shows app menu even without a focused window).
+  if (!menuInstalled) refreshMenu();
 }
 
 async function main() {
@@ -574,6 +755,17 @@ async function main() {
   setupAutoUpdater();
 
   await ensureMainWindow();
+
+  // Auto-check for updates in production so users get the “update available” indicator
+  // without needing to open Settings first. This uses GitHub Releases.
+  if (app.isPackaged) {
+    setTimeout(() => {
+      void autoUpdater.checkForUpdates().catch(() => {});
+    }, 4_000);
+    setInterval(() => {
+      void autoUpdater.checkForUpdates().catch(() => {});
+    }, 6 * 60 * 60_000);
+  }
 }
 
 app.on('window-all-closed', () => {

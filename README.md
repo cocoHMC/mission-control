@@ -4,6 +4,14 @@ Self-hosted “mission control” for OpenClaw: Kanban tasks, agents, documents,
 
 This repo is meant to be “clone → run → open `/setup` → done”.
 
+## Downloads
+- **macOS Desktop App (.dmg):** download the latest release from GitHub Releases (`https://github.com/cocoHMC/mission-control/releases/latest`) and install:
+  - Apple Silicon: `Mission Control-<version>-arm64.dmg`
+  - Intel: `Mission Control-<version>-x64.dmg` (if published)
+- **Docker Compose (portable / Windows-friendly):** see the `Docker (Portable / Windows-Friendly)` section below.
+
+Note: the desktop app is not notarized/signed by default. On macOS you may need to allow it in System Settings → Privacy & Security.
+
 ## What You Get
 - **Kanban tasks** (Inbox → Assigned → In Progress → Review → Done, plus Blocked)
 - **Subtasks** with progress counters (`done/total`)
@@ -85,7 +93,7 @@ If you want Mission Control as a real macOS app (not just a browser tab), we shi
 - starts PocketBase + worker + web automatically
 - opens `/setup` on first launch
 - auto-restarts after setup
-- includes an in-app update UI (Release-based)
+- includes an in-app update UI and a menu item (**Release-based**)
 
 ### Build The DMG (Apple Silicon)
 ```bash
@@ -96,7 +104,9 @@ Build output:
 - `apps/desktop/dist/Mission Control-<version>-arm64.dmg`
 
 ### Updates
-The desktop app checks for updates via **GitHub Releases** (not raw `main` commits). For private repos, end-users typically need access to the release assets (or you need to publish release artifacts somewhere they can fetch).
+The desktop app checks for updates via **GitHub Releases** (not raw `main` commits).
+When you publish a new release, users will see an update available in the app menu and Settings → Desktop Updates.
+If you keep a fork private, end-users may need a GitHub token to download release assets (Settings → Desktop Updates → “Private GitHub Updates”).
 
 ### Prereqs
 - Node.js 22+
