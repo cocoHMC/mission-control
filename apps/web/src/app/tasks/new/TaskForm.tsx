@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -151,22 +152,26 @@ export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord
           </select>
         </div>
         <div>
-          <label className="text-sm font-medium">Required node</label>
+          <label className="text-sm font-medium">Execution device (optional)</label>
           <select
             className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]"
             value={requiredNodeId}
             onChange={(event) => setRequiredNodeId(event.target.value)}
           >
-            <option value="">Any node</option>
+            <option value="">Gateway (this machine)</option>
             {nodes.map((node) => (
               <option key={node.id} value={node.nodeId ?? node.id}>
                 {node.displayName ?? node.nodeId ?? node.id}
               </option>
             ))}
           </select>
+          <div className="mt-2 text-xs text-muted">
+            Nodes are paired devices from OpenClaw. This does <span className="font-medium text-[var(--foreground)]">not</span> change who is assigned.
+            Sync nodes on the <Link href="/nodes" className="underline underline-offset-2">Nodes</Link> page.
+          </div>
         </div>
         <div>
-          <label className="text-sm font-medium">Assignees</label>
+          <label className="text-sm font-medium">Assignee agents</label>
           <div className="mt-2 grid gap-2">
             {agents.map((agent) => {
               const key = agent.openclawAgentId ?? agent.id;
@@ -178,10 +183,18 @@ export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord
                   checked={checked}
                   onChange={() => toggleAssignee(key, agent.id)}
                 />
-                {agent.displayName ?? agent.id}
+                <span className="flex-1">{agent.displayName ?? agent.id}</span>
+                <span className="font-mono text-xs text-muted">@{key}</span>
               </label>
             );})}
-            {!agents.length && <div className="text-xs text-muted">No agents yet. Seed the lead agent in Settings.</div>}
+            {!agents.length && (
+              <div className="text-xs text-muted">
+                No agents yet. Create one on the <Link href="/agents" className="underline underline-offset-2">Agents</Link> page.
+              </div>
+            )}
+          </div>
+          <div className="mt-2 text-xs text-muted">
+            Agents are OpenClaw personas (brains). Add more on the <Link href="/agents" className="underline underline-offset-2">Agents</Link> page.
           </div>
         </div>
         <div>

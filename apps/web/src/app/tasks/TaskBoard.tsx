@@ -46,7 +46,15 @@ type NodeRecord = {
   nodeId?: string;
 };
 
-function TaskCard({ task, onOpen }: { task: Task; onOpen: (taskId: string) => void }) {
+function TaskCard({
+  task,
+  onOpen,
+  nodeLabel,
+}: {
+  task: Task;
+  onOpen: (taskId: string) => void;
+  nodeLabel?: string;
+}) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { status: task.status },
@@ -91,7 +99,7 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (taskId: string) => vo
             <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted">
               {task.requiredNodeId && (
                 <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">
-                  node:{task.requiredNodeId}
+                  run:{nodeLabel || task.requiredNodeId}
                 </span>
               )}
               {(task.labels ?? []).slice(0, 2).map((label) => (
@@ -122,7 +130,15 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (taskId: string) => vo
   );
 }
 
-function TaskCardStatic({ task, onOpen }: { task: Task; onOpen: (taskId: string) => void }) {
+function TaskCardStatic({
+  task,
+  onOpen,
+  nodeLabel,
+}: {
+  task: Task;
+  onOpen: (taskId: string) => void;
+  nodeLabel?: string;
+}) {
   return (
     <div className={cn('rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-sm shadow-sm transition')}>
       <div className="flex items-stretch gap-3">
@@ -145,7 +161,7 @@ function TaskCardStatic({ task, onOpen }: { task: Task; onOpen: (taskId: string)
             <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted">
               {task.requiredNodeId && (
                 <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">
-                  node:{task.requiredNodeId}
+                  run:{nodeLabel || task.requiredNodeId}
                 </span>
               )}
               {(task.labels ?? []).slice(0, 2).map((label) => (
@@ -176,7 +192,17 @@ function TaskCardStatic({ task, onOpen }: { task: Task; onOpen: (taskId: string)
   );
 }
 
-function Column({ status, tasks, onOpen }: { status: string; tasks: Task[]; onOpen: (taskId: string) => void }) {
+function Column({
+  status,
+  tasks,
+  onOpen,
+  nodeLabelById,
+}: {
+  status: string;
+  tasks: Task[];
+  onOpen: (taskId: string) => void;
+  nodeLabelById: Map<string, string>;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: status, data: { status } });
 
   return (
@@ -192,7 +218,12 @@ function Column({ status, tasks, onOpen }: { status: string; tasks: Task[]; onOp
       >
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} onOpen={onOpen} />
+            <TaskCard
+              key={task.id}
+              task={task}
+              onOpen={onOpen}
+              nodeLabel={task.requiredNodeId ? nodeLabelById.get(task.requiredNodeId) : undefined}
+            />
           ))}
         </SortableContext>
         {!tasks.length && <div className="rounded-xl border border-dashed border-[var(--border)] p-4 text-xs text-muted">Drop tasks here</div>}
@@ -201,7 +232,17 @@ function Column({ status, tasks, onOpen }: { status: string; tasks: Task[]; onOp
   );
 }
 
-function ColumnStatic({ status, tasks, onOpen }: { status: string; tasks: Task[]; onOpen: (taskId: string) => void }) {
+function ColumnStatic({
+  status,
+  tasks,
+  onOpen,
+  nodeLabelById,
+}: {
+  status: string;
+  tasks: Task[];
+  onOpen: (taskId: string) => void;
+  nodeLabelById: Map<string, string>;
+}) {
   return (
     <div className="flex w-[240px] shrink-0 flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] sm:w-[260px] lg:w-[300px]">
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)]/95 px-3 py-3 backdrop-blur">
@@ -210,7 +251,12 @@ function ColumnStatic({ status, tasks, onOpen }: { status: string; tasks: Task[]
       </div>
       <div className={cn('space-y-3 p-3 transition')} style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
         {tasks.map((task) => (
-          <TaskCardStatic key={task.id} task={task} onOpen={onOpen} />
+          <TaskCardStatic
+            key={task.id}
+            task={task}
+            onOpen={onOpen}
+            nodeLabel={task.requiredNodeId ? nodeLabelById.get(task.requiredNodeId) : undefined}
+          />
         ))}
         {!tasks.length && (
           <div className="rounded-xl border border-dashed border-[var(--border)] p-4 text-xs text-muted">No tasks</div>
@@ -238,6 +284,16 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
   React.useEffect(() => {
     setMounted(true);
   }, []);
+
+  const nodeLabelById = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const n of nodes) {
+      const id = String(n.nodeId ?? n.id);
+      const label = String(n.displayName ?? n.nodeId ?? n.id);
+      map.set(id, label);
+    }
+    return map;
+  }, [nodes]);
 
   React.useEffect(() => {
     let pollId: ReturnType<typeof setInterval> | null = setInterval(async () => {
@@ -381,7 +437,13 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
           <div className="-mx-3 overflow-x-auto pb-4 sm:-mx-4">
             <div className="flex w-max gap-4 px-3 sm:px-4">
               {columns.map((col) => (
-                <Column key={col.id} status={col.id} tasks={grouped[col.id] ?? []} onOpen={openDrawer} />
+                <Column
+                  key={col.id}
+                  status={col.id}
+                  tasks={grouped[col.id] ?? []}
+                  onOpen={openDrawer}
+                  nodeLabelById={nodeLabelById}
+                />
               ))}
             </div>
           </div>
@@ -390,7 +452,13 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
         <div className="-mx-3 overflow-x-auto pb-4 sm:-mx-4">
           <div className="flex w-max gap-4 px-3 sm:px-4">
             {columns.map((col) => (
-              <ColumnStatic key={col.id} status={col.id} tasks={grouped[col.id] ?? []} onOpen={openDrawer} />
+              <ColumnStatic
+                key={col.id}
+                status={col.id}
+                tasks={grouped[col.id] ?? []}
+                onOpen={openDrawer}
+                nodeLabelById={nodeLabelById}
+              />
             ))}
           </div>
         </div>

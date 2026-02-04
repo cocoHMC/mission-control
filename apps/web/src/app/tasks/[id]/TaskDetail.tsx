@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -427,7 +428,7 @@ export function TaskDetail({
         </div>
 
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
-          <div className="text-sm font-semibold">Assignees</div>
+          <div className="text-sm font-semibold">Assignee agents</div>
           <div className="mt-3 space-y-2">
             {agents.map((agent) => {
               const key = agent.openclawAgentId ?? agent.id;
@@ -435,10 +436,18 @@ export function TaskDetail({
               return (
                 <label key={agent.id} className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">
                   <input type="checkbox" checked={checked} onChange={() => onAssigneeToggle(key, agent.id)} />
-                  {agent.displayName ?? agent.id}
+                  <span className="flex-1">{agent.displayName ?? agent.id}</span>
+                  <span className="font-mono text-xs text-muted">@{key}</span>
                 </label>
               );
             })}
+          </div>
+          <div className="mt-2 text-xs text-muted">
+            Agents are OpenClaw personas (brains). Manage them on the{' '}
+            <Link href="/agents" className="underline underline-offset-2">
+              Agents
+            </Link>{' '}
+            page.
           </div>
         </div>
 
@@ -473,7 +482,7 @@ export function TaskDetail({
             </Button>
           </div>
           <div>
-            <label className="text-xs uppercase tracking-[0.2em] text-muted">Required node</label>
+            <label className="text-xs uppercase tracking-[0.2em] text-muted">Execution device (optional)</label>
             <select
               value={requiredNodeId}
               onChange={async (event) => {
@@ -483,13 +492,20 @@ export function TaskDetail({
               }}
               className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]"
             >
-              <option value="">Any node</option>
+              <option value="">Gateway (this machine)</option>
               {nodes.map((node) => (
                 <option key={node.id} value={node.nodeId ?? node.id}>
                   {node.displayName ?? node.nodeId ?? node.id}
                 </option>
               ))}
             </select>
+            <div className="mt-2 text-xs text-muted">
+              Nodes are paired devices from OpenClaw. Sync nodes on the{' '}
+              <Link href="/nodes" className="underline underline-offset-2">
+                Nodes
+              </Link>{' '}
+              page.
+            </div>
           </div>
           <div>
             <label className="text-xs uppercase tracking-[0.2em] text-muted">Labels</label>
