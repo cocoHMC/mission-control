@@ -152,6 +152,7 @@ function installAuthHeader(port: number, user: string, pass: string) {
     details.requestHeaders = {
       ...details.requestHeaders,
       Authorization: headerValue,
+      'X-MC-Desktop': '1',
     };
     cb({ requestHeaders: details.requestHeaders });
   });

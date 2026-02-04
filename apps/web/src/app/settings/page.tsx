@@ -7,6 +7,7 @@ import { SetupChecklist } from '@/app/settings/SetupChecklist';
 import { TailscaleStatusCard } from '@/app/settings/TailscaleStatus';
 import { DesktopUpdates } from '@/app/settings/DesktopUpdates';
 import { OpenClawIntegration } from '@/app/settings/OpenClawIntegration';
+import { DesktopNotifications } from '@/app/settings/DesktopNotifications';
 
 export default function SettingsPage() {
   const leadName = process.env.MC_LEAD_AGENT_NAME || process.env.MC_LEAD_AGENT_ID || 'Lead';
@@ -73,7 +74,11 @@ export default function SettingsPage() {
             <CardTitle>Notifications</CardTitle>
           </CardHeader>
           <CardContent>
-            <WebNotifications />
+            <div className="space-y-6">
+              <DesktopNotifications />
+              <div className="h-px bg-[var(--border)]" />
+              <WebNotifications />
+            </div>
           </CardContent>
         </Card>
       </div>

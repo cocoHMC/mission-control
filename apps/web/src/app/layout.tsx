@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 import { IBM_Plex_Sans, JetBrains_Mono, Space_Grotesk } from 'next/font/google';
 import './globals.css';
+import { DesktopNotificationsProvider } from '@/components/notifications/DesktopNotificationsProvider';
 
 const display = Space_Grotesk({
   variable: '--font-display',
@@ -49,6 +50,7 @@ export default function RootLayout({
   } catch {}
 })();`}
         </Script>
+        <DesktopNotificationsProvider />
         {children}
       </body>
     </html>

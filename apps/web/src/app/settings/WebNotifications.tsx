@@ -27,6 +27,7 @@ function urlBase64ToUint8Array(base64String: string) {
 }
 
 export function WebNotifications() {
+  const desktopApp = typeof window !== 'undefined' && Boolean((window as any).MissionControlDesktop);
   const [supported, setSupported] = React.useState(false);
   const [permission, setPermission] = React.useState<NotificationPermission>('default');
   const [subscribed, setSubscribed] = React.useState(false);
@@ -37,12 +38,19 @@ export function WebNotifications() {
   const [configuringKeys, setConfiguringKeys] = React.useState(false);
 
   React.useEffect(() => {
-    const ok = typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    // Web Push is generally not supported inside Electron (no push service),
+    // but it works great in installed PWAs on iOS/Android/desktop browsers.
+    const ok =
+      !desktopApp &&
+      typeof window !== 'undefined' &&
+      'serviceWorker' in navigator &&
+      'PushManager' in window &&
+      'Notification' in window;
     setSupported(ok);
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setPermission(Notification.permission);
     }
-  }, []);
+  }, [desktopApp]);
 
   const refreshVapid = React.useCallback(async () => {
     try {
@@ -129,7 +137,12 @@ export function WebNotifications() {
       setStatus('Notifications enabled.');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      setStatus(message || 'Failed to enable notifications.');
+      const m = message || 'Failed to enable notifications.';
+      if (m.toLowerCase().includes('push service not available')) {
+        setStatus('Web Push is not available in this environment. Use Desktop Notifications (while app is open) instead.');
+      } else {
+        setStatus(m);
+      }
     } finally {
       setLoading(false);
     }
@@ -177,7 +190,12 @@ export function WebNotifications() {
 
   return (
     <div className="space-y-3 text-sm text-muted">
-      <div>Enable notifications for this device (native OS notifications). Works on installed PWAs (iOS, Android, desktop).</div>
+      <div>Web Push notifications (works on installed PWAs: iOS, Android, desktop browsers).</div>
+      {desktopApp ? (
+        <div className="text-xs text-muted">
+          Note: Web Push is not supported in the macOS desktop app. Use “Desktop notifications” above.
+        </div>
+      ) : null}
       {!supported ? <div className="text-xs text-red-600">This browser does not support web push.</div> : null}
       {supported && vapid && !vapid.enabled ? (
         <div className="flex flex-wrap items-center gap-2">
