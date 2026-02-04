@@ -34,6 +34,8 @@ export function DesktopNotifications() {
     setStatus(null);
     setLoading(true);
     try {
+      // On first run, macOS should show a permission prompt.
+      // If you don't see it, check System Settings → Notifications → Mission Control.
       const p = await Notification.requestPermission();
       setPermission(p);
       if (p !== 'granted') {
@@ -100,6 +102,11 @@ export function DesktopNotifications() {
         Desktop notifications (native OS notifications) while Mission Control is open.
         {isDesktopApp() ? ' (Recommended for the macOS app.)' : ' (Works in an open browser tab too.)'}
       </div>
+      {permission === 'denied' ? (
+        <div className="text-xs text-red-600">
+          Notifications are blocked. Enable them in System Settings → Notifications → Mission Control.
+        </div>
+      ) : null}
       {!supported ? <div className="text-xs text-red-600">Notifications are not supported in this environment.</div> : null}
       <div className="flex flex-wrap gap-2">
         <Input
@@ -127,4 +134,3 @@ export function DesktopNotifications() {
     </div>
   );
 }
-

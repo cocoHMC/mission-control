@@ -49,7 +49,7 @@ export function DesktopSidebar() {
 
   return (
     <aside className="mc-desktop-sidebar flex h-full flex-col">
-      <div className="px-4 pt-5">
+      <div className="px-3 pt-5">
         <div className="text-xs font-semibold tracking-[0.16em] text-muted">Mission Control</div>
         <div className="mt-1 text-lg font-semibold headline">{leadName}</div>
         <div className="mt-1 text-xs text-muted">Local-first command center</div>
@@ -70,7 +70,7 @@ export function DesktopSidebar() {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      'flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition',
+                      'flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] transition',
                       active
                         ? 'bg-[var(--card)] text-[var(--foreground)] shadow-sm'
                         : 'text-[var(--foreground)]/80 hover:bg-[color:var(--foreground)]/5 hover:text-[var(--foreground)]'
@@ -88,4 +88,3 @@ export function DesktopSidebar() {
     </aside>
   );
 }
-
