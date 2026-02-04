@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, session } from 'electron';
 import updaterPkg from 'electron-updater';
 import log from 'electron-log';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -31,6 +31,8 @@ let updateState: UpdateState = { status: 'idle' };
 let updaterTokenConfigured = false;
 let currentWebPort: number | null = null;
 let starting: Promise<void> | null = null;
+let cachedBasicAuth: { user: string; pass: string } | null = null;
+let authHeaderInstalledForPort: number | null = null;
 
 type UpdaterConfig = { githubToken?: string };
 
@@ -136,6 +138,24 @@ function needsSetup(env: Record<string, string>) {
     isPlaceholderSecret(env.PB_ADMIN_PASSWORD) ||
     isPlaceholderSecret(env.PB_SERVICE_PASSWORD)
   );
+}
+
+function computeBasicAuthHeader(user: string, pass: string) {
+  const value = Buffer.from(`${user}:${pass}`, 'utf8').toString('base64');
+  return `Basic ${value}`;
+}
+
+function installAuthHeader(port: number, user: string, pass: string) {
+  if (authHeaderInstalledForPort === port) return;
+  const headerValue = computeBasicAuthHeader(user, pass);
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: [`http://127.0.0.1:${port}/*`] }, (details, cb) => {
+    details.requestHeaders = {
+      ...details.requestHeaders,
+      Authorization: headerValue,
+    };
+    cb({ requestHeaders: details.requestHeaders });
+  });
+  authHeaderInstalledForPort = port;
 }
 
 async function ensureExecutable(filePath: string) {
@@ -416,6 +436,13 @@ function setupAutoUpdater() {
 
 async function createMainWindow(webPort: number) {
   const preloadPath = path.join(THIS_DIR, 'preload.js');
+  const { env } = await loadEffectiveEnv();
+  const basicUser = env.MC_ADMIN_USER || '';
+  const basicPass = env.MC_ADMIN_PASSWORD || '';
+  const hasBasic = Boolean(basicUser && basicPass && !isPlaceholderSecret(basicUser) && !isPlaceholderSecret(basicPass));
+  cachedBasicAuth = hasBasic ? { user: basicUser, pass: basicPass } : null;
+  if (cachedBasicAuth) installAuthHeader(webPort, cachedBasicAuth.user, cachedBasicAuth.pass);
+
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -443,21 +470,24 @@ async function createMainWindow(webPort: number) {
 
   // Auto-supply Basic Auth credentials from the current .env so the desktop app
   // feels like a native login (no browser prompt).
-  win.webContents.on('login', async (event, _request, authInfo, callback) => {
+  win.webContents.on('login', (event, _request, authInfo, callback) => {
     if (authInfo.isProxy) return;
     if (authInfo.scheme !== 'basic') return;
-    const { env } = await loadEffectiveEnv();
-    if (!env.MC_ADMIN_USER || !env.MC_ADMIN_PASSWORD) return;
-    if (isPlaceholderSecret(env.MC_ADMIN_PASSWORD)) return;
+    if (!cachedBasicAuth) return;
     event.preventDefault();
-    callback(env.MC_ADMIN_USER, env.MC_ADMIN_PASSWORD);
+    callback(cachedBasicAuth.user, cachedBasicAuth.pass);
   });
 
-  const { env } = await loadEffectiveEnv();
   const target = needsSetup(env) ? `/setup` : `/`;
   const url = `http://127.0.0.1:${webPort}${target}`;
   try {
-    await win.loadURL(url);
+    if (cachedBasicAuth) {
+      // Make the first navigation succeed even if Electron doesn't surface the auth challenge prompt.
+      const auth = computeBasicAuthHeader(cachedBasicAuth.user, cachedBasicAuth.pass);
+      await win.loadURL(url, { extraHeaders: `Authorization: ${auth}\n` });
+    } else {
+      await win.loadURL(url);
+    }
   } catch (err) {
     log.error('[desktop] failed to load URL', { url, err });
   }
