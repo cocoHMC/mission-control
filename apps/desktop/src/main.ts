@@ -1,7 +1,7 @@
 import { app, BrowserWindow, Menu, dialog, ipcMain, session } from 'electron';
 import updaterPkg from 'electron-updater';
 import log from 'electron-log';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +31,9 @@ let updateState: UpdateState = { status: 'idle' };
 let updaterTokenConfigured = false;
 let currentWebPort: number | null = null;
 let starting: Promise<void> | null = null;
+let ensureMainWindowInFlight: Promise<void> | null = null;
+let stackStarting: Promise<{ webPort: number }> | null = null;
+let stackRestarting: Promise<void> | null = null;
 let cachedBasicAuth: { user: string; pass: string } | null = null;
 let authHeaderInstalledForPort: number | null = null;
 let menuInstalled = false;
@@ -185,6 +188,99 @@ async function waitForOk(url: string, timeoutMs = 20_000) {
   throw new Error(`Timed out waiting for ${url}`);
 }
 
+async function execFileText(file: string, args: string[]) {
+  return await new Promise<string>((resolve, reject) => {
+    execFile(file, args, { encoding: 'utf8' }, (err, stdout) => {
+      if (err) return reject(err);
+      return resolve(String(stdout || ''));
+    });
+  });
+}
+
+async function describePortUsage(port: number) {
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return null;
+  try {
+    const out = await execFileText('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN']);
+    const trimmed = out.trim();
+    return trimmed.length ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function listListeningPids(port: number) {
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return [];
+  try {
+    const out = await execFileText('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t']);
+    return out
+      .split(/\r?\n/)
+      .map((line) => Number.parseInt(line.trim(), 10))
+      .filter((pid) => Number.isFinite(pid) && pid > 0 && pid !== process.pid);
+  } catch {
+    return [];
+  }
+}
+
+async function commandForPid(pid: number) {
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return null;
+  try {
+    return (await execFileText('ps', ['-p', String(pid), '-o', 'command='])).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function killListeningPids(port: number, predicate: (cmd: string) => boolean) {
+  const pids = await listListeningPids(port);
+  let killed = 0;
+  for (const pid of pids) {
+    const cmd = (await commandForPid(pid)) || '';
+    if (!cmd) continue;
+    if (!predicate(cmd)) continue;
+    try {
+      process.kill(pid, 'SIGTERM');
+      killed++;
+    } catch {
+      // ignore
+    }
+  }
+  return killed;
+}
+
+async function killStaleByCommandNeedle(needle: string) {
+  if (!needle) return 0;
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return 0;
+  let out = '';
+  try {
+    out = await execFileText('ps', ['-ax', '-o', 'pid=,command=']);
+  } catch {
+    return 0;
+  }
+
+  const pids: number[] = [];
+  for (const raw of out.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = line.match(/^(\d+)\s+(.*)$/);
+    if (!m) continue;
+    const pid = Number.parseInt(m[1] || '', 10);
+    const cmd = m[2] || '';
+    if (!pid || pid === process.pid) continue;
+    if (cmd.includes(needle)) pids.push(pid);
+  }
+
+  let killed = 0;
+  for (const pid of pids) {
+    try {
+      process.kill(pid, 'SIGTERM');
+      killed++;
+    } catch {
+      // ignore
+    }
+  }
+  return killed;
+}
+
 function spawnNode(scriptPath: string, args: string[], opts: { cwd: string; env: NodeJS.ProcessEnv; name: string }) {
   const packagedContentsDir = path.resolve(path.dirname(process.execPath), '..'); // Contents/
   const packagedExecName = path.basename(process.execPath);
@@ -246,47 +342,75 @@ async function stopStack() {
 }
 
 async function startStack() {
-  const root = appResourceRoot();
-  const dataDir = dataRoot();
-  await fs.mkdir(dataDir, { recursive: true });
-  await fs.mkdir(path.join(dataDir, 'pb', 'pb_data'), { recursive: true });
+  try {
+    const root = appResourceRoot();
+    const dataDir = dataRoot();
+    await fs.mkdir(dataDir, { recursive: true });
+    await fs.mkdir(path.join(dataDir, 'pb', 'pb_data'), { recursive: true });
 
-  const { envPath, env } = await loadEffectiveEnv();
-  if (!(await readFileIfExists(envPath))) {
-    // First launch: seed .env from .env.example so Setup can patch in-place.
-    const raw = await readFileIfExists(path.join(root, '.env.example'));
-    if (raw) await fs.writeFile(envPath, raw, 'utf8');
-  }
+    const { envPath, env } = await loadEffectiveEnv();
+    if (!(await readFileIfExists(envPath))) {
+      // First launch: seed .env from .env.example so Setup can patch in-place.
+      const raw = await readFileIfExists(path.join(root, '.env.example'));
+      if (raw) await fs.writeFile(envPath, raw, 'utf8');
+    }
 
-  const webPort = Number.parseInt(env.MC_WEB_PORT || env.PORT || '4010', 10) || 4010;
-  const pbUrl = env.PB_URL || 'http://127.0.0.1:8090';
-  const pbPort = Number.parseInt(new URL(pbUrl).port || '8090', 10) || 8090;
+    const webPort = Number.parseInt(env.MC_WEB_PORT || env.PORT || '4010', 10) || 4010;
+    const pbUrl = env.PB_URL || 'http://127.0.0.1:8090';
+    const pbPort = Number.parseInt(new URL(pbUrl).port || '8090', 10) || 8090;
 
-  const pbBin = process.platform === 'win32' ? path.join(root, 'pb', 'pocketbase.exe') : path.join(root, 'pb', 'pocketbase');
-  await ensureExecutable(pbBin);
-  const pbDataDir = path.join(dataDir, 'pb', 'pb_data');
-  const pbMigrationsDir = path.join(root, 'pb', 'pb_migrations');
-  const pbLog = path.join(dataDir, 'pb', 'pocketbase.log');
-  await fs.mkdir(path.dirname(pbLog), { recursive: true });
+    const pbBin = process.platform === 'win32' ? path.join(root, 'pb', 'pocketbase.exe') : path.join(root, 'pb', 'pocketbase');
+    await ensureExecutable(pbBin);
 
-  log.info('[desktop] starting pocketbase', { pbPort, pbDataDir });
-  pbProc = spawn(pbBin, ['serve', '--dir', pbDataDir, '--migrationsDir', pbMigrationsDir, '--http', `127.0.0.1:${pbPort}`], {
-    cwd: root,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  const pbOut = await fs.open(pbLog, 'a').catch(() => null);
-  pbProc.stdout?.on('data', (d) => {
-    const s = String(d);
-    log.info('[pb]', s.trimEnd());
-    void pbOut?.appendFile(s).catch(() => {});
-  });
-  pbProc.stderr?.on('data', (d) => {
-    const s = String(d);
-    log.error('[pb]', s.trimEnd());
-    void pbOut?.appendFile(s).catch(() => {});
-  });
+    const workerNeedle = app.isPackaged ? path.join(root, 'worker', 'worker.bundle.cjs') : path.join(root, 'apps', 'worker', 'dist', 'index.js');
+    const webNeedle = app.isPackaged
+      ? path.join(root, 'web', 'apps', 'web', 'server.js')
+      : path.join(root, 'apps', 'web', '.next', 'standalone', 'apps', 'web', 'server.js');
 
-  await waitForOk(`http://127.0.0.1:${pbPort}/api/health`, 20_000);
+    // v0.1.17 could spawn multiple stacks concurrently, leaving orphan processes behind.
+    // Clean those up before trying to bind ports again.
+    await killStaleByCommandNeedle(workerNeedle);
+    await killStaleByCommandNeedle(pbBin);
+    await killStaleByCommandNeedle(webNeedle);
+    // next-server doesn't always include the server.js path in `ps` output, but it does listen on the web port.
+    // Kill stale listeners so upgrades don't get stuck in EADDRINUSE loops.
+    await killListeningPids(webPort, (cmd) => /next-server/i.test(cmd));
+    await new Promise((r) => setTimeout(r, 400));
+
+    const pbUsage = await describePortUsage(pbPort);
+    if (pbUsage) {
+      log.error('[desktop] PocketBase port already in use', { pbPort, pbUsage });
+      throw new Error(`PocketBase port ${pbPort} is already in use. Quit other Mission Control instances (or set PB_URL to a free port).`);
+    }
+    const webUsage = await describePortUsage(webPort);
+    if (webUsage) {
+      log.error('[desktop] Web port already in use', { webPort, webUsage });
+      throw new Error(`Web port ${webPort} is already in use. Quit other Mission Control instances (or set MC_WEB_PORT to a free port).`);
+    }
+
+    const pbDataDir = path.join(dataDir, 'pb', 'pb_data');
+    const pbMigrationsDir = path.join(root, 'pb', 'pb_migrations');
+    const pbLog = path.join(dataDir, 'pb', 'pocketbase.log');
+    await fs.mkdir(path.dirname(pbLog), { recursive: true });
+
+    log.info('[desktop] starting pocketbase', { pbPort, pbDataDir });
+    pbProc = spawn(pbBin, ['serve', '--dir', pbDataDir, '--migrationsDir', pbMigrationsDir, '--http', `127.0.0.1:${pbPort}`], {
+      cwd: root,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const pbOut = await fs.open(pbLog, 'a').catch(() => null);
+    pbProc.stdout?.on('data', (d) => {
+      const s = String(d);
+      log.info('[pb]', s.trimEnd());
+      void pbOut?.appendFile(s).catch(() => {});
+    });
+    pbProc.stderr?.on('data', (d) => {
+      const s = String(d);
+      log.error('[pb]', s.trimEnd());
+      void pbOut?.appendFile(s).catch(() => {});
+    });
+
+    await waitForOk(`http://127.0.0.1:${pbPort}/api/health`, 20_000);
 
   const envForChildren: NodeJS.ProcessEnv = {
     ...process.env,
@@ -327,7 +451,7 @@ async function startStack() {
     }
   });
 
-  await waitForOk(`http://127.0.0.1:${webPort}/api/health`, 25_000).catch(() => {});
+    await waitForOk(`http://127.0.0.1:${webPort}/api/health`, 25_000);
 
   if (!needsSetup(env)) {
     const workerEntry = app.isPackaged
@@ -337,18 +461,41 @@ async function startStack() {
     workerProc = spawnNode(workerEntry, [], { cwd: root, env: envForChildren, name: 'worker' });
   }
 
-  return { webPort };
+    return { webPort };
+  } catch (err) {
+    // If startup fails, avoid leaving orphan services behind.
+    await stopStack();
+    throw err;
+  }
+}
+
+async function ensureStackStarted() {
+  if (currentWebPort != null) return currentWebPort;
+  if (!stackStarting) stackStarting = startStack();
+  try {
+    const { webPort } = await stackStarting;
+    currentWebPort = webPort;
+    return webPort;
+  } finally {
+    stackStarting = null;
+  }
 }
 
 async function restartStack() {
-  await stopStack();
-  const { webPort } = await startStack();
-  currentWebPort = webPort;
-  if (mainWindow) {
-    const { env } = await loadEffectiveEnv();
-    const target = needsSetup(env) ? `/setup` : `/`;
-    void mainWindow.loadURL(`http://127.0.0.1:${webPort}${target}`);
-  }
+  if (stackRestarting) return stackRestarting;
+  stackRestarting = (async () => {
+    await stopStack();
+    currentWebPort = null;
+    const webPort = await ensureStackStarted();
+    if (mainWindow) {
+      const { env } = await loadEffectiveEnv();
+      const target = needsSetup(env) ? `/setup` : `/`;
+      void mainWindow.loadURL(`http://127.0.0.1:${webPort}${target}`);
+    }
+  })().finally(() => {
+    stackRestarting = null;
+  });
+  return stackRestarting;
 }
 
 function broadcastUpdateState() {
@@ -730,24 +877,26 @@ async function createErrorWindow(title: string, body: string) {
 }
 
 async function ensureMainWindow() {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    if (!mainWindow.isVisible()) mainWindow.show();
-    mainWindow.focus();
-    return;
-  }
+  if (ensureMainWindowInFlight) return ensureMainWindowInFlight;
+  ensureMainWindowInFlight = (async () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
+      return;
+    }
 
-  if (currentWebPort == null) {
-    const { webPort } = await startStack();
-    currentWebPort = webPort;
-  }
+    const webPort = await ensureStackStarted();
+    mainWindow = await createMainWindow(webPort);
+    mainWindow.on('closed', () => {
+      mainWindow = null;
+    });
 
-  mainWindow = await createMainWindow(currentWebPort);
-  mainWindow.on('closed', () => {
-    mainWindow = null;
+    // Ensure the menu exists once a window is ready (macOS shows app menu even without a focused window).
+    if (!menuInstalled) refreshMenu();
+  })().finally(() => {
+    ensureMainWindowInFlight = null;
   });
-
-  // Ensure the menu exists once a window is ready (macOS shows app menu even without a focused window).
-  if (!menuInstalled) refreshMenu();
+  return ensureMainWindowInFlight;
 }
 
 async function main() {
