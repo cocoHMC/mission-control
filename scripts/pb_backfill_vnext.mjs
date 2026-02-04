@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import 'dotenv/config';
 
 const PB_URL = process.env.PB_URL || 'http://127.0.0.1:8090';
 const EMAIL = process.env.PB_SERVICE_EMAIL;
@@ -130,4 +129,3 @@ main().catch((err) => {
   console.error('[pb_backfill_vnext] failed', err.message || err);
   process.exit(1);
 });
-

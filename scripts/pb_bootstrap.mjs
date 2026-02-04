@@ -1,5 +1,3 @@
-import 'dotenv/config';
-
 const PB_URL = process.env.PB_URL || 'http://127.0.0.1:8090';
 const ADMIN_EMAIL = process.env.PB_ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.PB_ADMIN_PASSWORD;

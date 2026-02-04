@@ -3,6 +3,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isAdminAuthConfigured, isLoopbackHost } from '@/app/api/setup/_shared';
 import { requireAdminAuth } from '@/lib/adminAuth';
+import { access } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 
 export const runtime = 'nodejs';
 
@@ -14,9 +16,41 @@ function stripTrailingDot(value: string) {
   return v.endsWith('.') ? v.slice(0, -1) : v;
 }
 
+function extraPathEntries() {
+  if (process.platform === 'darwin') return ['/usr/local/bin', '/opt/homebrew/bin'];
+  if (process.platform === 'linux') return ['/usr/local/bin', '/usr/bin'];
+  return [];
+}
+
+async function resolveTailscaleBin() {
+  // Prefer whatever is on PATH, but GUI-launched apps on macOS often have a minimal PATH.
+  // We fall back to common install locations.
+  const candidates = ['tailscale'];
+  if (process.platform === 'darwin') {
+    candidates.push('/usr/local/bin/tailscale', '/opt/homebrew/bin/tailscale');
+  } else if (process.platform === 'linux') {
+    candidates.push('/usr/bin/tailscale', '/usr/local/bin/tailscale');
+  }
+
+  for (const c of candidates) {
+    if (c === 'tailscale') return c;
+    try {
+      await access(c, fsConstants.X_OK);
+      return c;
+    } catch {
+      // keep looking
+    }
+  }
+  return 'tailscale';
+}
+
 async function runTailscale(args: string[]) {
+  const bin = await resolveTailscaleBin();
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  const extra = extraPathEntries();
+  env.PATH = [env.PATH || '', ...extra].filter(Boolean).join(':');
   try {
-    const res = await execFileAsync('tailscale', args, { timeout: 2_500 });
+    const res = await execFileAsync(bin, args, { timeout: 2_500, env });
     return { ok: true as const, stdout: res.stdout ?? '', stderr: res.stderr ?? '' };
   } catch (err: any) {
     const code = err?.code;
