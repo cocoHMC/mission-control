@@ -572,7 +572,11 @@ async function handleTaskEvent(token: string, record: any, action: string) {
   for (const agentId of nextAssignees) {
     if (!prevAssignees.has(agentId)) {
       await ensureTaskSubscription(token, record.id, agentId, 'assigned');
-      await createNotification(token, agentId, `Assigned: ${record.title}`, record.id, 'assigned');
+      const desc = String(record.description || '').trim();
+      const snippetLimit = 220;
+      const snippet = desc ? (desc.length > snippetLimit ? `${desc.slice(0, snippetLimit - 1)}…` : desc) : '';
+      const content = snippet ? `Assigned: ${record.title} — ${snippet}` : `Assigned: ${record.title}`;
+      await createNotification(token, agentId, content, record.id, 'assigned');
     }
   }
 }

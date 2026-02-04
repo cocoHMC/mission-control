@@ -1,16 +1,59 @@
 #!/usr/bin/env node
 import dotenv from 'dotenv';
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
 
 // Always load Mission Control's root `.env` regardless of where the command is invoked from.
 // OpenClaw often runs commands from the agent workspace (not this repo), so relying on
 // dotenv's default cwd lookup breaks.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-dotenv.config({ path: resolve(__dirname, '..', '.env') });
+
+function isPlaceholderSecret(value) {
+  if (!value) return true;
+  const s = String(value).trim().toLowerCase();
+  return s === 'change-me' || s === 'changeme';
+}
+
+function guessDesktopEnvPath() {
+  const home = os.homedir();
+  if (process.platform === 'darwin') {
+    return join(home, 'Library', 'Application Support', '@mission-control', 'desktop', 'data', '.env');
+  }
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA || join(home, 'AppData', 'Roaming');
+    return join(appData, '@mission-control', 'desktop', 'data', '.env');
+  }
+  const xdg = process.env.XDG_CONFIG_HOME || join(home, '.config');
+  return join(xdg, '@mission-control', 'desktop', 'data', '.env');
+}
+
+function selectEnvPath() {
+  const override = (() => {
+    const i = process.argv.indexOf('--env');
+    return i >= 0 ? process.argv[i + 1] : '';
+  })();
+
+  const repoEnv = resolve(__dirname, '..', '.env');
+  const desktopEnv = guessDesktopEnvPath();
+  const dataDirEnv = process.env.MC_DATA_DIR ? resolve(process.env.MC_DATA_DIR, '.env') : '';
+
+  if (override) {
+    if (override === 'repo') return repoEnv;
+    if (override === 'desktop') return desktopEnv;
+    return resolve(override);
+  }
+
+  if (dataDirEnv && existsSync(dataDirEnv)) return dataDirEnv;
+  if (existsSync(desktopEnv)) return desktopEnv;
+  return repoEnv;
+}
+
+const ENV_PATH = selectEnvPath();
+dotenv.config({ path: ENV_PATH });
 
 const PB_URL = process.env.PB_URL || 'http://127.0.0.1:8090';
 const EMAIL = process.env.PB_SERVICE_EMAIL;
@@ -25,6 +68,14 @@ const HEALTH_TEMPLATE = process.env.MC_NODE_HEALTH_CMD_TEMPLATE || '';
 
 if (!EMAIL || !PASS) {
   console.error('Missing PB_SERVICE_EMAIL/PB_SERVICE_PASSWORD');
+  process.exit(1);
+}
+
+if (isPlaceholderSecret(PASS)) {
+  // Helpful guardrail: if this is still "change-me", users commonly ran Mission Control
+  // via the desktop app (which stores its env elsewhere) and are accidentally reading the repo .env.
+  // We keep this as an error to avoid confusing PocketBase auth failures.
+  console.error(`PB_SERVICE_PASSWORD is placeholder ("change-me").\nLoaded env: ${ENV_PATH}\nIf you're using the desktop app, run: missionctl --env desktop ...`);
   process.exit(1);
 }
 
@@ -62,6 +113,7 @@ function usage() {
 Usage:
   missionctl my --agent <id>
   missionctl list [--status ...] [--assignee ...] [--label ...] [--json]
+  missionctl get <taskId> [--json]
   missionctl create --title "..." [--desc "..."] [--priority p2] [--assignees lead,dev] [--startAt ISO] [--dueAt ISO] [--requiresReview true|false]
   missionctl claim <taskId> --agent <id>
   missionctl assign <taskId> --assignees coco,dev
@@ -139,6 +191,23 @@ async function main() {
     for (const it of tasks.items || []) {
       console.log(`${it.id}  [${it.status}]  ${it.title}`);
     }
+    return;
+  }
+
+  if (cmd === 'get') {
+    const taskId = process.argv[3];
+    const jsonFlag = process.argv.includes('--json');
+    if (!taskId) throw new Error('taskId required');
+    const task = await pb(`/api/collections/tasks/records/${taskId}`, { token: t });
+    if (jsonFlag) {
+      console.log(JSON.stringify(task, null, 2));
+      return;
+    }
+    console.log(`${task.id}  [${task.status}]  ${task.title}`);
+    const desc = String(task.description || '').trim();
+    if (desc) console.log(`\n${desc}\n`);
+    if (task.dueAt) console.log(`Due: ${task.dueAt}`);
+    if (task.startAt) console.log(`Start: ${task.startAt}`);
     return;
   }
 
