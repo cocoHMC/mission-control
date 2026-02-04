@@ -1,9 +1,12 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
-import { autoUpdater } from 'electron-updater';
+import updaterPkg from 'electron-updater';
 import log from 'electron-log';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+
+// electron-updater is CommonJS; default import gives us module.exports.
+const { autoUpdater } = updaterPkg as unknown as { autoUpdater: typeof import('electron-updater').autoUpdater };
 
 type UpdateState =
   | { status: 'idle' }
