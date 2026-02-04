@@ -106,12 +106,33 @@ body {
   padding: 24px;
 }
 
+.app-shell-desktop {
+  gap: 0;
+  padding: 0;
+  grid-template-columns: 280px 1fr;
+}
+
 .app-panel {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
   box-shadow: var(--shadow);
   overflow: hidden;
+}
+
+.app-panel-desktop {
+  border-radius: 0;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  box-shadow: none;
+}
+
+.mc-desktop-sidebar {
+  border-right: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--glass-1), var(--glass-2));
+  backdrop-filter: blur(22px);
 }
 
 .text-muted {

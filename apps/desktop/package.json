@@ -1,7 +1,7 @@
 {
   "name": "@mission-control/desktop",
   "private": true,
-  "version": "0.1.9",
+  "version": "0.1.10",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
@@ -55,6 +55,13 @@
       {
         "from": "../../apps/worker/dist/worker.bundle.cjs",
         "to": "worker/worker.bundle.cjs"
+      },
+      {
+        "from": "../../apps/web/public",
+        "to": "web/apps/web/public",
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "../../apps/web/.next/standalone",
