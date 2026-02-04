@@ -26,8 +26,17 @@ let workerProc: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
 let updateState: UpdateState = { status: 'idle' };
 let updaterTokenConfigured = false;
+let currentWebPort: number | null = null;
+let starting: Promise<void> | null = null;
 
 type UpdaterConfig = { githubToken?: string };
+
+process.on('uncaughtException', (err) => {
+  log.error('[desktop] uncaughtException', err);
+});
+process.on('unhandledRejection', (reason) => {
+  log.error('[desktop] unhandledRejection', reason);
+});
 
 function isPlaceholderSecret(value: string | undefined) {
   if (!value) return true;
@@ -265,6 +274,7 @@ async function startStack() {
 async function restartStack() {
   await stopStack();
   const { webPort } = await startStack();
+  currentWebPort = webPort;
   if (mainWindow) {
     const { env } = await loadEffectiveEnv();
     const target = needsSetup(env) ? `/setup` : `/`;
@@ -362,6 +372,7 @@ async function createMainWindow(webPort: number) {
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
+    show: false,
     backgroundColor: '#101010',
     webPreferences: {
       contextIsolation: true,
@@ -369,6 +380,19 @@ async function createMainWindow(webPort: number) {
       preload: preloadPath,
     },
   });
+
+  win.once('ready-to-show', () => {
+    win.show();
+    win.focus();
+  });
+  // If something prevents ready-to-show from firing, still show a window.
+  setTimeout(() => {
+    if (win.isDestroyed()) return;
+    if (!win.isVisible()) {
+      win.show();
+      win.focus();
+    }
+  }, 1500);
 
   // Auto-supply Basic Auth credentials from the current .env so the desktop app
   // feels like a native login (no browser prompt).
@@ -384,20 +408,94 @@ async function createMainWindow(webPort: number) {
 
   const { env } = await loadEffectiveEnv();
   const target = needsSetup(env) ? `/setup` : `/`;
-  await win.loadURL(`http://127.0.0.1:${webPort}${target}`);
+  const url = `http://127.0.0.1:${webPort}${target}`;
+  try {
+    await win.loadURL(url);
+  } catch (err) {
+    log.error('[desktop] failed to load URL', { url, err });
+  }
   return win;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+async function createErrorWindow(title: string, body: string) {
+  const win = new BrowserWindow({
+    width: 980,
+    height: 700,
+    backgroundColor: '#101010',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  const html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif; background: #0b0b0b; color: #f2f2f2; }
+      .wrap { padding: 28px; }
+      h1 { margin: 0 0 10px; font-size: 22px; letter-spacing: -0.02em; }
+      p { margin: 0 0 12px; color: #cfcfcf; line-height: 1.45; }
+      pre { margin: 14px 0 0; background: #121212; border: 1px solid #222; border-radius: 10px; padding: 14px; overflow: auto; white-space: pre-wrap; word-break: break-word; color: #e6e6e6; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
+      .hint { margin-top: 16px; padding: 12px 14px; border-radius: 10px; border: 1px solid #2a2a2a; background: #0f0f0f; }
+      .hint b { color: #fff; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>${escapeHtml(title)}</h1>
+      <p>${escapeHtml(body)}</p>
+      <div class="hint">
+        <p><b>Common causes:</b> another copy of Mission Control is already running, or ports <code>4010</code>/<code>8090</code> are in use.</p>
+        <p><b>Logs:</b> <code>${escapeHtml(path.join(app.getPath('home'), 'Library/Logs/@mission-control/desktop/main.log'))}</code></p>
+      </div>
+    </div>
+  </body>
+</html>`;
+
+  await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  win.show();
+  win.focus();
+  return win;
+}
+
+async function ensureMainWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (!mainWindow.isVisible()) mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
+
+  if (currentWebPort == null) {
+    const { webPort } = await startStack();
+    currentWebPort = webPort;
+  }
+
+  mainWindow = await createMainWindow(currentWebPort);
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
 }
 
 async function main() {
   log.info('[desktop] starting Mission Control desktop', { version: app.getVersion(), packaged: app.isPackaged });
   setupAutoUpdater();
 
-  const { webPort } = await startStack();
-  mainWindow = await createMainWindow(webPort);
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+  await ensureMainWindow();
 }
 
 app.on('window-all-closed', () => {
@@ -408,7 +506,25 @@ app.on('before-quit', () => {
   void stopStack();
 });
 
-app.whenReady().then(() => void main()).catch((err) => {
-  log.error('[desktop] failed to start', err);
+if (!app.requestSingleInstanceLock()) {
   app.quit();
+} else {
+  app.on('second-instance', () => {
+    void ensureMainWindow();
+  });
+}
+
+app.on('activate', () => {
+  void ensureMainWindow();
 });
+
+app
+  .whenReady()
+  .then(() => {
+    if (!starting) starting = main();
+    return starting;
+  })
+  .catch((err) => {
+    log.error('[desktop] failed to start', err);
+    void createErrorWindow('Mission Control failed to start', err?.message || String(err)).catch(() => {});
+  });

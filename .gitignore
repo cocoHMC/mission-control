@@ -12,4 +12,5 @@ ops/openclaw/
 node_modules/
 apps/*/node_modules/
 dist/
+release/
 .next/
