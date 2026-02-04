@@ -1,7 +1,7 @@
 {
   "name": "@mission-control/desktop",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.7",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
@@ -53,8 +53,8 @@
         "to": "pb/pb_migrations"
       },
       {
-        "from": "../../apps/worker/dist",
-        "to": "worker"
+        "from": "../../apps/worker/dist/worker.bundle.cjs",
+        "to": "worker/worker.bundle.cjs"
       },
       {
         "from": "../../apps/web/.next/standalone",

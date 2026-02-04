@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { z } from 'zod';
 import PocketBase from 'pocketbase';
 import { EventSource } from 'eventsource';

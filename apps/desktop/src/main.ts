@@ -164,7 +164,25 @@ async function waitForOk(url: string, timeoutMs = 20_000) {
 }
 
 function spawnNode(scriptPath: string, args: string[], opts: { cwd: string; env: NodeJS.ProcessEnv; name: string }) {
-  const child = spawn(process.execPath, [scriptPath, ...args], {
+  const packagedContentsDir = path.resolve(path.dirname(process.execPath), '..'); // Contents/
+  const packagedExecName = path.basename(process.execPath);
+  const helperExec =
+    process.platform === 'darwin'
+      ? path.join(
+          packagedContentsDir,
+          'Frameworks',
+          `${packagedExecName} Helper.app`,
+          'Contents',
+          'MacOS',
+          `${packagedExecName} Helper`
+        )
+      : null;
+
+  // On macOS, spawning the main app executable (even in ELECTRON_RUN_AS_NODE mode) can cause a ghost Dock icon
+  // to appear. Running node workloads via the Helper (LSUIElement=true) avoids the extra icon.
+  const runner = app.isPackaged && helperExec ? helperExec : process.execPath;
+
+  const child = spawn(runner, [scriptPath, ...args], {
     cwd: opts.cwd,
     env: {
       ...opts.env,
@@ -178,6 +196,17 @@ function spawnNode(scriptPath: string, args: string[], opts: { cwd: string; env:
   child.stderr?.on('data', (d) => log.error(prefix, String(d).trimEnd()));
   child.on('error', (err) => log.error(prefix, err));
   return child;
+}
+
+async function runNodeOnce(scriptPath: string, args: string[], opts: { cwd: string; env: NodeJS.ProcessEnv; name: string }) {
+  const child = spawnNode(scriptPath, args, opts);
+  await new Promise<void>((resolve, reject) => {
+    child.on('exit', (code) => {
+      if (code === 0) return resolve();
+      return reject(new Error(`${opts.name} exited with code ${code}`));
+    });
+    child.on('error', reject);
+  });
 }
 
 async function stopStack() {
@@ -250,6 +279,19 @@ async function startStack() {
     MC_DATA_DIR: dataDir,
   };
 
+  // Best-effort self-heal: if an earlier setup attempt failed, PB may be partially bootstrapped.
+  // Before starting the worker, try to ensure schema + service user exist.
+  if (!needsSetup(env)) {
+    const scriptsDir = path.join(root, 'scripts');
+    try {
+      await runNodeOnce(path.join(scriptsDir, 'pb_bootstrap.mjs'), [], { cwd: root, env: envForChildren, name: 'pb_bootstrap' });
+      await runNodeOnce(path.join(scriptsDir, 'pb_set_rules.mjs'), [], { cwd: root, env: envForChildren, name: 'pb_set_rules' });
+      await runNodeOnce(path.join(scriptsDir, 'pb_backfill_vnext.mjs'), [], { cwd: root, env: envForChildren, name: 'pb_backfill' });
+    } catch (err) {
+      log.error('[desktop] pocketbase bootstrap failed (continuing)', err);
+    }
+  }
+
   const webRoot = app.isPackaged
     ? path.join(root, 'web', 'apps', 'web')
     : path.join(root, 'apps', 'web', '.next', 'standalone', 'apps', 'web');
@@ -266,7 +308,9 @@ async function startStack() {
   await waitForOk(`http://127.0.0.1:${webPort}/api/health`, 25_000).catch(() => {});
 
   if (!needsSetup(env)) {
-    const workerEntry = app.isPackaged ? path.join(root, 'worker', 'index.js') : path.join(root, 'apps', 'worker', 'dist', 'index.js');
+    const workerEntry = app.isPackaged
+      ? path.join(root, 'worker', 'worker.bundle.cjs')
+      : path.join(root, 'apps', 'worker', 'dist', 'index.js');
     log.info('[desktop] starting worker', { workerEntry });
     workerProc = spawnNode(workerEntry, [], { cwd: root, env: envForChildren, name: 'worker' });
   }

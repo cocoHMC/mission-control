@@ -178,7 +178,19 @@ async function ensureServiceUser(token) {
   const users = await pbFetch(`/api/collections/service_users/records?perPage=200&filter=${encodeURIComponent(`email="${SERVICE_EMAIL}"`)}`,
     { token: `Bearer ${token}` }
   );
-  if (users?.items?.length) return users.items[0];
+  if (users?.items?.length) {
+    // Ensure the password matches the current env so the worker can auth reliably.
+    try {
+      await pbFetch(`/api/collections/service_users/records/${users.items[0].id}`, {
+        method: 'PATCH',
+        token: `Bearer ${token}`,
+        body: { password: SERVICE_PASSWORD, passwordConfirm: SERVICE_PASSWORD },
+      });
+    } catch (err) {
+      console.warn('[pb_bootstrap] failed to upsert service user password (continuing)', err?.message || err);
+    }
+    return users.items[0];
+  }
 
   return pbFetch('/api/collections/service_users/records', {
     method: 'POST',
