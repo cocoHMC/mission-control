@@ -149,13 +149,13 @@ function computeBasicAuthHeader(user: string, pass: string) {
   return `Basic ${value}`;
 }
 
-function installAuthHeader(port: number, user: string, pass: string) {
+function installAuthHeader(port: number) {
   if (authHeaderInstalledForPort === port) return;
-  const headerValue = computeBasicAuthHeader(user, pass);
   session.defaultSession.webRequest.onBeforeSendHeaders({ urls: [`http://127.0.0.1:${port}/*`] }, (details, cb) => {
+    const headerValue = cachedBasicAuth ? computeBasicAuthHeader(cachedBasicAuth.user, cachedBasicAuth.pass) : null;
     details.requestHeaders = {
       ...details.requestHeaders,
-      Authorization: headerValue,
+      ...(headerValue ? { Authorization: headerValue } : {}),
       'X-MC-Desktop': '1',
     };
     cb({ requestHeaders: details.requestHeaders });
@@ -531,8 +531,19 @@ async function restartStack() {
     const webPort = await ensureStackStarted();
     if (mainWindow) {
       const { env } = await loadEffectiveEnv();
+      const basicUser = env.MC_ADMIN_USER || '';
+      const basicPass = env.MC_ADMIN_PASSWORD || '';
+      const hasBasic = Boolean(basicUser && basicPass && !isPlaceholderSecret(basicUser) && !isPlaceholderSecret(basicPass));
+      cachedBasicAuth = hasBasic ? { user: basicUser, pass: basicPass } : null;
+      installAuthHeader(webPort);
       const target = needsSetup(env) ? `/setup` : `/`;
-      void mainWindow.loadURL(`http://127.0.0.1:${webPort}${target}`);
+      const url = `http://127.0.0.1:${webPort}${target}`;
+      if (cachedBasicAuth) {
+        const auth = computeBasicAuthHeader(cachedBasicAuth.user, cachedBasicAuth.pass);
+        void mainWindow.loadURL(url, { extraHeaders: `Authorization: ${auth}\n` });
+      } else {
+        void mainWindow.loadURL(url);
+      }
     }
   })().finally(() => {
     stackRestarting = null;
@@ -809,7 +820,7 @@ async function createMainWindow(webPort: number) {
   const basicPass = env.MC_ADMIN_PASSWORD || '';
   const hasBasic = Boolean(basicUser && basicPass && !isPlaceholderSecret(basicUser) && !isPlaceholderSecret(basicPass));
   cachedBasicAuth = hasBasic ? { user: basicUser, pass: basicPass } : null;
-  if (cachedBasicAuth) installAuthHeader(webPort, cachedBasicAuth.user, cachedBasicAuth.pass);
+  installAuthHeader(webPort);
 
   const win = new BrowserWindow({
     width: 1280,
