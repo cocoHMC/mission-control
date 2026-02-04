@@ -1,0 +1,42 @@
+services:
+  pb:
+    image: ghcr.io/cocohmc/mission-control-pb:latest
+    ports:
+      # Bind to loopback by default; expose via Tailscale/LAN as you choose.
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - pb_data:/pb/pb_data
+    command: ["./pocketbase", "serve", "--http=0.0.0.0:8090"]
+
+  worker:
+    image: ghcr.io/cocohmc/mission-control-worker:latest
+    depends_on:
+      - pb
+    environment:
+      PB_URL: http://pb:8090
+      PB_SERVICE_EMAIL: ${PB_SERVICE_EMAIL}
+      PB_SERVICE_PASSWORD: ${PB_SERVICE_PASSWORD}
+      # In Docker on macOS, reach the host OpenClaw gateway via host.docker.internal.
+      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL_DOCKER:-http://host.docker.internal:18789}
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      LEASE_MINUTES: ${LEASE_MINUTES:-45}
+
+  web:
+    image: ghcr.io/cocohmc/mission-control-web:latest
+    depends_on:
+      - pb
+    ports:
+      # Tailnet/LAN access: bind to tailnet IP if present.
+      - "${MC_WEB_BIND:-127.0.0.1}:4010:4010"
+    environment:
+      PORT: 4010
+      PB_URL: http://pb:8090
+      PB_SERVICE_EMAIL: ${PB_SERVICE_EMAIL}
+      PB_SERVICE_PASSWORD: ${PB_SERVICE_PASSWORD}
+      MC_ADMIN_USER: ${MC_ADMIN_USER}
+      MC_ADMIN_PASSWORD: ${MC_ADMIN_PASSWORD}
+      NEXT_TELEMETRY_DISABLED: 1
+
+volumes:
+  pb_data:
+

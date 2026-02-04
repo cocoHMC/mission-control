@@ -197,6 +197,20 @@ Docker is great for PocketBase and for running Mission Control on a server. Note
 - If you run the web app **inside Docker**, OpenClaw CLI/config editor features won’t work unless you mount the OpenClaw binary + config into the container.
 - Recommended hybrid: PocketBase in Docker, web/worker on the host.
 
+### Option 0: Pull Prebuilt Images (Fastest)
+This is the “no build” path (good for servers and Windows with Docker Desktop).
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose.ghcr.yml up -d
+```
+
+Then open:
+- `http://127.0.0.1:4010/setup`
+
+Notes:
+- The GHCR images are currently published for `linux/amd64` (x86_64). If you’re on `linux/arm64`, use Option B (build locally).
+
 ### Option A: PocketBase in Docker, Web/Worker on Host (Recommended Hybrid)
 ```bash
 cp .env.example .env
