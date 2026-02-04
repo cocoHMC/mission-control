@@ -23,7 +23,7 @@ jobs:
           - name: pb
             dockerfile: pb/Dockerfile
             image: mission-control-pb
-            platforms: linux/amd64,linux/arm64
+            platforms: linux/amd64
           - name: web
             dockerfile: apps/web/Dockerfile
             image: mission-control-web
@@ -38,9 +38,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Setup Buildx
         uses: docker/setup-buildx-action@v3
