@@ -27,9 +27,3 @@
 ## Data Safety
 - Back up `pb/pb_data` daily.
 - Store backups outside the repo (or encrypt at rest).
-
-## Vaultwarden (Optional)
-- Use the Security page to generate the `ops/vaultwarden` stack (Caddy + Vaultwarden).
-- Keep the Vaultwarden domain tailnet-only (no public A/AAAA records).
-- Enable docker actions by setting `MC_SECURITY_ACTIONS_ENABLED=true`.
-- Use one collection per node and prefer read-only collections for automation.

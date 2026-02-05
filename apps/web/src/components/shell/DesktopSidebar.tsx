@@ -10,7 +10,6 @@ import {
   ListTodo,
   Server,
   Settings,
-  Shield,
   SlidersHorizontal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -39,7 +38,6 @@ const sections: Array<{
     label: 'System',
     items: [
       { href: '/openclaw', label: 'OpenClaw', icon: SlidersHorizontal },
-      { href: '/security', label: 'Security', icon: Shield },
       { href: '/settings', label: 'Settings', icon: Settings },
     ],
   },

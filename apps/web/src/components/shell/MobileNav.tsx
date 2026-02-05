@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, Brain, ClipboardCheck, LayoutDashboard, ListTodo, Server, Settings, Shield, SlidersHorizontal } from 'lucide-react';
+import { BarChart3, Brain, ClipboardCheck, LayoutDashboard, ListTodo, Server, Settings, SlidersHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const nav = [
@@ -14,7 +14,6 @@ const nav = [
   { href: '/nodes', label: 'Nodes', icon: Server },
   { href: '/docs', label: 'Docs', icon: ClipboardCheck },
   { href: '/openclaw', label: 'OpenClaw', icon: SlidersHorizontal },
-  { href: '/security', label: 'Security', icon: Shield },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
