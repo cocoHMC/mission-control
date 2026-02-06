@@ -260,6 +260,7 @@ async function main() {
       schema: [
         { type: 'text', name: 'title', required: true },
         { type: 'editor', name: 'description' },
+        { type: 'editor', name: 'context' },
         { type: 'select', name: 'status', required: true, options: { maxSelect: 1, values: ['inbox', 'assigned', 'in_progress', 'review', 'done', 'blocked'] } },
         { type: 'select', name: 'priority', options: { maxSelect: 1, values: ['p0', 'p1', 'p2', 'p3'] } },
         { type: 'json', name: 'assigneeIds' },

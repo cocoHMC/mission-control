@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
   // 1) Quick health check (no auth required on local setups)
   try {
-    const healthRes = await fetch(new URL('/health', base), { method: 'GET' });
+    const healthRes = await fetch(new URL('/api/health', base), { method: 'GET' });
     if (!healthRes.ok) {
       return NextResponse.json(
         { ok: false, error: `OpenClaw gateway is not healthy (${healthRes.status}). Is it running?` },
@@ -120,4 +120,3 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, sessionCount });
 }
-

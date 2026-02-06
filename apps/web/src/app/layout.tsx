@@ -1,23 +1,25 @@
 import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
-import { IBM_Plex_Sans, JetBrains_Mono, Space_Grotesk } from 'next/font/google';
+import { Fira_Code, Fira_Sans } from 'next/font/google';
 import './globals.css';
 import { DesktopNotificationsProvider } from '@/components/notifications/DesktopNotificationsProvider';
 
-const display = Space_Grotesk({
+const display = Fira_Code({
   variable: '--font-display',
   subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
 });
 
-const body = IBM_Plex_Sans({
+const body = Fira_Sans({
   variable: '--font-body',
   subsets: ['latin'],
   weight: ['300', '400', '500', '600', '700'],
 });
 
-const mono = JetBrains_Mono({
+const mono = Fira_Code({
   variable: '--font-mono',
   subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
 });
 
 export const metadata: Metadata = {
@@ -27,7 +29,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#f4efe9',
+  themeColor: '#f6f1ea',
 };
 
 // This is an authenticated, realtime dashboard. Disable static generation so

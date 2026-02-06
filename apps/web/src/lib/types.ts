@@ -4,6 +4,7 @@ export type Task = {
   id: string;
   title: string;
   description?: string;
+  context?: string;
   status: TaskStatus;
   archived?: boolean;
   priority?: string;

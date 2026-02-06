@@ -2,7 +2,17 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, Brain, ClipboardCheck, LayoutDashboard, ListTodo, Server, Settings, SlidersHorizontal } from 'lucide-react';
+import {
+  BarChart3,
+  Brain,
+  ClipboardCheck,
+  LayoutDashboard,
+  ListTodo,
+  MessageSquare,
+  Server,
+  Settings,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const nav = [
@@ -10,6 +20,7 @@ const nav = [
   { href: '/tasks', label: 'Tasks', icon: ListTodo },
   { href: '/activity', label: 'Activity', icon: BarChart3 },
   { href: '/agents', label: 'Agents', icon: Brain },
+  { href: '/sessions', label: 'Sessions', icon: MessageSquare },
   { href: '/nodes', label: 'Nodes', icon: Server },
   { href: '/docs', label: 'Docs', icon: ClipboardCheck },
   { href: '/openclaw', label: 'OpenClaw', icon: SlidersHorizontal },
@@ -18,19 +29,16 @@ const nav = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const leadName = process.env.NEXT_PUBLIC_MC_LEAD_AGENT_NAME || process.env.NEXT_PUBLIC_MC_LEAD_AGENT_ID || 'Lead';
-
   return (
     <aside className="flex h-full flex-col gap-6 rounded-3xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-sm">
       <div>
         <div className="text-xs uppercase tracking-[0.2em] text-muted">Mission Control</div>
-        <div className="mt-2 text-2xl font-semibold headline">{leadName} Ops</div>
-        <div className="mt-1 text-sm text-muted">Tailnet-only command center</div>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-2">
+      <nav className="flex flex-1 flex-col gap-2 overflow-auto pr-1 mc-scroll">
         {nav.map((item) => {
-          const active = pathname === item.href;
+          const active =
+            pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href.endsWith('/') ? item.href : `${item.href}/`));
           const Icon = item.icon;
           return (
             <Link
@@ -39,7 +47,7 @@ export function Sidebar() {
               className={cn(
                 'flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition',
                 active
-                  ? 'bg-[var(--accent)] text-[var(--background)]'
+                  ? 'bg-[var(--accent)] text-[var(--accent-foreground)]'
                   : 'text-[var(--foreground)] hover:bg-[color:var(--foreground)]/5'
               )}
             >
@@ -50,10 +58,6 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="rounded-2xl border border-dashed border-[var(--border)] p-4 text-xs text-muted">
-        <div className="font-semibold text-[var(--foreground)]">LAN + Headscale</div>
-        <div className="mt-1">Gateway runs on lead. UI locked to Tailnet.</div>
-      </div>
     </aside>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { mcFetch } from '@/lib/clientApi';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,7 +37,7 @@ export function TailscaleStatusCard({ webPort }: { webPort: string }) {
   async function refresh() {
     setLoading(true);
     try {
-      const res = await fetch('/api/setup/tailscale-status', { cache: 'no-store' });
+      const res = await mcFetch('/api/setup/tailscale-status', { cache: 'no-store' });
       const json = (await res.json()) as TailscaleStatus;
       setStatus(json);
     } catch (err: unknown) {
@@ -141,4 +142,3 @@ export function TailscaleStatusCard({ webPort }: { webPort: string }) {
     </Card>
   );
 }
-

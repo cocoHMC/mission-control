@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { mcFetch } from '@/lib/clientApi';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,7 +33,7 @@ export function OpenClawIntegration() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/settings/openclaw', { cache: 'no-store' });
+        const res = await mcFetch('/api/settings/openclaw', { cache: 'no-store' });
         if (!res.ok) throw new Error(await res.text());
         const json = (await res.json()) as OpenClawSettings;
         if (cancelled) return;
@@ -58,7 +59,7 @@ export function OpenClawIntegration() {
     setTest(null);
     setTesting(true);
     try {
-      const res = await fetch('/api/openclaw/test', {
+      const res = await mcFetch('/api/openclaw/test', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ gatewayUrl: form.gatewayUrl, token: form.token }),
@@ -77,7 +78,7 @@ export function OpenClawIntegration() {
     setStatus(null);
     setSaving(true);
     try {
-      const res = await fetch('/api/settings/openclaw', {
+      const res = await mcFetch('/api/settings/openclaw', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ gatewayUrl: form.gatewayUrl, token: form.token, enabled: form.enabled }),
@@ -167,4 +168,3 @@ export function OpenClawIntegration() {
     </Card>
   );
 }
-

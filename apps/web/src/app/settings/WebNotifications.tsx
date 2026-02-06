@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { mcFetch } from '@/lib/clientApi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -54,7 +55,7 @@ export function WebNotifications() {
 
   const refreshVapid = React.useCallback(async () => {
     try {
-      const res = await fetch('/api/notifications/vapid', { cache: 'no-store' });
+      const res = await mcFetch('/api/notifications/vapid', { cache: 'no-store' });
       const json = (await res.json()) as VapidResponse;
       setVapid(json);
     } catch {
@@ -84,7 +85,10 @@ export function WebNotifications() {
     setStatus(null);
     setConfiguringKeys(true);
     try {
-      const res = await fetch('/api/notifications/vapid/generate', { method: 'POST', headers: { 'content-type': 'application/json' } });
+      const res = await mcFetch('/api/notifications/vapid/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+      });
       const json = (await res.json()) as GenerateResponse;
       if (!res.ok || !json?.ok) throw new Error(json?.error || 'Failed to configure push keys');
       setStatus(
@@ -113,7 +117,7 @@ export function WebNotifications() {
         return;
       }
 
-      const vapidRes = await fetch('/api/notifications/vapid', { headers: { 'content-type': 'application/json' } });
+      const vapidRes = await mcFetch('/api/notifications/vapid', { headers: { 'content-type': 'application/json' } });
       const vapid = (await vapidRes.json()) as VapidResponse;
       setVapid(vapid);
       if (!vapid.publicKey || !vapid.enabled) {
@@ -127,7 +131,7 @@ export function WebNotifications() {
         applicationServerKey: urlBase64ToUint8Array(vapid.publicKey),
       });
 
-      await fetch('/api/notifications/subscribe', {
+      await mcFetch('/api/notifications/subscribe', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ subscription: sub, deviceLabel }),
@@ -156,7 +160,7 @@ export function WebNotifications() {
       const reg = await getRegistration();
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
-        await fetch('/api/notifications/unsubscribe', {
+        await mcFetch('/api/notifications/unsubscribe', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ endpoint: sub.endpoint }),
@@ -177,7 +181,10 @@ export function WebNotifications() {
     setStatus(null);
     setLoading(true);
     try {
-      const res = await fetch('/api/notifications/test', { method: 'POST', headers: { 'content-type': 'application/json' } });
+      const res = await mcFetch('/api/notifications/test', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+      });
       if (!res.ok) throw new Error(await res.text());
       setStatus('Test notification queued.');
     } catch (err: unknown) {

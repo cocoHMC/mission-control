@@ -107,6 +107,39 @@ async function token() {
   return r.token;
 }
 
+function escapeFilterValue(value) {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+async function resolveAgentRecordId(agentLike, t) {
+  const raw = String(agentLike || '').trim();
+  if (!raw) return '';
+  // Try to resolve OpenClaw agent ids to PocketBase record ids.
+  // This lets agents use `--agent main` consistently even though tasks store relation ids.
+  const filter = `openclawAgentId = "${escapeFilterValue(raw)}" || id = "${escapeFilterValue(raw)}"`;
+  const q = new URLSearchParams({ page: '1', perPage: '1', filter });
+  try {
+    const res = await pb(`/api/collections/agents/records?${q.toString()}`, { token: t });
+    const found = (res.items || [])[0];
+    return found?.id || raw;
+  } catch {
+    return raw;
+  }
+}
+
+async function resolveAgentRecordIds(agentLikes, t) {
+  const out = [];
+  const seen = new Set();
+  for (const a of agentLikes || []) {
+    const id = await resolveAgentRecordId(a, t);
+    if (!id) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
 function usage() {
   console.log(`missionctl (v1)
 
@@ -114,12 +147,12 @@ Usage:
   missionctl my --agent <id>
   missionctl list [--status ...] [--assignee ...] [--label ...] [--json]
   missionctl get <taskId> [--json]
-  missionctl create --title "..." [--desc "..."] [--priority p2] [--assignees lead,dev] [--startAt ISO] [--dueAt ISO] [--requiresReview true|false]
+  missionctl create --title "..." [--desc "..."] [--context "..." | --context-file <path|->] [--priority p2] [--assignees lead,dev] [--startAt ISO] [--dueAt ISO] [--requiresReview true|false]
   missionctl claim <taskId> --agent <id>
   missionctl assign <taskId> --assignees coco,dev
   missionctl say <taskId> --agent <id> (--text "..." | --text-file <path|->)
   missionctl status <taskId> --status <inbox|assigned|in_progress|review|done|blocked>
-  missionctl task set <taskId> [--startAt ISO] [--dueAt ISO] [--requiresReview true|false]
+  missionctl task set <taskId> [--startAt ISO] [--dueAt ISO] [--requiresReview true|false] [--context "..." | --context-file <path|->]
   missionctl block <taskId> --agent <id> --reason "..."
   missionctl doc <taskId> --title "..." (--content "..." | --content-file <path|->) [--type deliverable]
   missionctl subtasks list <taskId> [--json]
@@ -163,7 +196,12 @@ async function main() {
 
   if (cmd === 'my') {
     const agent = arg('--agent') || DEFAULT_AGENT;
-    const q = new URLSearchParams({ page: '1', perPage: '200', filter: `assigneeIds ~ "${agent}" && status != "done"` });
+    const agentRecordId = await resolveAgentRecordId(agent, t);
+    const q = new URLSearchParams({
+      page: '1',
+      perPage: '200',
+      filter: `assigneeIds ~ "${escapeFilterValue(agentRecordId)}" && status != "done"`,
+    });
     const tasks = await pb(`/api/collections/tasks/records?${q.toString()}`, { token: t });
     for (const it of tasks.items || []) {
       console.log(`${it.id}  [${it.status}]  ${it.title}`);
@@ -178,7 +216,10 @@ async function main() {
     const jsonFlag = process.argv.includes('--json');
     const filters = [];
     if (status) filters.push(`status = "${status}"`);
-    if (assignee) filters.push(`assigneeIds ~ "${assignee}"`);
+    if (assignee) {
+      const assigneeRecordId = await resolveAgentRecordId(assignee, t);
+      filters.push(`assigneeIds ~ "${escapeFilterValue(assigneeRecordId)}"`);
+    }
     if (label) filters.push(`labels ~ "${label}"`);
     const filter = filters.length ? filters.join(' && ') : '';
     const q = new URLSearchParams({ page: '1', perPage: '200' });
@@ -206,6 +247,8 @@ async function main() {
     console.log(`${task.id}  [${task.status}]  ${task.title}`);
     const desc = String(task.description || '').trim();
     if (desc) console.log(`\n${desc}\n`);
+    const ctx = String(task.context || '').trim();
+    if (ctx) console.log(`\n---\n\nDeep context:\n\n${ctx}\n`);
     if (task.dueAt) console.log(`Due: ${task.dueAt}`);
     if (task.startAt) console.log(`Start: ${task.startAt}`);
     return;
@@ -215,8 +258,18 @@ async function main() {
     const title = arg('--title');
     if (!title) throw new Error('--title required');
     const desc = arg('--desc') || '';
+    let context = arg('--context') || '';
+    const contextFile = arg('--context-file');
+    if (!context && contextFile) {
+      if (contextFile === '-') {
+        context = readFileSync(0, 'utf8');
+      } else {
+        context = readFileSync(resolve(contextFile), 'utf8');
+      }
+    }
     const priority = arg('--priority') || 'p2';
-    const assignees = argList('--assignees');
+    const assigneesRaw = argList('--assignees');
+    const assignees = await resolveAgentRecordIds(assigneesRaw, t);
     const startAt = arg('--startAt') || '';
     const dueAt = arg('--dueAt') || '';
     const requiresReview = argBool('--requiresReview') ?? false;
@@ -227,6 +280,7 @@ async function main() {
       body: {
         title,
         description: desc,
+        context: context || '',
         priority,
         status: assignees.length ? 'assigned' : 'inbox',
         assigneeIds: assignees,
@@ -274,9 +328,10 @@ async function main() {
 
   if (cmd === 'assign') {
     const taskId = process.argv[3];
-    const assignees = argList('--assignees');
+    const assigneesRaw = argList('--assignees');
     if (!taskId) throw new Error('taskId required');
-    if (!assignees.length) throw new Error('--assignees required');
+    if (!assigneesRaw.length) throw new Error('--assignees required');
+    const assignees = await resolveAgentRecordIds(assigneesRaw, t);
     const updated = await pb(`/api/collections/tasks/records/${taskId}`, {
       method: 'PATCH',
       token: t,
@@ -336,8 +391,17 @@ async function main() {
     const startAt = arg('--startAt');
     const dueAt = arg('--dueAt');
     const requiresReview = argBool('--requiresReview');
-    if (startAt == null && dueAt == null && requiresReview == null) {
-      throw new Error('Nothing to set. Use --startAt, --dueAt, or --requiresReview');
+    let context = arg('--context');
+    const contextFile = arg('--context-file');
+    if (!context && contextFile) {
+      if (contextFile === '-') {
+        context = readFileSync(0, 'utf8');
+      } else {
+        context = readFileSync(resolve(contextFile), 'utf8');
+      }
+    }
+    if (startAt == null && dueAt == null && requiresReview == null && context == null) {
+      throw new Error('Nothing to set. Use --startAt, --dueAt, --requiresReview, or --context/--context-file');
     }
     const now = new Date().toISOString();
     const updated = await pb(`/api/collections/tasks/records/${taskId}`, {
@@ -347,6 +411,7 @@ async function main() {
         ...(startAt != null ? { startAt } : {}),
         ...(dueAt != null ? { dueAt } : {}),
         ...(requiresReview != null ? { requiresReview } : {}),
+        ...(context != null ? { context } : {}),
         updatedAt: now,
       },
     });

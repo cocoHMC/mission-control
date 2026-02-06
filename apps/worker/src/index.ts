@@ -573,19 +573,24 @@ async function handleTaskEvent(token: string, record: any, action: string) {
     if (!prevAssignees.has(agentId)) {
       await ensureTaskSubscription(token, record.id, agentId, 'assigned');
       let desc = String(record.description || '').trim();
+      let ctx = String(record.context || '').trim();
       if (!desc) {
         // PocketBase realtime payloads can occasionally omit large fields depending on transport/version.
         // Fetch the record once so the assignee always receives enough context to act without opening the UI.
         try {
           const fetched = await pbFetch(`/api/collections/tasks/records/${record.id}`, { token });
           desc = String(fetched?.description || '').trim();
+          ctx = String(fetched?.context || '').trim();
         } catch {
           // ignore description fetch errors (we'll fall back to title-only notification)
         }
       }
       const snippetLimit = 220;
+      const ctxLimit = 280;
       const snippet = desc ? (desc.length > snippetLimit ? `${desc.slice(0, snippetLimit - 1)}…` : desc) : '';
-      const content = snippet ? `Assigned: ${record.title} — ${snippet}` : `Assigned: ${record.title}`;
+      const ctxSnippet = ctx ? (ctx.length > ctxLimit ? `${ctx.slice(0, ctxLimit - 1)}…` : ctx) : '';
+      const parts = [snippet, ctxSnippet ? `Context: ${ctxSnippet}` : ''].filter(Boolean);
+      const content = parts.length ? `Assigned: ${record.title} — ${parts.join(' ')}` : `Assigned: ${record.title}`;
       await createNotification(token, agentId, content, record.id, 'assigned');
     }
   }

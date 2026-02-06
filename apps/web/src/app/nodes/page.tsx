@@ -8,6 +8,7 @@ import { formatShortDate } from '@/lib/utils';
 import type { NodeRecord, PBList } from '@/lib/types';
 import { NodeActions } from '@/app/nodes/NodeActions';
 import { NodeSync } from '@/app/nodes/NodeSync';
+import { OpenClawNodesLive } from '@/app/nodes/OpenClawNodesLive';
 
 export default async function NodesPage() {
   const q = new URLSearchParams({ page: '1', perPage: '200', sort: 'displayName' });
@@ -54,6 +55,8 @@ export default async function NodesPage() {
             )}
           </CardContent>
         </Card>
+
+        <OpenClawNodesLive />
 
         <Card>
           <CardHeader>

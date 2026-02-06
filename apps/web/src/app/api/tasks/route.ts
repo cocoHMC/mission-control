@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
   const payload = {
     title: body.title,
     description: body.description ?? '',
+    context: body.context ?? '',
     status: body.status ?? 'inbox',
     priority: body.priority ?? 'p2',
     assigneeIds: body.assigneeIds ?? [],

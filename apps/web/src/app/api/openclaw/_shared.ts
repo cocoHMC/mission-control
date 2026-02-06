@@ -10,7 +10,10 @@ export function getOpenClawConfigPath() {
 }
 
 export function getOpenClawOpsDir() {
-  return path.join(process.cwd(), 'ops', 'openclaw');
+  // In packaged desktop builds, Next runs from a read-only resource directory.
+  // Keep pending configs + backups under the writable data dir when available.
+  const base = process.env.MC_DATA_DIR ? path.resolve(process.env.MC_DATA_DIR) : process.cwd();
+  return path.join(base, 'ops', 'openclaw');
 }
 
 export async function readConfigFile() {

@@ -10,11 +10,26 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { MentionsTextarea } from '@/components/mentions/MentionsTextarea';
 import { Textarea } from '@/components/ui/textarea';
+import { CopyButton } from '@/components/ui/copy-button';
 import { cn, formatShortDate, fromDateTimeLocalValue, toDateTimeLocalValue } from '@/lib/utils';
 import type { Agent, DocumentRecord, Message, NodeRecord, Subtask, Task } from '@/lib/types';
+import { mcFetch } from '@/lib/clientApi';
 
 const STATUSES = ['inbox', 'assigned', 'in_progress', 'review', 'blocked', 'done'];
 type Status = (typeof STATUSES)[number];
+
+type OpenClawNode = {
+  nodeId?: string;
+  displayName?: string;
+  remoteIp?: string;
+  platform?: string;
+  paired?: boolean;
+  connected?: boolean;
+};
+
+type OpenClawNodesStatus = {
+  nodes?: OpenClawNode[];
+};
 
 export function TaskDetail({
   task,
@@ -39,6 +54,8 @@ export function TaskDetail({
   const [message, setMessage] = React.useState('');
   const [docTitle, setDocTitle] = React.useState('');
   const [docContent, setDocContent] = React.useState('');
+  const [contextDraft, setContextDraft] = React.useState(task.context ?? '');
+  const [editingContext, setEditingContext] = React.useState(false);
   const [assignees, setAssignees] = React.useState<string[]>(task.assigneeIds ?? []);
   const [labelsInput, setLabelsInput] = React.useState((task.labels ?? []).join(', '));
   const [requiredNodeId, setRequiredNodeId] = React.useState(task.requiredNodeId ?? '');
@@ -49,6 +66,39 @@ export function TaskDetail({
   const [dueAt, setDueAt] = React.useState(toDateTimeLocalValue(task.dueAt));
   const [subtaskItems, setSubtaskItems] = React.useState<Subtask[]>(subtasks ?? []);
   const [newSubtaskTitle, setNewSubtaskTitle] = React.useState('');
+  const [openclawNodes, setOpenclawNodes] = React.useState<OpenClawNode[]>([]);
+
+  const openclawAssigneeIds = React.useMemo(() => {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+
+    const lease = String(task.leaseOwnerAgentId || '').trim();
+    if (lease && !seen.has(lease)) {
+      seen.add(lease);
+      ids.push(lease);
+    }
+
+    for (const pbId of assignees) {
+      const found = agents.find((a) => a.id === pbId);
+      const oc = found?.openclawAgentId;
+      if (!oc) continue;
+      if (seen.has(oc)) continue;
+      seen.add(oc);
+      ids.push(oc);
+    }
+
+    if (!ids.length && leadAgentId) ids.push(leadAgentId);
+    return ids;
+  }, [assignees, agents, leadAgentId, task.leaseOwnerAgentId]);
+
+  const [chatAgentId, setChatAgentId] = React.useState(() => openclawAssigneeIds[0] || leadAgentId);
+
+  React.useEffect(() => {
+    setChatAgentId((prev) => {
+      if (openclawAssigneeIds.includes(prev)) return prev;
+      return openclawAssigneeIds[0] || leadAgentId;
+    });
+  }, [openclawAssigneeIds, leadAgentId]);
 
   React.useEffect(() => {
     setStatus(task.status);
@@ -59,6 +109,8 @@ export function TaskDetail({
     setRequiresReview(Boolean(task.requiresReview));
     setStartAt(toDateTimeLocalValue(task.startAt));
     setDueAt(toDateTimeLocalValue(task.dueAt));
+    setContextDraft(task.context ?? '');
+    setEditingContext(false);
   }, [
     task.id,
     task.status,
@@ -69,14 +121,35 @@ export function TaskDetail({
     task.requiresReview,
     task.startAt,
     task.dueAt,
+    task.context,
   ]);
 
   React.useEffect(() => {
     setSubtaskItems(subtasks ?? []);
   }, [task.id, subtasks]);
 
+  React.useEffect(() => {
+    // Best-effort live node list from OpenClaw for the node picker.
+    let cancelled = false;
+    mcFetch('/api/openclaw/nodes/status', { cache: 'no-store' })
+      .then((r) => r.json().catch(() => null))
+      .then((json) => {
+        if (cancelled) return;
+        if (!json?.ok) return;
+        const next = (json?.status as OpenClawNodesStatus) || null;
+        const list = Array.isArray(next?.nodes) ? next!.nodes! : [];
+        setOpenclawNodes(list.filter((n) => n && n.nodeId));
+      })
+      .catch(() => {
+        // ignore
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function updateTask(payload: Record<string, unknown>) {
-    await fetch(`/api/tasks/${task.id}`, {
+    await mcFetch(`/api/tasks/${task.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
@@ -103,9 +176,14 @@ export function TaskDetail({
     setArchived(nextArchived);
   }
 
+  async function saveContext() {
+    await updateTask({ context: contextDraft });
+    setEditingContext(false);
+  }
+
   async function deleteTask() {
     if (!window.confirm('Are you sure?')) return;
-    await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
+    await mcFetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
     router.replace('/tasks');
   }
 
@@ -159,7 +237,7 @@ export function TaskDetail({
   async function onSendMessage(event: React.FormEvent) {
     event.preventDefault();
     if (!message.trim()) return;
-    await fetch('/api/messages', {
+    await mcFetch('/api/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ taskId: task.id, content: message, fromAgentId: leadAgentId }),
@@ -173,7 +251,7 @@ export function TaskDetail({
     event.preventDefault();
     const title = newSubtaskTitle.trim();
     if (!title) return;
-    await fetch('/api/subtasks', {
+    await mcFetch('/api/subtasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ taskId: task.id, title }),
@@ -185,7 +263,7 @@ export function TaskDetail({
 
   async function toggleSubtask(subtaskId: string, done: boolean) {
     setSubtaskItems((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, done } : s)));
-    await fetch(`/api/subtasks/${subtaskId}`, {
+    await mcFetch(`/api/subtasks/${subtaskId}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ done }),
@@ -195,7 +273,7 @@ export function TaskDetail({
   }
 
   async function deleteSubtask(subtaskId: string) {
-    await fetch(`/api/subtasks/${subtaskId}`, { method: 'DELETE' });
+    await mcFetch(`/api/subtasks/${subtaskId}`, { method: 'DELETE' });
     router.refresh();
     if (onUpdated) await onUpdated();
   }
@@ -217,13 +295,13 @@ export function TaskDetail({
         return s;
       })
     );
-    await Promise.all([
-      fetch(`/api/subtasks/${a.id}`, {
+      await Promise.all([
+      mcFetch(`/api/subtasks/${a.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ order: nextA }),
       }),
-      fetch(`/api/subtasks/${b.id}`, {
+      mcFetch(`/api/subtasks/${b.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ order: nextB }),
@@ -236,7 +314,7 @@ export function TaskDetail({
   async function onCreateDoc(event: React.FormEvent) {
     event.preventDefault();
     if (!docTitle.trim()) return;
-    await fetch('/api/documents', {
+    await mcFetch('/api/documents', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ taskId: task.id, title: docTitle, content: docContent, type: 'deliverable' }),
@@ -249,6 +327,7 @@ export function TaskDetail({
 
   const subtaskTotal = subtaskItems.length;
   const subtaskDone = subtaskItems.reduce((acc, s) => acc + (s.done ? 1 : 0), 0);
+  const taskSessionKey = `agent:${chatAgentId}:mc:${task.id}`;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
@@ -284,10 +363,96 @@ export function TaskDetail({
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{task.description}</ReactMarkdown>
             </div>
           ) : null}
+          <details className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-[var(--foreground)]">Deep context</summary>
+            <div className="mt-2 text-xs text-muted">
+              Long-form Markdown context (research, articles, specs). Stored with the task and pulled by agents when needed.
+            </div>
+            {editingContext ? (
+              <div className="mt-3 space-y-2">
+                <Textarea
+                  value={contextDraft}
+                  onChange={(e) => setContextDraft(e.target.value)}
+                  placeholder="Paste long context in Markdown..."
+                  className="min-h-[240px]"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" size="sm" onClick={() => void saveContext()}>
+                    Save context
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setContextDraft(task.context ?? '');
+                      setEditingContext(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : task.context ? (
+              <div className="mt-3 prose prose-sm max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{task.context}</ReactMarkdown>
+              </div>
+            ) : (
+              <div className="mt-3 text-sm text-muted">No deep context yet.</div>
+            )}
+            {!editingContext ? (
+              <div className="mt-3">
+                <Button type="button" size="sm" variant="secondary" onClick={() => setEditingContext(true)}>
+                  {task.context ? 'Edit' : 'Add'} context
+                </Button>
+              </div>
+            ) : null}
+          </details>
+
+          <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs uppercase tracking-[0.2em] text-muted">OpenClaw Session</div>
+                <div className="mt-1 text-xs text-muted">
+                  Per-task session where Mission Control sends task notifications. Use this to ask for progress without
+                  bloating your main chat.
+                </div>
+              </div>
+              <Link
+                href={`/agents/${encodeURIComponent(chatAgentId)}?sessionKey=${encodeURIComponent(taskSessionKey)}`}
+              >
+                <Button type="button" size="sm" variant="secondary">
+                  Open chat
+                </Button>
+              </Link>
+            </div>
+
+            {openclawAssigneeIds.length > 1 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+                <span>Agent</span>
+                <select
+                  className="rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-xs text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+                  value={chatAgentId}
+                  onChange={(e) => setChatAgentId(e.target.value)}
+                >
+                  {openclawAssigneeIds.map((id) => (
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2">
+              <div className="min-w-0 truncate font-mono text-xs text-[var(--foreground)]">{taskSessionKey}</div>
+              <CopyButton value={taskSessionKey} label="Copy" />
+            </div>
+          </div>
           {!!task.labels?.length && (
             <div className="mt-4 flex flex-wrap gap-2">
               {task.labels.map((label) => (
-                <Badge key={label} className="border-none bg-[var(--highlight)] text-[var(--foreground)]">
+                <Badge key={label} className="border-none">
                   {label}
                 </Badge>
               ))}
@@ -395,7 +560,7 @@ export function TaskDetail({
           <select
             value={status}
             onChange={(event) => onStatusChange(event.target.value as Status)}
-            className="mt-3 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]"
+            className="mt-3 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
           >
             {STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -490,12 +655,21 @@ export function TaskDetail({
                 setRequiredNodeId(value);
                 await updateTask({ requiredNodeId: value || '' });
               }}
-              className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]"
+              className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
             >
               <option value="">Gateway (this machine)</option>
-              {nodes.map((node) => (
-                <option key={node.id} value={node.nodeId ?? node.id}>
-                  {node.displayName ?? node.nodeId ?? node.id}
+              {(openclawNodes.length
+                ? openclawNodes.map((n) => ({
+                    id: n.nodeId || '',
+                    label: `${n.displayName || n.nodeId}${n.remoteIp ? ` (${n.remoteIp})` : ''}`,
+                  }))
+                : nodes.map((node) => ({
+                    id: node.nodeId ?? node.id,
+                    label: node.displayName ?? node.nodeId ?? node.id,
+                  }))
+              ).map((node) => (
+                <option key={node.id} value={node.id}>
+                  {node.label}
                 </option>
               ))}
             </select>

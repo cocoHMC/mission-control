@@ -8,7 +8,9 @@ import { CSS } from '@dnd-kit/utilities';
 import { Badge } from '@/components/ui/badge';
 import { cn, formatShortDate, titleCase } from '@/lib/utils';
 import { TaskDrawer } from '@/app/tasks/TaskDrawer';
+import { TaskCreateDrawer } from '@/app/tasks/TaskCreateDrawer';
 import { getPocketBaseClient, type PBRealtimeEvent } from '@/lib/pbClient';
+import { mcFetch } from '@/lib/clientApi';
 
 const columns = [
   { id: 'inbox', label: 'Inbox' },
@@ -115,7 +117,7 @@ function TaskCard({
             </div>
           )}
           <div className="mt-2 flex items-center gap-2 text-xs text-muted">
-            <Badge className="border-none bg-[var(--highlight)] text-[var(--foreground)]">{task.priority ?? 'p2'}</Badge>
+            <Badge className="border-none">{task.priority ?? 'p2'}</Badge>
             {task.subtasksTotal ? (
               <span>
                 {task.subtasksDone ?? 0}/{task.subtasksTotal}
@@ -177,7 +179,7 @@ function TaskCardStatic({
             </div>
           )}
           <div className="mt-2 flex items-center gap-2 text-xs text-muted">
-            <Badge className="border-none bg-[var(--highlight)] text-[var(--foreground)]">{task.priority ?? 'p2'}</Badge>
+            <Badge className="border-none">{task.priority ?? 'p2'}</Badge>
             {task.subtasksTotal ? (
               <span>
                 {task.subtasksDone ?? 0}/{task.subtasksTotal}
@@ -209,7 +211,7 @@ function Column({
     <div className="flex w-[240px] shrink-0 flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] sm:w-[260px] lg:w-[300px]">
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)]/95 px-3 py-3 backdrop-blur">
         <div className="text-xs uppercase tracking-[0.2em] text-muted">{titleCase(status)}</div>
-        <Badge className="border-none bg-[var(--card)] text-[var(--foreground)]">{tasks.length}</Badge>
+        <Badge className="bg-[var(--surface)] text-[var(--foreground)]">{tasks.length}</Badge>
       </div>
       <div
         ref={setNodeRef}
@@ -271,6 +273,7 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
   const searchParams = useSearchParams();
   const [tasks, setTasks] = React.useState<Task[]>(initialTasks);
   const [mounted, setMounted] = React.useState(false);
+  const [createOpen, setCreateOpen] = React.useState(false);
   // Optimistic open/close to avoid a jittery UX while the URL updates.
   // `undefined` => follow URL `?task=...`
   // `string`    => force open that task immediately
@@ -297,7 +300,7 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
 
   React.useEffect(() => {
     let pollId: ReturnType<typeof setInterval> | null = setInterval(async () => {
-      const res = await fetch('/api/tasks?page=1&perPage=200');
+      const res = await mcFetch('/api/tasks?page=1&perPage=200');
       if (!res.ok) return;
       const json = await res.json();
       setTasks(json.items ?? []);
@@ -341,6 +344,11 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
   }, []);
 
   const taskParam = searchParams.get('task');
+  const newParam = searchParams.get('new');
+
+  React.useEffect(() => {
+    setCreateOpen(newParam === '1');
+  }, [newParam]);
 
   React.useEffect(() => {
     if (overrideTaskId === undefined) return;
@@ -348,8 +356,16 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
     if (typeof overrideTaskId === 'string' && taskParam === overrideTaskId) setOverrideTaskId(undefined);
   }, [overrideTaskId, taskParam]);
 
+  function closeCreateDrawer() {
+    setCreateOpen(false);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('new');
+    const next = params.toString();
+    router.replace(next ? `/tasks?${next}` : '/tasks', { scroll: false });
+  }
+
   async function updateTask(taskId: string, patch: Record<string, unknown>) {
-    await fetch(`/api/tasks/${taskId}`, {
+    await mcFetch(`/api/tasks/${taskId}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(patch),
@@ -464,6 +480,7 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
         </div>
       )}
       <TaskDrawer open={drawerOpen} taskId={effectiveTaskId} agents={agents} nodes={nodes} onClose={closeDrawer} />
+      <TaskCreateDrawer open={createOpen} agents={agents} nodes={nodes} onClose={closeCreateDrawer} />
     </div>
   );
 }

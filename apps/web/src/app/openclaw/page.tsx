@@ -1,15 +1,15 @@
 import { AppShell } from '@/components/shell/AppShell';
 import { Topbar } from '@/components/shell/Topbar';
-import { OpenClawConfigClient } from '@/app/openclaw/OpenClawConfigClient';
+import { OpenClawOverviewClient } from '@/app/openclaw/OpenClawOverviewClient';
 
 export const dynamic = 'force-dynamic';
 
 export default function OpenClawSettingsPage() {
   return (
     <AppShell>
-      <Topbar title="OpenClaw" subtitle="Review and apply gateway configuration changes." />
+      <Topbar title="OpenClaw" subtitle="Gateway status, models, security, approvals, and sessions." />
       <div className="mt-4 sm:mt-8">
-        <OpenClawConfigClient />
+        <OpenClawOverviewClient />
       </div>
     </AppShell>
   );

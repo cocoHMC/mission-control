@@ -5,13 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatShortDate } from '@/lib/utils';
 import { getPocketBaseClient, type PBRealtimeEvent } from '@/lib/pbClient';
 import type { Activity } from '@/lib/types';
+import { mcFetch } from '@/lib/clientApi';
 
 export function ActivityFeed({ initialItems }: { initialItems: Activity[] }) {
   const [items, setItems] = React.useState<Activity[]>(initialItems);
 
   React.useEffect(() => {
     let pollId: ReturnType<typeof setInterval> | null = setInterval(async () => {
-      const res = await fetch('/api/activity?page=1&perPage=200');
+      const res = await mcFetch('/api/activity?page=1&perPage=200');
       if (!res.ok) return;
       const json = await res.json();
       setItems(json.items ?? []);
