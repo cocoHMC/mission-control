@@ -204,6 +204,28 @@ export function WebNotifications() {
         </div>
       ) : null}
       {!supported ? <div className="text-xs text-red-600">This browser does not support web push.</div> : null}
+      <details className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+        <summary className="cursor-pointer text-xs font-semibold text-[var(--foreground)]">iPhone setup (PWA + push)</summary>
+        <div className="mt-2 space-y-2 text-xs text-muted">
+          <div className="font-semibold text-[var(--foreground)]">1) Make sure you can reach Mission Control privately</div>
+          <div>
+            Recommended: use Tailscale and <span className="font-mono">tailscale serve</span> on the Mission Control host (do not use Funnel).
+          </div>
+
+          <div className="font-semibold text-[var(--foreground)]">2) Install as a Home Screen app</div>
+          <div>Open Mission Control in Safari, then Share → Add to Home Screen.</div>
+
+          <div className="font-semibold text-[var(--foreground)]">3) Enable push inside the installed app</div>
+          <div>
+            Open Mission Control from the new Home Screen icon, then return here and click “Enable notifications”.
+          </div>
+
+          <div className="font-semibold text-[var(--foreground)]">If you don’t get a prompt</div>
+          <div>
+            Confirm push keys are configured (button below), and confirm you’re running Mission Control as an installed PWA (standalone), not a regular Safari tab.
+          </div>
+        </div>
+      </details>
       {supported && vapid && !vapid.enabled ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="secondary" onClick={configurePushKeys} disabled={configuringKeys || loading}>

@@ -16,7 +16,7 @@ export default async function SessionsPage() {
   return (
     <AppShell scroll="none">
       <div className="flex h-full min-h-0 flex-col">
-        <Topbar title="Sessions" />
+        <Topbar title="Sessions" actionHref="/sessions?new=1" actionLabel="New session" />
         <div className="mt-4 min-h-0 flex-1 sm:mt-8">
           <SessionsInboxClient agents={agents.items ?? []} />
         </div>

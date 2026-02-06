@@ -48,6 +48,12 @@ export function SetupChecklist({
     }
   }
 
+  React.useEffect(() => {
+    void refreshStatus();
+    // Only run once on mount to avoid polling.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const installCmd = `openclaw node install --host ${gatewayHostHint} --port ${gatewayPortHint} --display-name "<node-name>"`;
   const pendingCmd = 'openclaw nodes pending';
   const approveCmd = 'openclaw nodes approve <requestId>';

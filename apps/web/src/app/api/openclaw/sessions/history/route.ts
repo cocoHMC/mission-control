@@ -13,6 +13,44 @@ function isoFromMs(value: unknown) {
   }
 }
 
+function truncate(value: string, max = 1200) {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max)}…`;
+}
+
+function pickString(input: any, keys: string[]) {
+  if (!input || typeof input !== 'object') return '';
+  for (const key of keys) {
+    const value = (input as any)[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function toolCallSummary(name: string, args: any) {
+  const target =
+    pickString(args, ['to', 'recipient', 'recipients', 'channel', 'thread', 'phone', 'number', 'email']) ||
+    pickString(args?.payload, ['to', 'recipient', 'recipients', 'channel', 'thread', 'phone', 'number', 'email']);
+  const subject = pickString(args, ['subject', 'title']) || pickString(args?.payload, ['subject', 'title']);
+  const body =
+    pickString(args, ['message', 'text', 'body', 'content']) || pickString(args?.payload, ['message', 'text', 'body', 'content']);
+
+  let summary = `Tool: ${name || 'tool'}`;
+  if (target) summary += ` to ${target}`;
+  if (subject) summary += ` — ${subject}`;
+  if (body) summary += `\n${truncate(body)}`;
+  return summary;
+}
+
+function toolResultSummary(output: any) {
+  if (typeof output === 'string' && output.trim()) return `Result:\n${truncate(output.trim())}`;
+  if (output && typeof output === 'object') {
+    const text = pickString(output, ['message', 'text', 'body', 'content']);
+    if (text) return `Result:\n${truncate(text)}`;
+  }
+  return 'Result received.';
+}
+
 function messageText(content: unknown, { includeTools }: { includeTools: boolean }) {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) {
@@ -21,13 +59,6 @@ function messageText(content: unknown, { includeTools }: { includeTools: boolean
       if (typeof anyContent.text === 'string') return anyContent.text;
       if (typeof anyContent.message === 'string') return anyContent.message;
     }
-    if (includeTools) {
-      try {
-        return JSON.stringify(content ?? null, null, 2);
-      } catch {
-        return String(content ?? '');
-      }
-    }
     return '';
   }
 
@@ -35,16 +66,14 @@ function messageText(content: unknown, { includeTools }: { includeTools: boolean
     .map((part: any) => {
       if (!part || typeof part !== 'object') return '';
       if (part.type === 'text' && typeof part.text === 'string') return part.text;
+      if (!includeTools) return '';
+      if (part.type === 'toolCall') return toolCallSummary(String(part.name || ''), part.arguments);
+      if (part.type === 'toolResult') return toolResultSummary(part.output ?? part.result ?? part);
       return '';
     })
     .filter(Boolean);
   if (parts.length) return parts.join('\n');
-  if (!includeTools) return '';
-  try {
-    return JSON.stringify(content, null, 2);
-  } catch {
-    return String(content);
-  }
+  return '';
 }
 
 function messagePayloadText(payload: any, { includeTools }: { includeTools: boolean }) {
@@ -53,13 +82,6 @@ function messagePayloadText(payload: any, { includeTools }: { includeTools: bool
   if (typeof payload.message === 'string' && payload.message.trim()) return payload.message;
   const fromContent = messageText(payload.content, { includeTools });
   if (fromContent && fromContent.trim()) return fromContent;
-  if (includeTools) {
-    try {
-      return JSON.stringify(payload, null, 2);
-    } catch {
-      return String(payload);
-    }
-  }
   return '';
 }
 
@@ -83,6 +105,7 @@ export async function GET(req: NextRequest) {
   if (guard) return guard;
 
   const url = new URL(req.url);
+  const rawSessionId = String(url.searchParams.get('sessionId') || '').trim();
   const rawKey = String(url.searchParams.get('sessionKey') || '').trim();
   let sessionKey = rawKey;
   try {
@@ -91,16 +114,19 @@ export async function GET(req: NextRequest) {
     sessionKey = rawKey;
   }
   sessionKey = sessionKey.replace(/ /g, '+');
-  if (!sessionKey) {
-    return NextResponse.json({ ok: false, error: 'Missing sessionKey' }, { status: 400 });
-  }
+  const sessionId = rawSessionId;
+  if (!sessionKey && sessionId) sessionKey = sessionId;
+  if (!sessionKey) return NextResponse.json({ ok: false, error: 'Missing sessionKey or sessionId' }, { status: 400 });
 
   const offset = Math.max(0, toInt(url.searchParams.get('offset'), 0));
   const limit = clamp(toInt(url.searchParams.get('limit'), 200), 1, 500);
-  const direction = (url.searchParams.get('direction') || 'backward').trim();
   const includeTools = isTruthy(url.searchParams.get('includeTools'));
 
-  const args: Record<string, unknown> = { sessionKey, offset, limit, direction };
+  const args: Record<string, unknown> = {
+    sessionKey,
+    limit,
+    includeTools,
+  };
 
   const out = await openclawToolsInvoke<any>('sessions_history', args);
   const parsed = out.parsedText;
@@ -116,8 +142,6 @@ export async function GET(req: NextRequest) {
       role,
       timestamp: ts,
       text: messagePayloadText(m, { includeTools }),
-      // Keep original message payload available for debugging when includeTools=1.
-      raw: includeTools ? m : undefined,
     };
   });
 

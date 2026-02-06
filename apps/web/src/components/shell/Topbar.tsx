@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 
 export function Topbar({ title, subtitle, actionHref, actionLabel }: { title: string; subtitle?: string; actionHref?: string; actionLabel?: string }) {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-3">
+    <header className="mc-titlebar flex flex-wrap items-center justify-between gap-3">
       <div>
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold headline sm:text-3xl">{title}</h1>
@@ -17,16 +17,18 @@ export function Topbar({ title, subtitle, actionHref, actionLabel }: { title: st
         {actionHref && actionLabel ? (
           <Link
             href={actionHref}
-            className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-3 py-2 text-xs font-medium text-[var(--accent-foreground)] sm:px-4 sm:text-sm"
+            className="no-drag inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-3 py-2 text-xs font-medium text-[var(--accent-foreground)] sm:px-4 sm:text-sm"
           >
             <Sparkles className="h-4 w-4" />
             {actionLabel}
           </Link>
         ) : null}
-        <button className="rounded-full border border-[var(--border)] bg-[var(--card)] p-2">
+        <button className="no-drag rounded-full border border-[var(--border)] bg-[var(--card)] p-2">
           <Bell className="h-4 w-4" />
         </button>
-        <CommandPalette />
+        <div className="no-drag">
+          <CommandPalette />
+        </div>
       </div>
     </header>
   );

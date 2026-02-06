@@ -30,7 +30,45 @@ function isoFromMs(value: unknown) {
   }
 }
 
-function messageText(content: unknown) {
+function truncate(value: string, max = 1200) {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max)}…`;
+}
+
+function pickString(input: any, keys: string[]) {
+  if (!input || typeof input !== 'object') return '';
+  for (const key of keys) {
+    const value = (input as any)[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function toolCallSummary(name: string, args: any) {
+  const target =
+    pickString(args, ['to', 'recipient', 'recipients', 'channel', 'thread', 'phone', 'number', 'email']) ||
+    pickString(args?.payload, ['to', 'recipient', 'recipients', 'channel', 'thread', 'phone', 'number', 'email']);
+  const subject = pickString(args, ['subject', 'title']) || pickString(args?.payload, ['subject', 'title']);
+  const body =
+    pickString(args, ['message', 'text', 'body', 'content']) || pickString(args?.payload, ['message', 'text', 'body', 'content']);
+
+  let summary = `Tool: ${name || 'tool'}`;
+  if (target) summary += ` to ${target}`;
+  if (subject) summary += ` — ${subject}`;
+  if (body) summary += `\n${truncate(body)}`;
+  return summary;
+}
+
+function toolResultSummary(output: any) {
+  if (typeof output === 'string' && output.trim()) return `Result:\n${truncate(output.trim())}`;
+  if (output && typeof output === 'object') {
+    const text = pickString(output, ['message', 'text', 'body', 'content']);
+    if (text) return `Result:\n${truncate(text)}`;
+  }
+  return 'Result received.';
+}
+
+function messageText(content: unknown, includeTools = true) {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) {
     if (content && typeof content === 'object') {
@@ -44,6 +82,9 @@ function messageText(content: unknown) {
     .map((part: any) => {
       if (!part || typeof part !== 'object') return '';
       if (part.type === 'text' && typeof part.text === 'string') return part.text;
+      if (!includeTools) return '';
+      if (part.type === 'toolCall') return toolCallSummary(String(part.name || ''), part.arguments);
+      if (part.type === 'toolResult') return toolResultSummary(part.output ?? part.result ?? part);
       return '';
     })
     .filter(Boolean);
@@ -54,7 +95,7 @@ function messagePayloadText(payload: any) {
   if (!payload || typeof payload !== 'object') return '';
   if (typeof payload.text === 'string' && payload.text.trim()) return payload.text;
   if (typeof payload.message === 'string' && payload.message.trim()) return payload.message;
-  return messageText(payload.content);
+  return messageText(payload.content, true);
 }
 
 async function getHistory(sessionKey: string): Promise<{ rows: HistoryRow[]; error?: string | null }> {
@@ -89,24 +130,20 @@ async function getHistory(sessionKey: string): Promise<{ rows: HistoryRow[]; err
     const out = await openclawToolsInvoke<any>('sessions_history', {
       sessionKey,
       limit: 200,
-      offset: 0,
-      direction: 'backward',
+      includeTools: true,
     });
     const parsed = out.parsedText;
     if (!parsed || typeof parsed !== 'object') return { rows: [], error: 'OpenClaw returned no history.' };
     const messages = Array.isArray((parsed as any).messages) ? (parsed as any).messages : [];
-    const rows = messages
-      .map((m: any) => {
-        const role = typeof m?.role === 'string' ? m.role : '';
-        const ts = isoFromMs(m?.timestamp) || undefined;
-        return {
-          role,
-          timestamp: ts,
-          text: messagePayloadText(m),
-        };
-      })
-      .slice()
-      .reverse();
+    const rows = messages.map((m: any) => {
+      const role = typeof m?.role === 'string' ? m.role : '';
+      const ts = isoFromMs(m?.timestamp) || undefined;
+      return {
+        role,
+        timestamp: ts,
+        text: messagePayloadText(m),
+      };
+    });
     return { rows, error: null };
   } catch {
     return { rows: [], error: 'Failed to load history from OpenClaw.' };

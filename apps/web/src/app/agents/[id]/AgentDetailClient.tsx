@@ -135,7 +135,7 @@ export function AgentDetailClient({ agentId, pbAgent }: { agentId: string; pbAge
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Link href={`/sessions?agent=${encodeURIComponent(agentId)}`}>
+            <Link href={`/sessions?agentId=${encodeURIComponent(agentId)}`}>
               <Button size="sm" variant="secondary">
                 View sessions
               </Button>

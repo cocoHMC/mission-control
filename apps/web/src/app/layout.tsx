@@ -49,6 +49,10 @@ export default function RootLayout({
   try {
     const t = localStorage.getItem('mc_theme');
     if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    const ua = navigator.userAgent || '';
+    if (ua.includes('Electron') || (window && (window as any).MissionControlDesktop)) {
+      document.documentElement.dataset.mcDesktop = '1';
+    }
   } catch {}
 })();`}
         </Script>

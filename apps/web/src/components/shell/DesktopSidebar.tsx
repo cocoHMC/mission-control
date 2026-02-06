@@ -49,11 +49,11 @@ export function DesktopSidebar() {
   const pathname = usePathname();
   return (
     <aside className="mc-desktop-sidebar flex h-full flex-col">
-      <div className="px-3 pt-5">
+      <div className="px-3 pt-4">
         <div className="text-xs font-semibold tracking-[0.16em] text-muted">Mission Control</div>
       </div>
 
-      <div className="mt-5 flex-1 overflow-auto px-2 pb-4 mc-scroll">
+      <div className="mt-4 flex-1 overflow-auto px-2 pb-4 mc-scroll">
         {sections.map((section) => (
           <div key={section.label} className="mt-4 first:mt-0">
             <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">

@@ -419,7 +419,7 @@ export function TaskDetail({
                 </div>
               </div>
               <Link
-                href={`/agents/${encodeURIComponent(chatAgentId)}?sessionKey=${encodeURIComponent(taskSessionKey)}`}
+                href={`/sessions/${encodeURIComponent(taskSessionKey)}`}
               >
                 <Button type="button" size="sm" variant="secondary">
                   Open chat

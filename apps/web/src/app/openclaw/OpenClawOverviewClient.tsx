@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -57,6 +58,7 @@ function formatTime(msOrIso?: number | string) {
 }
 
 export function OpenClawOverviewClient() {
+  const pathname = usePathname();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -171,7 +173,11 @@ export function OpenClawOverviewClient() {
             <Link
               key={item.href}
               href={item.href}
-              className="inline-flex shrink-0 items-center rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[color:var(--foreground)]/5"
+              className={`inline-flex shrink-0 items-center rounded-full border border-[var(--border)] px-3 py-1.5 text-xs font-semibold transition ${
+                pathname === item.href || pathname.startsWith(`${item.href}/`)
+                  ? 'border-transparent bg-[var(--accent)] text-[var(--accent-foreground)]'
+                  : 'bg-[var(--surface)] text-[var(--foreground)] hover:bg-[color:var(--foreground)]/5'
+              }`}
             >
               {item.label}
             </Link>

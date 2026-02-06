@@ -208,7 +208,7 @@ export function StatusClient() {
                     <div className="flex flex-wrap items-center gap-2">
                       {pct ? <Badge className="border-none bg-[var(--highlight)] text-[var(--foreground)]">{pct}</Badge> : null}
                       {model ? <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">{model}</Badge> : null}
-                      <Link href={`/sessions?sessionKey=${encodeURIComponent(key)}`}>
+                      <Link href={`/sessions/${encodeURIComponent(key)}`}>
                         <Button size="sm" variant="secondary">
                           Open
                         </Button>
@@ -272,4 +272,3 @@ export function StatusClient() {
     </div>
   );
 }
-

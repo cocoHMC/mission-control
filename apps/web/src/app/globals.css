@@ -19,8 +19,8 @@
   --bg-glow-2: rgba(16, 185, 129, 0.12);
   --glass-1: rgba(255, 255, 255, 0.86);
   --glass-2: rgba(255, 255, 255, 0.64);
-  --chat-user-bg: #6366f1;
-  --chat-user-fg: #ffffff;
+  --chat-user-bg: #0f766e;
+  --chat-user-fg: #f8fafc;
   --chat-assistant-bg: #ffffff;
   --chat-assistant-fg: #1e1b4b;
 }
@@ -64,7 +64,7 @@
     --bg-glow-2: rgba(16, 185, 129, 0.18);
     --glass-1: rgba(27, 31, 54, 0.86);
     --glass-2: rgba(19, 22, 42, 0.6);
-    --chat-user-bg: #818cf8;
+    --chat-user-bg: #5eead4;
     --chat-user-fg: #0b0d1a;
     --chat-assistant-bg: #1b1f36;
     --chat-assistant-fg: #f5f7ff;
@@ -91,8 +91,8 @@
   --bg-glow-2: rgba(16, 185, 129, 0.12);
   --glass-1: rgba(255, 255, 255, 0.86);
   --glass-2: rgba(255, 255, 255, 0.64);
-  --chat-user-bg: #6366f1;
-  --chat-user-fg: #ffffff;
+  --chat-user-bg: #0f766e;
+  --chat-user-fg: #f8fafc;
   --chat-assistant-bg: #ffffff;
   --chat-assistant-fg: #1e1b4b;
 }
@@ -116,7 +116,7 @@
   --bg-glow-2: rgba(16, 185, 129, 0.18);
   --glass-1: rgba(27, 31, 54, 0.86);
   --glass-2: rgba(19, 22, 42, 0.6);
-  --chat-user-bg: #818cf8;
+  --chat-user-bg: #5eead4;
   --chat-user-fg: #0b0d1a;
   --chat-assistant-bg: #1b1f36;
   --chat-assistant-fg: #f5f7ff;
@@ -146,7 +146,7 @@ body {
   height: 100dvh;
   min-height: 0;
   display: grid;
-  grid-template-columns: 228px 1fr;
+  grid-template-columns: 216px 1fr;
   grid-template-rows: 1fr;
   gap: 24px;
   padding: 24px;
@@ -156,7 +156,7 @@ body {
 .app-shell-desktop {
   gap: 0;
   padding: 0;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 204px 1fr;
 }
 
 .app-shell > * {
@@ -194,6 +194,20 @@ body {
   border-right: 1px solid var(--border);
   background: linear-gradient(180deg, var(--glass-1), var(--glass-2));
   backdrop-filter: blur(22px);
+}
+
+:root[data-mc-desktop='1'] .mc-titlebar {
+  -webkit-app-region: drag;
+}
+
+:root[data-mc-desktop='1'] .mc-titlebar a,
+:root[data-mc-desktop='1'] .mc-titlebar button,
+:root[data-mc-desktop='1'] .mc-titlebar input,
+:root[data-mc-desktop='1'] .mc-titlebar textarea,
+:root[data-mc-desktop='1'] .mc-titlebar select,
+:root[data-mc-desktop='1'] .mc-titlebar [role='button'],
+:root[data-mc-desktop='1'] .mc-titlebar .no-drag {
+  -webkit-app-region: no-drag;
 }
 
 .text-muted {
@@ -239,6 +253,12 @@ select {
   border-radius: 0.75rem;
   min-height: 2.5rem;
   padding: 0.5rem 0.75rem;
+}
+
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'] {
+  color-scheme: light dark;
 }
 
 select:focus {

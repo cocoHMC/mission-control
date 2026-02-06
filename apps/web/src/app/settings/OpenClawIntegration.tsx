@@ -21,6 +21,7 @@ export function OpenClawIntegration() {
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [testing, setTesting] = React.useState(false);
+  const [discovering, setDiscovering] = React.useState(false);
   const [form, setForm] = React.useState<OpenClawSettings>({
     gatewayUrl: 'http://127.0.0.1:18789',
     token: '',
@@ -28,6 +29,12 @@ export function OpenClawIntegration() {
   });
   const [test, setTest] = React.useState<TestResponse | null>(null);
   const [status, setStatus] = React.useState<string | null>(null);
+
+  const canDiscoverLocal = React.useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const h = (window.location.hostname || '').toLowerCase();
+    return h === '127.0.0.1' || h === 'localhost' || h === '::1';
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -93,6 +100,43 @@ export function OpenClawIntegration() {
     }
   }
 
+  async function discoverLocal() {
+    setStatus(null);
+    setDiscovering(true);
+    try {
+      const res = await mcFetch('/api/setup/openclaw-local', { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.error || 'Failed to discover local OpenClaw config.');
+
+      const discoveredToken = String(json?.token || '');
+      const discoveredUrl = String(json?.url || '');
+
+      setForm((prev) => {
+        let nextUrl = prev.gatewayUrl;
+        try {
+          const u = new URL(prev.gatewayUrl);
+          const host = (u.hostname || '').toLowerCase();
+          const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+          if (loopback && discoveredUrl) nextUrl = discoveredUrl;
+        } catch {
+          if (discoveredUrl) nextUrl = discoveredUrl;
+        }
+        return {
+          ...prev,
+          gatewayUrl: nextUrl,
+          token: discoveredToken || prev.token,
+          enabled: true,
+        };
+      });
+
+      setStatus('Loaded gateway URL + token from local OpenClaw config.');
+    } catch (err: any) {
+      setStatus(err?.message || 'Failed to discover local OpenClaw config.');
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -149,6 +193,11 @@ export function OpenClawIntegration() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {canDiscoverLocal ? (
+            <Button size="sm" variant="secondary" onClick={discoverLocal} disabled={loading || discovering}>
+              {discovering ? 'Discovering…' : 'Fill from local OpenClaw config'}
+            </Button>
+          ) : null}
           <Button size="sm" variant="secondary" onClick={testConnection} disabled={loading || testing || !form.enabled || !form.token.trim()}>
             {testing ? 'Testing…' : 'Test connection'}
           </Button>
