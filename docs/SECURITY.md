@@ -22,6 +22,7 @@
 
 ## Secret Rotation
 - Rotate gateway token, PB admin password, PB service password quarterly.
+- Treat `MC_VAULT_MASTER_KEY_B64` as a root secret. Back it up securely; if you lose it, Vault credentials cannot be decrypted.
 - Update `.env` on coco and restart services.
 
 ## Data Safety

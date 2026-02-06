@@ -1,28 +1,28 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f5f3ff;
-  --foreground: #1e1b4b;
-  --muted: #5c587a;
-  --surface: #fbfaff;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --muted: #475569;
+  --surface: #f1f5f9;
   --card: #ffffff;
-  --border: #e3e0f5;
-  --accent: #6366f1;
-  --accent-strong: #4f46e5;
+  --border: #e2e8f0;
+  --accent: #0d9488;
+  --accent-strong: #0f766e;
   --accent-foreground: #ffffff;
-  --highlight: #ede9fe;
-  --highlight-foreground: #2c2568;
+  --highlight: #ccfbf1;
+  --highlight-foreground: #115e59;
   --input: #ffffff;
-  --ring: #6366f1;
-  --shadow: 0 14px 36px rgba(30, 27, 75, 0.08);
-  --bg-glow-1: rgba(99, 102, 241, 0.12);
-  --bg-glow-2: rgba(16, 185, 129, 0.12);
+  --ring: #0d9488;
+  --shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
+  --bg-glow-1: rgba(13, 148, 136, 0.18);
+  --bg-glow-2: rgba(16, 185, 129, 0.14);
   --glass-1: rgba(255, 255, 255, 0.86);
   --glass-2: rgba(255, 255, 255, 0.64);
   --chat-user-bg: #0f766e;
   --chat-user-fg: #f8fafc;
   --chat-assistant-bg: #ffffff;
-  --chat-assistant-fg: #1e1b4b;
+  --chat-assistant-fg: #0f172a;
 }
 
 @theme inline {
@@ -46,80 +46,80 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0b0d1a;
-    --foreground: #f5f7ff;
-    --muted: #a7afc9;
-    --surface: #13162a;
-    --card: #1b1f36;
-    --border: #2a2f4a;
-    --accent: #818cf8;
-    --accent-strong: #6366f1;
-    --accent-foreground: #0b0d1a;
-    --highlight: #2a2f4a;
-    --highlight-foreground: #e1e7ff;
-    --input: #1c213b;
-    --ring: #818cf8;
+    --background: #0b1214;
+    --foreground: #e6fffb;
+    --muted: #9fb7b6;
+    --surface: #0f1a1c;
+    --card: #112022;
+    --border: #1b3234;
+    --accent: #2dd4bf;
+    --accent-strong: #14b8a6;
+    --accent-foreground: #042f2e;
+    --highlight: rgba(45, 212, 191, 0.18);
+    --highlight-foreground: #e6fffb;
+    --input: #13282a;
+    --ring: #2dd4bf;
     --shadow: 0 22px 54px rgba(0, 0, 0, 0.45);
-    --bg-glow-1: rgba(99, 102, 241, 0.2);
+    --bg-glow-1: rgba(45, 212, 191, 0.22);
     --bg-glow-2: rgba(16, 185, 129, 0.18);
-    --glass-1: rgba(27, 31, 54, 0.86);
-    --glass-2: rgba(19, 22, 42, 0.6);
+    --glass-1: rgba(17, 32, 34, 0.86);
+    --glass-2: rgba(15, 26, 28, 0.6);
     --chat-user-bg: #5eead4;
-    --chat-user-fg: #0b0d1a;
-    --chat-assistant-bg: #1b1f36;
-    --chat-assistant-fg: #f5f7ff;
+    --chat-user-fg: #0b1214;
+    --chat-assistant-bg: #112022;
+    --chat-assistant-fg: #e6fffb;
   }
 }
 
 /* Explicit user override (Settings -> Theme). */
 :root[data-theme='light'] {
-  --background: #f5f3ff;
-  --foreground: #1e1b4b;
-  --muted: #5c587a;
-  --surface: #fbfaff;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --muted: #475569;
+  --surface: #f1f5f9;
   --card: #ffffff;
-  --border: #e3e0f5;
-  --accent: #6366f1;
-  --accent-strong: #4f46e5;
+  --border: #e2e8f0;
+  --accent: #0d9488;
+  --accent-strong: #0f766e;
   --accent-foreground: #ffffff;
-  --highlight: #ede9fe;
-  --highlight-foreground: #2c2568;
+  --highlight: #ccfbf1;
+  --highlight-foreground: #115e59;
   --input: #ffffff;
-  --ring: #6366f1;
-  --shadow: 0 14px 36px rgba(30, 27, 75, 0.08);
-  --bg-glow-1: rgba(99, 102, 241, 0.12);
-  --bg-glow-2: rgba(16, 185, 129, 0.12);
+  --ring: #0d9488;
+  --shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
+  --bg-glow-1: rgba(13, 148, 136, 0.18);
+  --bg-glow-2: rgba(16, 185, 129, 0.14);
   --glass-1: rgba(255, 255, 255, 0.86);
   --glass-2: rgba(255, 255, 255, 0.64);
   --chat-user-bg: #0f766e;
   --chat-user-fg: #f8fafc;
   --chat-assistant-bg: #ffffff;
-  --chat-assistant-fg: #1e1b4b;
+  --chat-assistant-fg: #0f172a;
 }
 
 :root[data-theme='dark'] {
-  --background: #0b0d1a;
-  --foreground: #f5f7ff;
-  --muted: #a7afc9;
-  --surface: #13162a;
-  --card: #1b1f36;
-  --border: #2a2f4a;
-  --accent: #818cf8;
-  --accent-strong: #6366f1;
-  --accent-foreground: #0b0d1a;
-  --highlight: #2a2f4a;
-  --highlight-foreground: #e1e7ff;
-  --input: #1c213b;
-  --ring: #818cf8;
+  --background: #0b1214;
+  --foreground: #e6fffb;
+  --muted: #9fb7b6;
+  --surface: #0f1a1c;
+  --card: #112022;
+  --border: #1b3234;
+  --accent: #2dd4bf;
+  --accent-strong: #14b8a6;
+  --accent-foreground: #042f2e;
+  --highlight: rgba(45, 212, 191, 0.18);
+  --highlight-foreground: #e6fffb;
+  --input: #13282a;
+  --ring: #2dd4bf;
   --shadow: 0 22px 54px rgba(0, 0, 0, 0.45);
-  --bg-glow-1: rgba(99, 102, 241, 0.2);
+  --bg-glow-1: rgba(45, 212, 191, 0.22);
   --bg-glow-2: rgba(16, 185, 129, 0.18);
-  --glass-1: rgba(27, 31, 54, 0.86);
-  --glass-2: rgba(19, 22, 42, 0.6);
+  --glass-1: rgba(17, 32, 34, 0.86);
+  --glass-2: rgba(15, 26, 28, 0.6);
   --chat-user-bg: #5eead4;
-  --chat-user-fg: #0b0d1a;
-  --chat-assistant-bg: #1b1f36;
-  --chat-assistant-fg: #f5f7ff;
+  --chat-user-fg: #0b1214;
+  --chat-assistant-bg: #112022;
+  --chat-assistant-fg: #e6fffb;
 }
 
 * {
@@ -303,7 +303,8 @@ select {
 .prose code {
   font-family: var(--font-mono), monospace;
   font-size: 0.9em;
-  background: rgba(99, 102, 241, 0.14);
+  background: rgba(13, 148, 136, 0.14);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
   padding: 0.1rem 0.3rem;
   border-radius: 0.4rem;
 }
@@ -319,7 +320,8 @@ select {
 .mc-scroll {
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  scrollbar-color: rgba(99, 102, 241, 0.35) transparent;
+  scrollbar-color: rgba(13, 148, 136, 0.35) transparent;
+  scrollbar-color: color-mix(in srgb, var(--accent) 35%, transparent) transparent;
 }
 
 .mc-scroll::-webkit-scrollbar {
@@ -328,7 +330,8 @@ select {
 }
 
 .mc-scroll::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.35);
+  background: rgba(13, 148, 136, 0.35);
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
   border-radius: 999px;
 }
 

@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const path = require('node:path');
+const { PHASE_DEVELOPMENT_SERVER } = require('next/constants');
 const host = process.env.MC_BIND_HOST || '127.0.0.1';
 const port = process.env.MC_WEB_PORT || '4010';
 
@@ -9,7 +10,6 @@ function uniq(list) {
 
 function safeExec(cmd) {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { execSync } = require('node:child_process');
     return String(execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'] }) || '').trim();
   } catch {
@@ -59,4 +59,10 @@ const nextConfig = {
   ]),
 };
 
-module.exports = nextConfig;
+module.exports = (phase) => {
+  // Keep production build output in `.next` because the desktop app expects `.next/standalone/...`.
+  // Use `.next-dev` for the dev server so it can run in parallel with builds.
+  const distDir =
+    process.env.NEXT_DIST_DIR || (phase === PHASE_DEVELOPMENT_SERVER ? '.next-dev' : '.next');
+  return { ...nextConfig, distDir };
+};

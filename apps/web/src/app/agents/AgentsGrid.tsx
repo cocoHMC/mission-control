@@ -844,6 +844,11 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
                     Chat
                   </Button>
                 </Link>
+                <Link href={`/agents/${encodeURIComponent(id)}/vault`}>
+                  <Button size="sm" variant="secondary">
+                    Credentials
+                  </Button>
+                </Link>
                 <Link href="/tasks">
                   <Button size="sm" variant="secondary">
                     View tasks

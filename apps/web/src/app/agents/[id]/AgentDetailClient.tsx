@@ -140,6 +140,11 @@ export function AgentDetailClient({ agentId, pbAgent }: { agentId: string; pbAge
                 View sessions
               </Button>
             </Link>
+            <Link href={`/agents/${encodeURIComponent(agentId)}/vault`}>
+              <Button size="sm" variant="secondary">
+                Credentials (Vault)
+              </Button>
+            </Link>
             <Link href="/tasks">
               <Button size="sm" variant="secondary">
                 View tasks

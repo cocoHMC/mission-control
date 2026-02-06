@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
   }
 
   // OpenClaw returns sessions under `sessions` with keys like `agent:main:main`.
-  let sessions = Array.isArray((parsed as any).sessions) ? (parsed as any).sessions : [];
+  const sessions = Array.isArray((parsed as any).sessions) ? (parsed as any).sessions : [];
   let rows = sessions.map((s: any) => {
     const used = typeof s?.totalTokens === 'number' ? s.totalTokens : null;
     const max = typeof s?.contextTokens === 'number' ? s.contextTokens : null;

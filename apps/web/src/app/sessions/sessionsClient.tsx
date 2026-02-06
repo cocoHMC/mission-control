@@ -28,6 +28,8 @@ import { cn, formatShortDate } from '@/lib/utils';
 import { mcFetch } from '@/lib/clientApi';
 import type { Agent } from '@/lib/types';
 import { SessionCreateDrawer } from '@/app/sessions/SessionCreateDrawer';
+import { SessionsFilterDrawer } from '@/app/sessions/SessionsFilterDrawer';
+import type { InboxMode } from '@/app/sessions/sessionsInboxFilters';
 
 const LAST_SEEN_STORAGE_KEY = 'mc:sessions:lastSeen';
 
@@ -79,8 +81,6 @@ type HistoryRow = {
   text?: string;
   message?: string;
 };
-
-type InboxMode = 'all' | 'mc' | 'dm' | 'group' | 'cron' | 'other';
 
 function agentIdFromSessionKey(sessionKey: string) {
   if (!sessionKey.startsWith('agent:')) return null;
@@ -248,15 +248,6 @@ async function copyToClipboard(value: string) {
   }
 }
 
-const inboxFilters: Array<{ id: InboxMode; label: string }> = [
-  { id: 'all', label: 'All' },
-  { id: 'mc', label: 'Tasks' },
-  { id: 'dm', label: 'DMs' },
-  { id: 'group', label: 'Groups' },
-  { id: 'cron', label: 'Cron' },
-  { id: 'other', label: 'Other' },
-];
-
 export function SessionsInboxClient({ agents }: { agents: Agent[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -267,6 +258,7 @@ export function SessionsInboxClient({ agents }: { agents: Agent[] }) {
   const [inboxMode, setInboxMode] = React.useState<InboxMode>('all');
   const [groupBy, setGroupBy] = React.useState<'agent' | 'type'>('agent');
   const [query, setQuery] = React.useState('');
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [deletingKey, setDeletingKey] = React.useState<string | null>(null);
   const refreshingRef = React.useRef(false);
@@ -493,97 +485,61 @@ export function SessionsInboxClient({ agents }: { agents: Agent[] }) {
     return () => clearInterval(id);
   }, []);
 
+  const hasActiveFilters = Boolean(query.trim() || selectedAgent || inboxMode !== 'all' || groupBy !== 'agent');
+
+  function resetFilters() {
+    setQuery('');
+    setSelectedAgent('');
+    setInboxMode('all');
+    setGroupBy('agent');
+  }
+
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
-      <div className="rounded-3xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-[var(--shadow)]">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[220px]">
+    <>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--card)] shadow-[var(--shadow)]">
+        <div className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-3">
+          <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search sessions, channels, models…"
+              placeholder="Search sessions…"
               className="pl-9"
             />
           </div>
-          <div className="min-w-[180px]">
-            <select
-              value={selectedAgent}
-              onChange={(e) => setSelectedAgent(e.target.value)}
-              className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
-            >
-              <option value="">All agents</option>
-              {agentIds.map((id) => (
-                <option key={id} value={id}>
-                  {(() => {
-                    const label = agentLabelById.get(id);
-                    return label && label !== id ? `${label} (${id})` : id;
-                  })()}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="secondary" onClick={() => void refreshSessions()} disabled={loading}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              {loading ? 'Refreshing…' : 'Refresh'}
-            </Button>
-          </div>
+
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="h-11 w-11 px-0"
+            onClick={() => void refreshSessions()}
+            disabled={loading}
+            aria-label="Refresh sessions"
+            title="Refresh"
+          >
+            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+          </Button>
+
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="relative h-11 w-11 px-0 sm:w-auto sm:px-3"
+            onClick={() => setFiltersOpen(true)}
+            aria-label="Open filters"
+            title="Filters"
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            <span className="hidden sm:inline">Filters</span>
+            {hasActiveFilters ? (
+              <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[var(--accent)] ring-2 ring-[var(--surface)]" />
+            ) : null}
+          </Button>
+
+          <div className="hidden xl:block text-xs text-muted tabular-nums">{filteredRows.length} sessions</div>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {inboxFilters.map((filter) => {
-            const active = filter.id === inboxMode;
-            return (
-              <button
-                key={filter.id}
-                type="button"
-                onClick={() => setInboxMode(filter.id)}
-                className={cn(
-                  'rounded-full px-3 py-1.5 text-xs font-semibold transition',
-                  active
-                    ? 'bg-[var(--accent)] text-[var(--accent-foreground)]'
-                    : 'border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:bg-[color:var(--foreground)]/5'
-                )}
-              >
-                {filter.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {(
-            [
-              { id: 'agent' as const, label: 'By agent' },
-              { id: 'type' as const, label: 'By type' },
-            ] as const
-          ).map((opt) => {
-            const active = groupBy === opt.id;
-            return (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => setGroupBy(opt.id)}
-                className={cn(
-                  'rounded-full px-3 py-1.5 text-xs font-semibold transition',
-                  active
-                    ? 'bg-[var(--highlight)] text-[var(--highlight-foreground)]'
-                    : 'border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:bg-[color:var(--foreground)]/5'
-                )}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--card)] shadow-[var(--shadow)]">
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">Inbox</div>
-          <div className="text-xs text-muted">{filteredRows.length} sessions</div>
-        </div>
         <div className="min-h-0 flex-1 overflow-auto p-3 mc-scroll">
           {error ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
@@ -725,8 +681,28 @@ export function SessionsInboxClient({ agents }: { agents: Agent[] }) {
           </div>
         </div>
       </div>
+
+      <SessionsFilterDrawer
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        loading={loading}
+        onRefresh={() => void refreshSessions()}
+        query={query}
+        onQueryChange={setQuery}
+        selectedAgent={selectedAgent}
+        onSelectedAgentChange={setSelectedAgent}
+        agentIds={agentIds}
+        agentLabelById={agentLabelById}
+        inboxMode={inboxMode}
+        onInboxModeChange={setInboxMode}
+        groupBy={groupBy}
+        onGroupByChange={setGroupBy}
+        hasActiveFilters={hasActiveFilters}
+        onReset={resetFilters}
+      />
+
       <SessionCreateDrawer open={createOpen} agents={agents} onClose={closeCreateDrawer} defaultAgentId={selectedAgent} />
-    </div>
+    </>
   );
 }
 

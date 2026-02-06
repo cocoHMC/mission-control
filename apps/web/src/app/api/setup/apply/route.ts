@@ -39,10 +39,6 @@ function normalizeUrl(value: string) {
   }
 }
 
-function randomSecret(bytes = 24) {
-  return crypto.randomBytes(bytes).toString('base64url');
-}
-
 function derivePbAdminEmail(username: string) {
   const raw = String(username || '').trim();
   if (!raw) return 'admin@local.mc';
@@ -119,6 +115,8 @@ export async function POST(req: NextRequest) {
   replacements.set('PB_ADMIN_PASSWORD', pbAdminPassword);
   replacements.set('PB_SERVICE_EMAIL', pbServiceEmail);
   replacements.set('PB_SERVICE_PASSWORD', pbServicePassword);
+  // Vault master key (AES-256-GCM; 32 bytes base64). Losing this key means losing access to stored secrets.
+  replacements.set('MC_VAULT_MASTER_KEY_B64', crypto.randomBytes(32).toString('base64'));
   replacements.set('OPENCLAW_GATEWAY_URL', openclawUrl);
   replacements.set('OPENCLAW_GATEWAY_TOKEN', body.connectOpenClaw ? (body.openclawGatewayToken || '') : '');
   replacements.set('OPENCLAW_GATEWAY_DISABLED', body.connectOpenClaw ? 'false' : 'true');

@@ -1,0 +1,68 @@
+{
+  "id": "mission-control-vault",
+  "name": "Mission Control Vault",
+  "description": "Resolve {{vault:HANDLE}} placeholders from Mission Control at tool-execution time and redact tool results.",
+  "version": "0.1.0",
+  "skills": ["./skills"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "missionControlUrl": {
+        "type": "string",
+        "description": "Mission Control base URL (example: http://127.0.0.1:4010)"
+      },
+      "vaultToken": {
+        "type": "string",
+        "description": "Default Vault access token (single-agent setups)"
+      },
+      "agentTokens": {
+        "type": "object",
+        "additionalProperties": { "type": "string" },
+        "description": "Optional per-agent token map: { \"<agentId>\": \"mcva_...\" }"
+      },
+      "cacheTtlMs": {
+        "type": "number",
+        "description": "In-memory cache TTL for resolved secrets (milliseconds)"
+      },
+      "timeoutMs": {
+        "type": "number",
+        "description": "HTTP timeout for resolve requests (milliseconds)"
+      },
+      "placeholderPrefix": {
+        "type": "string",
+        "description": "Placeholder prefix (default: vault)"
+      }
+    }
+  },
+  "uiHints": {
+    "missionControlUrl": {
+      "label": "Mission Control URL",
+      "placeholder": "http://127.0.0.1:4010"
+    },
+    "vaultToken": {
+      "label": "Vault Token",
+      "sensitive": true,
+      "placeholder": "mcva_... (shown once in Mission Control)"
+    },
+    "agentTokens": {
+      "label": "Agent Tokens",
+      "help": "Map agentId -> token for multi-agent gateways. Treat tokens as secrets."
+    },
+    "cacheTtlMs": {
+      "label": "Cache TTL (ms)",
+      "placeholder": "30000",
+      "advanced": true
+    },
+    "timeoutMs": {
+      "label": "Timeout (ms)",
+      "placeholder": "5000",
+      "advanced": true
+    },
+    "placeholderPrefix": {
+      "label": "Placeholder Prefix",
+      "placeholder": "vault",
+      "advanced": true
+    }
+  }
+}
