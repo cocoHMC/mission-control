@@ -12,6 +12,10 @@ type OpenClawGatewayConfig = {
   auth?: { mode?: string; token?: string };
 };
 
+type OpenClawGatewayStatus = {
+  gateway?: { bindMode?: string; bindHost?: string; port?: number };
+};
+
 function firstNonEmpty(...values: Array<string | undefined | null>) {
   for (const v of values) {
     const s = String(v || '').trim();
@@ -62,14 +66,37 @@ export async function GET(req: NextRequest) {
   const authMode = gateway?.auth?.mode ? String(gateway.auth.mode) : null;
   const token = gateway?.auth?.token ? String(gateway.auth.token) : '';
 
-  // Conservative suggestion: prefer loopback URL because this endpoint is loopback-only.
-  const url = `http://127.0.0.1:${port || 18789}`;
+  const bindLower = String(bind || '').trim().toLowerCase();
+  const isTailnetBind = bindLower === 'tailnet' || bindLower === 'tailscale';
+
+  // Best-effort suggestion:
+  // - loopback bind => localhost URL
+  // - tailnet bind => tailnet IP URL (OpenClaw doesn't listen on 127.0.0.1 in this mode)
+  let url = `http://127.0.0.1:${port || 18789}`;
+  let bindHost: string | null = null;
+  let bindMode: string | null = null;
+
+  if (isTailnetBind) {
+    const statusRes = await runOpenClaw(['gateway', 'status', '--json'], { timeoutMs: 2_500 });
+    if (statusRes.ok && statusRes.stdout) {
+      let status: OpenClawGatewayStatus | null = null;
+      try {
+        status = JSON.parse(statusRes.stdout) as OpenClawGatewayStatus;
+      } catch {
+        status = null;
+      }
+      bindHost = status?.gateway?.bindHost ? String(status.gateway.bindHost) : null;
+      bindMode = status?.gateway?.bindMode ? String(status.gateway.bindMode) : null;
+      const statusPort = typeof status?.gateway?.port === 'number' ? status?.gateway?.port : null;
+      if (bindHost) url = `http://${bindHost}:${statusPort || port || 18789}`;
+    }
+  }
 
   return NextResponse.json({
     ok: true,
     installed: true,
     version: String(version.stdout || '').trim(),
-    gateway: { port, bind, mode, authMode },
+    gateway: { port, bind, mode, authMode, bindHost, bindMode },
     url,
     token,
   });

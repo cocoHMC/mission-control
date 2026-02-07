@@ -356,6 +356,12 @@ select {
   display: none;
 }
 
+.mc-viewport {
+  /* Fallback first; some Electron/Chromium versions don't support dvh. */
+  height: 100vh;
+  height: 100dvh;
+}
+
 .mc-scroll {
   overscroll-behavior: contain;
   scrollbar-width: thin;

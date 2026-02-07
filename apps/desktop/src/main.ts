@@ -26,6 +26,10 @@ let pbProc: ChildProcess | null = null;
 let webProc: ChildProcess | null = null;
 let workerProc: ChildProcess | null = null;
 
+let appQuitting = false;
+let workerRestartWindowStartMs = 0;
+let workerRestartCount = 0;
+
 let mainWindow: BrowserWindow | null = null;
 let updateState: UpdateState = { status: 'idle' };
 let updaterTokenConfigured = false;
@@ -540,8 +544,45 @@ async function startStack() {
     const workerEntry = app.isPackaged
       ? path.join(root, 'worker', 'worker.bundle.cjs')
       : path.join(root, 'apps', 'worker', 'dist', 'index.js');
-    log.info('[desktop] starting worker', { workerEntry });
-    workerProc = spawnNode(workerEntry, [], { cwd: root, env: envForChildren, name: 'worker' });
+    const startWorker = () => {
+      log.info('[desktop] starting worker', { workerEntry });
+      const child = spawnNode(workerEntry, [], { cwd: root, env: envForChildren, name: 'worker' });
+      child.on('exit', (code, signal) => {
+        log.warn('[desktop] worker exited', { code, signal });
+        if (workerProc === child) workerProc = null;
+
+        // If the worker dies unexpectedly, tasks stop progressing (no OpenClaw delivery, no lease nudges).
+        // Automatically restart with basic backoff and crash-loop protection.
+        if (appQuitting) return;
+        if (stackRestarting || stackStarting) return;
+
+        const now = Date.now();
+        if (!workerRestartWindowStartMs || now - workerRestartWindowStartMs > 2 * 60_000) {
+          workerRestartWindowStartMs = now;
+          workerRestartCount = 0;
+        }
+        workerRestartCount += 1;
+        if (workerRestartCount > 6) {
+          log.error('[desktop] worker crash loop detected; not restarting again');
+          void createErrorWindow(
+            'Mission Control worker crashed',
+            'The background worker crashed repeatedly and was stopped to avoid an endless restart loop. Check desktop logs and update to the latest version.'
+          ).catch(() => {});
+          return;
+        }
+
+        const delayMs = Math.min(30_000, 1000 * workerRestartCount);
+        log.info('[desktop] restarting worker', { delayMs, workerRestartCount });
+        setTimeout(() => {
+          if (appQuitting) return;
+          if (stackRestarting || stackStarting) return;
+          workerProc = startWorker();
+        }, delayMs);
+      });
+      return child;
+    };
+
+    workerProc = startWorker();
   }
 
     return { webPort };
@@ -1021,6 +1062,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  appQuitting = true;
   void stopStack();
 });
 

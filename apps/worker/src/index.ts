@@ -349,6 +349,21 @@ async function createNotification(token: string, toAgentId: string, content: str
   });
 }
 
+function pbFilterString(value: string) {
+  // PocketBase filter strings use double quotes; escape defensively.
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+async function hasAnyNotificationForTask(token: string, agentId: string, taskId: string) {
+  const q = new URLSearchParams({
+    page: '1',
+    perPage: '1',
+    filter: `toAgentId = "${pbFilterString(agentId)}" && taskId = "${pbFilterString(taskId)}"`,
+  });
+  const existing = await pbFetch(`/api/collections/notifications/records?${q.toString()}`, { token });
+  return Boolean(existing?.items?.length);
+}
+
 async function listPushSubscriptions(token: string) {
   if (!webPushEnabled) return [] as any[];
   const q = new URLSearchParams({ page: '1', perPage: '200', filter: 'enabled = true' });
@@ -497,6 +512,16 @@ function extractMentions(content: string) {
     match = regex.exec(content);
   }
   return Array.from(mentions);
+}
+
+function buildAssignedNotificationContent(record: any, description: string, context: string) {
+  const title = String(record.title || '').trim() || String(record.id || '').trim() || 'task';
+  const snippetLimit = 220;
+  const ctxLimit = 280;
+  const snippet = description ? (description.length > snippetLimit ? `${description.slice(0, snippetLimit - 1)}…` : description) : '';
+  const ctxSnippet = context ? (context.length > ctxLimit ? `${context.slice(0, ctxLimit - 1)}…` : context) : '';
+  const parts = [snippet, ctxSnippet ? `Context: ${ctxSnippet}` : ''].filter(Boolean);
+  return parts.length ? `Assigned: ${title} — ${parts.join(' ')}` : `Assigned: ${title}`;
 }
 
 async function handleTaskEvent(token: string, record: any, action: string) {
@@ -655,7 +680,10 @@ async function handleMessageEvent(token: string, record: any) {
 }
 
 async function handleDocumentEvent(token: string, record: any, action: string) {
-  const taskId = record.taskId as string;
+  const taskId = String(record.taskId || '').trim();
+  // Some documents are global deliverables (no taskId). Don't crash the worker by trying
+  // to patch a task with an empty id.
+  if (!taskId) return;
   await pbFetch(`/api/collections/tasks/records/${taskId}`, {
     method: 'PATCH',
     token,
@@ -801,6 +829,82 @@ async function refreshTasks(token: string) {
   for (const task of tasks.items ?? []) taskCache.set(task.id, task);
 }
 
+async function backfillAssignedTaskNotifications(token: string) {
+  // If the worker was down (crash/restart), we may have missed task assignment events.
+  // Backfill ensures assignees still receive at least one "Assigned:" notification.
+  const perPage = 200;
+  let page = 1;
+  let created = 0;
+
+  while (true) {
+    let data: any;
+    try {
+      const q = new URLSearchParams({
+        page: String(page),
+        perPage: String(perPage),
+        // Only tasks that haven't seen any activity yet.
+        filter: 'status = "assigned" && lastProgressAt = ""',
+      });
+      data = await pbFetch(`/api/collections/tasks/records?${q.toString()}`, { token });
+    } catch (err: any) {
+      console.error('[worker] backfill query failed', err?.message || err);
+      return;
+    }
+
+    const items = (data?.items ?? []) as any[];
+    if (!items.length) break;
+
+    for (const record of items) {
+      const taskId = String(record.id || '').trim();
+      if (!taskId) continue;
+
+      const assignees = normalizeAgentIds(record.assigneeIds ?? []);
+      if (!assignees.length) continue;
+
+      for (const agentId of assignees) {
+        const normalized = normalizeAgentId(agentId);
+        if (!normalized) continue;
+
+        let exists = false;
+        try {
+          exists = await hasAnyNotificationForTask(token, normalized, taskId);
+        } catch (err: any) {
+          console.error('[worker] backfill notification query failed', { agentId: normalized, taskId }, err?.message || err);
+          continue;
+        }
+        if (exists) continue;
+
+        await ensureTaskSubscription(token, taskId, normalized, 'assigned');
+
+        let desc = String(record.description || '').trim();
+        let ctx = String(record.context || '').trim();
+        if (!desc) {
+          try {
+            const fetched = await pbFetch(`/api/collections/tasks/records/${taskId}`, { token });
+            desc = String(fetched?.description || '').trim();
+            ctx = String(fetched?.context || '').trim();
+          } catch {
+            // ignore fetch errors; we'll fall back to title-only notification
+          }
+        }
+
+        const content = buildAssignedNotificationContent(record, desc, ctx);
+        await createNotification(token, normalized, content, taskId, 'assigned');
+        created++;
+      }
+    }
+
+    if (items.length < perPage) break;
+    page++;
+    if (page > 25) break; // safety net
+  }
+
+  if (created) {
+    console.log('[worker] backfill created assignment notifications', created);
+    scheduleDeliver(token);
+  }
+}
+
 async function maybeStandup(token: string) {
   const now = new Date();
   const dateKey = now.toISOString().slice(0, 10);
@@ -943,11 +1047,15 @@ async function main() {
   await refreshTasks(pbToken);
   await subscribeWithRetry(pbToken);
 
+  // Recover assignments that happened while the worker was down.
+  await backfillAssignedTaskNotifications(pbToken);
+
   // Deliver notifications with a debounce to avoid event storms / overlapping runs.
   // A slow interval acts as a safety net in case realtime misses an event.
   setInterval(() => scheduleDeliver(pbToken), env.MC_DELIVER_INTERVAL_MS);
   setInterval(() => void enforceLeases(pbToken), 10_000);
   setInterval(() => void refreshAgents(pbToken), 60_000 * 5);
+  setInterval(() => void backfillAssignedTaskNotifications(pbToken), 60_000 * 5);
   setInterval(() => void maybeStandup(pbToken), 60_000);
   setInterval(() => void snapshotNodes(pbToken), 60_000 * env.MC_NODE_SNAPSHOT_MINUTES);
 

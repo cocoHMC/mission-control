@@ -328,7 +328,7 @@ export function SetupClient() {
 
   if (loading) {
     return (
-      <div className="h-[100dvh] overflow-auto mc-scroll">
+      <div className="mc-viewport overflow-auto mc-scroll">
         <div className="mx-auto max-w-3xl p-8">
           <div className="text-sm text-muted">Loading setup…</div>
         </div>
@@ -337,7 +337,7 @@ export function SetupClient() {
   }
 
   return (
-    <div className="h-[100dvh] overflow-auto mc-scroll">
+    <div className="mc-viewport overflow-auto mc-scroll">
       <div className="mx-auto max-w-3xl p-8">
         <div className="mb-6">
           <div className="text-xs uppercase tracking-[0.2em] text-muted">Mission Control</div>
