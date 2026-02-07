@@ -182,7 +182,9 @@ jobs:
           $localAppData = $env:LOCALAPPDATA
           if ($null -ne $localAppData -and $localAppData -ne '') {
             $localNames = @(
-              'Application Data'
+              'Application Data',
+              'History',
+              'Temporary Internet Files'
             )
             foreach ($name in $localNames) {
               $p = Join-Path $localAppData $name
