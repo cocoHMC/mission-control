@@ -4,6 +4,7 @@ import { requireAdminAuth } from '@/lib/adminAuth';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
+import { findRepoRoot } from '@/app/api/setup/_shared';
 
 const execFileAsync = promisify(execFile);
 
@@ -19,6 +20,7 @@ export async function POST(req: NextRequest) {
   const role = String(body?.role || '').trim() || 'Agent';
   const modelTier = String(body?.modelTier || 'mid').trim() || 'mid';
   const createWorkspace = Boolean(body?.createWorkspace ?? true);
+  const workspace = String(body?.workspace || '').trim() || '';
 
   if (!id || !name) {
     return NextResponse.json({ ok: false, error: 'id and name are required' }, { status: 400 });
@@ -48,8 +50,11 @@ export async function POST(req: NextRequest) {
   let workspaceError = '';
   if (createWorkspace) {
     try {
-      const script = path.join(process.cwd(), 'scripts', 'agent_init.mjs');
-      await execFileAsync('node', [script, '--id', id, '--name', name, '--role', role]);
+      const appDir = process.env.MC_APP_DIR ? path.resolve(process.env.MC_APP_DIR) : await findRepoRoot();
+      const script = path.join(appDir, 'scripts', 'agent_init.mjs');
+      const args = [script, '--id', id, '--name', name, '--role', role];
+      if (workspace) args.push('--workspace', workspace);
+      await execFileAsync('node', args, { cwd: appDir, env: process.env });
     } catch (err: unknown) {
       workspaceError = err instanceof Error ? err.message : 'Failed to create workspace';
     }

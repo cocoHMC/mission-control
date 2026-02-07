@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { mcFetch } from '@/lib/clientApi';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,10 +34,10 @@ export function SetupChecklist({
   const [status, setStatus] = React.useState<StatusResponse | null>(null);
   const [loading, setLoading] = React.useState(false);
 
-  async function refreshStatus() {
+  const refreshStatus = React.useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/openclaw/status', { cache: 'no-store' });
+      const res = await mcFetch('/api/openclaw/status', { cache: 'no-store' });
       const json = (await res.json()) as StatusResponse;
       setStatus(json);
     } catch (err: unknown) {
@@ -45,7 +46,12 @@ export function SetupChecklist({
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  React.useEffect(() => {
+    void refreshStatus();
+    // Only run once on mount to avoid polling.
+  }, [refreshStatus]);
 
   const installCmd = `openclaw node install --host ${gatewayHostHint} --port ${gatewayPortHint} --display-name "<node-name>"`;
   const pendingCmd = 'openclaw nodes pending';
@@ -145,4 +151,3 @@ export function SetupChecklist({
     </Card>
   );
 }
-

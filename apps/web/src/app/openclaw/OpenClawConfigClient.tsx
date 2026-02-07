@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { mcFetch } from "@/lib/clientApi";
 
 type ConfigResponse = {
   path: string;
@@ -35,7 +36,7 @@ export function OpenClawConfigClient() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/openclaw/config");
+      const res = await mcFetch("/api/openclaw/config");
       if (!res.ok) throw new Error(await res.text());
       const json = (await res.json()) as ConfigResponse;
       setConfig(json.config || "");
@@ -54,7 +55,7 @@ export function OpenClawConfigClient() {
 
   const loadStatus = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/openclaw/status");
+      const res = await mcFetch("/api/openclaw/status");
       const json = (await res.json()) as StatusResponse;
       setStatus(json);
     } catch (err: unknown) {
@@ -73,7 +74,7 @@ export function OpenClawConfigClient() {
     setError(null);
     setApplyResult(null);
     try {
-      const res = await fetch("/api/openclaw/config/validate", {
+      const res = await mcFetch("/api/openclaw/config/validate", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ config }),
@@ -94,7 +95,7 @@ export function OpenClawConfigClient() {
     setApplying(true);
     setError(null);
     try {
-      const res = await fetch("/api/openclaw/config/apply", {
+      const res = await mcFetch("/api/openclaw/config/apply", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ config }),

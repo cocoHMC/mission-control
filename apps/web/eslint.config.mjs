@@ -9,10 +9,20 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    ".next-dev/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    rules: {
+      // This codebase intentionally uses `any` in many runtime integration points
+      // (OpenClaw gateway JSON, PocketBase JSON, etc.). Keep linting focused on
+      // actionable issues rather than forcing pervasive type gymnastics.
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

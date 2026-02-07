@@ -4,15 +4,15 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Command } from 'cmdk';
-import { FilePlus2, ListTodo, Server, Settings, UserRound, BarChart3, Shield } from 'lucide-react';
+import { BarChart3, FilePlus2, ListTodo, MessageSquare, Server, Settings, UserRound } from 'lucide-react';
 
 const actions = [
   { label: 'Create new task', icon: FilePlus2, href: '/tasks/new' },
   { label: 'Open tasks board', icon: ListTodo, href: '/tasks' },
   { label: 'View activity feed', icon: BarChart3, href: '/activity' },
+  { label: 'Chat sessions', icon: MessageSquare, href: '/sessions' },
   { label: 'Manage nodes', icon: Server, href: '/nodes' },
   { label: 'Agent roster', icon: UserRound, href: '/agents' },
-  { label: 'Security center', icon: Shield, href: '/security' },
   { label: 'Settings', icon: Settings, href: '/settings' },
 ];
 

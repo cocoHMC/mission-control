@@ -7,15 +7,36 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { fromDateTimeLocalValue } from '@/lib/utils';
+import { mcFetch } from '@/lib/clientApi';
 
 type Agent = { id: string; displayName?: string; openclawAgentId?: string };
 type NodeRecord = { id: string; displayName?: string; nodeId?: string };
+type OpenClawNode = {
+  nodeId?: string;
+  displayName?: string;
+  remoteIp?: string;
+  platform?: string;
+  paired?: boolean;
+  connected?: boolean;
+};
+type OpenClawNodesStatus = {
+  nodes?: OpenClawNode[];
+};
 
-export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord[] }) {
+export function TaskForm({
+  agents,
+  nodes,
+  onCreated,
+}: {
+  agents: Agent[];
+  nodes: NodeRecord[];
+  onCreated?: (taskId?: string) => void;
+}) {
   const router = useRouter();
   const [pending, setPending] = React.useState(false);
   const [title, setTitle] = React.useState('');
   const [description, setDescription] = React.useState('');
+  const [context, setContext] = React.useState('');
   const [priority, setPriority] = React.useState('p2');
   const [assignees, setAssignees] = React.useState<string[]>([]);
   const [labels, setLabels] = React.useState('');
@@ -25,6 +46,28 @@ export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord
   const [requiresReview, setRequiresReview] = React.useState(false);
   const [subtasks, setSubtasks] = React.useState<{ id: string; title: string }[]>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = React.useState('');
+  const [openclawNodes, setOpenclawNodes] = React.useState<OpenClawNode[]>([]);
+
+  React.useEffect(() => {
+    // Best-effort live node list from OpenClaw (no PocketBase sync required).
+    // Falls back to Mission Control's nodes collection if OpenClaw CLI is unavailable.
+    let cancelled = false;
+    mcFetch('/api/openclaw/nodes/status', { cache: 'no-store' })
+      .then((r) => r.json().catch(() => null))
+      .then((json) => {
+        if (cancelled) return;
+        if (!json?.ok) return;
+        const next = (json?.status as OpenClawNodesStatus) || null;
+        const list = Array.isArray(next?.nodes) ? next!.nodes! : [];
+        setOpenclawNodes(list.filter((n) => n && n.nodeId));
+      })
+      .catch(() => {
+        // ignore
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function makeLocalId() {
     try {
@@ -68,12 +111,13 @@ export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord
       .split(',')
       .map((label) => label.trim())
       .filter(Boolean);
-    const res = await fetch('/api/tasks', {
+    const res = await mcFetch('/api/tasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         title,
         description,
+        context,
         priority,
         assigneeIds: assignees,
         status: assignees.length ? 'assigned' : 'inbox',
@@ -98,7 +142,7 @@ export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord
       for (let i = 0; i < subtasks.length; i++) {
         const s = subtasks[i];
         if (!s?.title?.trim()) continue;
-        await fetch('/api/subtasks', {
+        await mcFetch('/api/subtasks', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ taskId, title: s.title.trim(), order: baseOrder + i }),
@@ -106,13 +150,18 @@ export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord
       }
       // Update aggregate fields immediately so the board shows progress without waiting
       // for the worker to recompute.
-      await fetch(`/api/tasks/${taskId}`, {
+      await mcFetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ subtasksTotal: subtasks.length, subtasksDone: 0 }),
       });
     }
     setPending(false);
+    if (onCreated) {
+      onCreated(taskId);
+      router.refresh();
+      return;
+    }
     router.push('/tasks');
     router.refresh();
   }
@@ -136,11 +185,24 @@ export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord
         <label className="text-sm font-medium">Description</label>
         <Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Context, success criteria, or links." />
       </div>
+      <details className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">Deep context (optional)</summary>
+        <div className="mt-2 text-xs text-muted">
+          Paste long Markdown context (research, articles, specs). Mission Control won&apos;t push this into agent chats
+          automatically—agents should pull it when needed to avoid token spikes.
+        </div>
+        <Textarea
+          value={context}
+          onChange={(event) => setContext(event.target.value)}
+          placeholder="Long context in Markdown..."
+          className="mt-3 min-h-[200px]"
+        />
+      </details>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="text-sm font-medium">Priority</label>
           <select
-            className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]"
+            className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
             value={priority}
             onChange={(event) => setPriority(event.target.value)}
           >
@@ -154,14 +216,23 @@ export function TaskForm({ agents, nodes }: { agents: Agent[]; nodes: NodeRecord
         <div>
           <label className="text-sm font-medium">Execution device (optional)</label>
           <select
-            className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]"
+            className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
             value={requiredNodeId}
             onChange={(event) => setRequiredNodeId(event.target.value)}
           >
             <option value="">Gateway (this machine)</option>
-            {nodes.map((node) => (
-              <option key={node.id} value={node.nodeId ?? node.id}>
-                {node.displayName ?? node.nodeId ?? node.id}
+            {(openclawNodes.length
+              ? openclawNodes.map((n) => ({
+                  id: n.nodeId || '',
+                  label: `${n.displayName || n.nodeId}${n.remoteIp ? ` (${n.remoteIp})` : ''}`,
+                }))
+              : nodes.map((node) => ({
+                  id: node.nodeId ?? node.id,
+                  label: node.displayName ?? node.nodeId ?? node.id,
+                }))
+            ).map((node) => (
+              <option key={node.id} value={node.id}>
+                {node.label}
               </option>
             ))}
           </select>

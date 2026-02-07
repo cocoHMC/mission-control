@@ -2,13 +2,15 @@
 
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { DndContext, DragEndEvent, closestCenter, useDroppable } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, PointerSensor, closestCenter, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Badge } from '@/components/ui/badge';
 import { cn, formatShortDate, titleCase } from '@/lib/utils';
 import { TaskDrawer } from '@/app/tasks/TaskDrawer';
+import { TaskCreateDrawer } from '@/app/tasks/TaskCreateDrawer';
 import { getPocketBaseClient, type PBRealtimeEvent } from '@/lib/pbClient';
+import { mcFetch } from '@/lib/clientApi';
 
 const columns = [
   { id: 'inbox', label: 'Inbox' },
@@ -55,7 +57,7 @@ function TaskCard({
   onOpen: (taskId: string) => void;
   nodeLabel?: string;
 }) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { status: task.status },
   });
@@ -65,30 +67,30 @@ function TaskCard({
   };
 
   return (
-    <div
+    <button
       ref={setNodeRef}
       style={style}
       className={cn(
-        'rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-sm shadow-sm transition',
-        isDragging ? 'opacity-60' : 'hover:-translate-y-0.5 hover:shadow-md'
+        'group w-full rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-left text-sm shadow-sm transition select-none',
+        isDragging
+          ? 'opacity-60 cursor-grabbing'
+          : 'cursor-grab hover:-translate-y-0.5 hover:shadow-md'
       )}
+      type="button"
+      onClick={() => onOpen(task.id)}
+      {...attributes}
+      {...listeners}
     >
       <div className="flex items-stretch gap-3">
-        <button
-          ref={setActivatorNodeRef}
-          type="button"
-          aria-label="Drag task"
-          className="group relative h-full w-2 shrink-0 cursor-grab rounded-full border border-[var(--border)] bg-[var(--surface)]/60 opacity-50 transition hover:opacity-90 active:cursor-grabbing"
+        <div
+          aria-hidden="true"
+          className="relative flex w-6 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)]/60 opacity-70 transition group-hover:opacity-95"
           style={{
             backgroundImage:
-              'repeating-linear-gradient(180deg, rgba(15,23,42,0.25) 0, rgba(15,23,42,0.25) 2px, transparent 2px, transparent 5px)',
+              'repeating-linear-gradient(180deg, rgba(15,23,42,0.22) 0, rgba(15,23,42,0.22) 2px, transparent 2px, transparent 6px)',
           }}
-          onClick={(event) => event.stopPropagation()}
-          onPointerDown={(event) => event.stopPropagation()}
-          {...attributes}
-          {...listeners}
         />
-        <button type="button" onClick={() => onOpen(task.id)} className="flex-1 text-left">
+        <div className="min-w-0 flex-1">
           <div
             className="font-medium"
             style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
@@ -115,7 +117,7 @@ function TaskCard({
             </div>
           )}
           <div className="mt-2 flex items-center gap-2 text-xs text-muted">
-            <Badge className="border-none bg-[var(--highlight)] text-[var(--foreground)]">{task.priority ?? 'p2'}</Badge>
+            <Badge className="border-none">{task.priority ?? 'p2'}</Badge>
             {task.subtasksTotal ? (
               <span>
                 {task.subtasksDone ?? 0}/{task.subtasksTotal}
@@ -124,9 +126,9 @@ function TaskCard({
             {task.dueAt ? <span>due {formatShortDate(task.dueAt)}</span> : null}
             <span>{task.assigneeIds?.length ? `${task.assigneeIds.length} assignee(s)` : 'Unassigned'}</span>
           </div>
-        </button>
+        </div>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -140,17 +142,21 @@ function TaskCardStatic({
   nodeLabel?: string;
 }) {
   return (
-    <div className={cn('rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-sm shadow-sm transition')}>
+    <button
+      type="button"
+      onClick={() => onOpen(task.id)}
+      className={cn('group w-full rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-left text-sm shadow-sm transition hover:-translate-y-0.5 hover:shadow-md')}
+    >
       <div className="flex items-stretch gap-3">
         <div
           aria-hidden="true"
-          className="group relative h-full w-2 shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface)]/60 opacity-50"
+          className="relative flex w-6 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)]/60 opacity-70"
           style={{
             backgroundImage:
-              'repeating-linear-gradient(180deg, rgba(15,23,42,0.25) 0, rgba(15,23,42,0.25) 2px, transparent 2px, transparent 5px)',
+              'repeating-linear-gradient(180deg, rgba(15,23,42,0.22) 0, rgba(15,23,42,0.22) 2px, transparent 2px, transparent 6px)',
           }}
         />
-        <button type="button" onClick={() => onOpen(task.id)} className="flex-1 text-left">
+        <div className="min-w-0 flex-1">
           <div
             className="font-medium"
             style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
@@ -177,7 +183,7 @@ function TaskCardStatic({
             </div>
           )}
           <div className="mt-2 flex items-center gap-2 text-xs text-muted">
-            <Badge className="border-none bg-[var(--highlight)] text-[var(--foreground)]">{task.priority ?? 'p2'}</Badge>
+            <Badge className="border-none">{task.priority ?? 'p2'}</Badge>
             {task.subtasksTotal ? (
               <span>
                 {task.subtasksDone ?? 0}/{task.subtasksTotal}
@@ -186,9 +192,9 @@ function TaskCardStatic({
             {task.dueAt ? <span>due {formatShortDate(task.dueAt)}</span> : null}
             <span>{task.assigneeIds?.length ? `${task.assigneeIds.length} assignee(s)` : 'Unassigned'}</span>
           </div>
-        </button>
+        </div>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -209,7 +215,7 @@ function Column({
     <div className="flex w-[240px] shrink-0 flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] sm:w-[260px] lg:w-[300px]">
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)]/95 px-3 py-3 backdrop-blur">
         <div className="text-xs uppercase tracking-[0.2em] text-muted">{titleCase(status)}</div>
-        <Badge className="border-none bg-[var(--card)] text-[var(--foreground)]">{tasks.length}</Badge>
+        <Badge className="bg-[var(--surface)] text-[var(--foreground)]">{tasks.length}</Badge>
       </div>
       <div
         ref={setNodeRef}
@@ -271,11 +277,21 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
   const searchParams = useSearchParams();
   const [tasks, setTasks] = React.useState<Task[]>(initialTasks);
   const [mounted, setMounted] = React.useState(false);
+  const [createOpen, setCreateOpen] = React.useState(false);
   // Optimistic open/close to avoid a jittery UX while the URL updates.
   // `undefined` => follow URL `?task=...`
   // `string`    => force open that task immediately
   // `null`      => force closed immediately
   const [overrideTaskId, setOverrideTaskId] = React.useState<string | null | undefined>(undefined);
+  const draggingRef = React.useRef(false);
+  const suppressOpenRef = React.useRef(false);
+  const suppressOpenTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    })
+  );
 
   React.useEffect(() => {
     setTasks(initialTasks);
@@ -297,7 +313,7 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
 
   React.useEffect(() => {
     let pollId: ReturnType<typeof setInterval> | null = setInterval(async () => {
-      const res = await fetch('/api/tasks?page=1&perPage=200');
+      const res = await mcFetch('/api/tasks?page=1&perPage=200');
       if (!res.ok) return;
       const json = await res.json();
       setTasks(json.items ?? []);
@@ -341,6 +357,11 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
   }, []);
 
   const taskParam = searchParams.get('task');
+  const newParam = searchParams.get('new');
+
+  React.useEffect(() => {
+    setCreateOpen(newParam === '1');
+  }, [newParam]);
 
   React.useEffect(() => {
     if (overrideTaskId === undefined) return;
@@ -348,8 +369,16 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
     if (typeof overrideTaskId === 'string' && taskParam === overrideTaskId) setOverrideTaskId(undefined);
   }, [overrideTaskId, taskParam]);
 
+  function closeCreateDrawer() {
+    setCreateOpen(false);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('new');
+    const next = params.toString();
+    router.replace(next ? `/tasks?${next}` : '/tasks', { scroll: false });
+  }
+
   async function updateTask(taskId: string, patch: Record<string, unknown>) {
-    await fetch(`/api/tasks/${taskId}`, {
+    await mcFetch(`/api/tasks/${taskId}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(patch),
@@ -357,6 +386,13 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
   }
 
   function handleDragEnd(event: DragEndEvent) {
+    draggingRef.current = false;
+    suppressOpenRef.current = true;
+    if (suppressOpenTimerRef.current) clearTimeout(suppressOpenTimerRef.current);
+    suppressOpenTimerRef.current = setTimeout(() => {
+      suppressOpenRef.current = false;
+      suppressOpenTimerRef.current = null;
+    }, 250);
     const { active, over } = event;
     if (!over) return;
     const activeId = String(active.id);
@@ -414,6 +450,9 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
   }, {});
 
   function openDrawer(taskId: string) {
+    // Guardrail: avoid opening a task drawer as a side-effect of a drag gesture.
+    if (draggingRef.current) return;
+    if (suppressOpenRef.current) return;
     setOverrideTaskId(taskId);
     router.replace(`/tasks?task=${taskId}`, { scroll: false });
   }
@@ -433,7 +472,23 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
         <span>Drag tasks across columns to update status.</span>
       </div>
       {mounted ? (
-        <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={() => {
+            draggingRef.current = true;
+          }}
+          onDragCancel={() => {
+            draggingRef.current = false;
+            suppressOpenRef.current = true;
+            if (suppressOpenTimerRef.current) clearTimeout(suppressOpenTimerRef.current);
+            suppressOpenTimerRef.current = setTimeout(() => {
+              suppressOpenRef.current = false;
+              suppressOpenTimerRef.current = null;
+            }, 250);
+          }}
+          onDragEnd={handleDragEnd}
+        >
           <div className="-mx-3 overflow-x-auto pb-4 sm:-mx-4">
             <div className="flex w-max gap-4 px-3 sm:px-4">
               {columns.map((col) => (
@@ -464,6 +519,7 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
         </div>
       )}
       <TaskDrawer open={drawerOpen} taskId={effectiveTaskId} agents={agents} nodes={nodes} onClose={closeDrawer} />
+      <TaskCreateDrawer open={createOpen} agents={agents} nodes={nodes} onClose={closeCreateDrawer} />
     </div>
   );
 }

@@ -9,12 +9,19 @@ pb/pocketbase.log
 apps/*/dev.log
 backups/
 ops/openclaw/
-ops/vaultwarden/
 node_modules/
 apps/*/node_modules/
 dist/
 release/
 .next/
+.next-dev/
+
+# Desktop cross-build/test outputs
+apps/desktop/release-*/
+
+# CI/downloader PocketBase binaries (platform-specific)
+pb/pocketbase-*
+pb/pocketbase-*.exe
 
 # Local build/progress artifacts (may contain machine-specific info)
 docs/BUILD_STATUS.json

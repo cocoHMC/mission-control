@@ -22,14 +22,9 @@
 
 ## Secret Rotation
 - Rotate gateway token, PB admin password, PB service password quarterly.
+- Treat `MC_VAULT_MASTER_KEY_B64` as a root secret. Back it up securely; if you lose it, Vault credentials cannot be decrypted.
 - Update `.env` on coco and restart services.
 
 ## Data Safety
 - Back up `pb/pb_data` daily.
 - Store backups outside the repo (or encrypt at rest).
-
-## Vaultwarden (Optional)
-- Use the Security page to generate the `ops/vaultwarden` stack (Caddy + Vaultwarden).
-- Keep the Vaultwarden domain tailnet-only (no public A/AAAA records).
-- Enable docker actions by setting `MC_SECURITY_ACTIONS_ENABLED=true`.
-- Use one collection per node and prefer read-only collections for automation.

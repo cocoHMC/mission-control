@@ -88,6 +88,12 @@ echo
 echo "Open setup: http://127.0.0.1:4010/setup"
 ```
 
+## AI Setup Skill (Codex / Claude Code)
+If you want an AI agent to guide and verify the full setup (Mission Control + Tailscale/Headscale + OpenClaw wiring + nodes + notifications):
+- Skill: `skills/mission-control-setup/SKILL.md`
+- Install into Codex:
+  - `./scripts/install_codex_skill.sh`
+
 ## macOS Desktop App (.dmg)
 If you want Mission Control as a real macOS app (not just a browser tab), we ship an Electron desktop wrapper that:
 - starts PocketBase + worker + web automatically

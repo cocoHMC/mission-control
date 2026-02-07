@@ -151,7 +151,11 @@ function computeBasicAuthHeader(user: string, pass: string) {
 
 function installAuthHeader(port: number) {
   if (authHeaderInstalledForPort === port) return;
-  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: [`http://127.0.0.1:${port}/*`] }, (details, cb) => {
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    {
+      urls: [`http://127.0.0.1:${port}/*`, `http://localhost:${port}/*`, `http://[::1]:${port}/*`],
+    },
+    (details, cb) => {
     const headerValue = cachedBasicAuth ? computeBasicAuthHeader(cachedBasicAuth.user, cachedBasicAuth.pass) : null;
     details.requestHeaders = {
       ...details.requestHeaders,
@@ -159,7 +163,8 @@ function installAuthHeader(port: number) {
       'X-MC-Desktop': '1',
     };
     cb({ requestHeaders: details.requestHeaders });
-  });
+    }
+  );
   authHeaderInstalledForPort = port;
 }
 
@@ -171,6 +176,40 @@ async function ensureExecutable(filePath: string) {
     await fs.chmod(filePath, mode);
   } catch {
     // best-effort
+  }
+}
+
+async function resetPath(target: string) {
+  try {
+    await fs.rm(target, { recursive: true, force: true });
+  } catch {
+    // ignore
+  }
+}
+
+async function linkOrCopyDir(src: string, dest: string) {
+  await resetPath(dest);
+  try {
+    await fs.symlink(src, dest, 'dir');
+  } catch {
+    await fs.cp(src, dest, { recursive: true });
+  }
+}
+
+async function ensureDevStatic(root: string) {
+  if (app.isPackaged) return;
+  const standaloneRoot = path.join(root, 'apps', 'web', '.next', 'standalone', 'apps', 'web');
+  const staticSrc = path.join(root, 'apps', 'web', '.next', 'static');
+  const staticDest = path.join(standaloneRoot, '.next', 'static');
+  const publicSrc = path.join(root, 'apps', 'web', 'public');
+  const publicDest = path.join(standaloneRoot, 'public');
+
+  try {
+    await fs.mkdir(path.join(standaloneRoot, '.next'), { recursive: true });
+    await linkOrCopyDir(staticSrc, staticDest);
+    await linkOrCopyDir(publicSrc, publicDest);
+  } catch (err) {
+    log.error('[desktop] ensureDevStatic failed', err);
   }
 }
 
@@ -481,6 +520,7 @@ async function startStack() {
   const webRoot = app.isPackaged
     ? path.join(root, 'web', 'apps', 'web')
     : path.join(root, 'apps', 'web', '.next', 'standalone', 'apps', 'web');
+  await ensureDevStatic(root);
   const webServer = path.join(webRoot, 'server.js');
   log.info('[desktop] starting web', { webPort, webServer });
   webProc = spawnNode(webServer, [], { cwd: webRoot, env: envForChildren, name: 'web' });
@@ -823,11 +863,16 @@ async function createMainWindow(webPort: number) {
   cachedBasicAuth = hasBasic ? { user: basicUser, pass: basicPass } : null;
   installAuthHeader(webPort);
 
+  const isMac = process.platform === 'darwin';
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
+    minWidth: 1080,
+    minHeight: 720,
     show: false,
-    backgroundColor: '#101010',
+    backgroundColor: '#0b0d1a',
+    titleBarStyle: isMac ? 'hiddenInset' : undefined,
+    trafficLightPosition: isMac ? { x: 16, y: 14 } : undefined,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

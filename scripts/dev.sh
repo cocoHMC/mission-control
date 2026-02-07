@@ -33,6 +33,18 @@ if [ ! -x "$PB_BIN" ]; then
   fi
 fi
 
+PB_HTTP="$("$DOTENV_BIN" -e "$ROOT_DIR/.env" -- node -e '
+try {
+  const raw = String(process.env.PB_URL || "").trim() || "http://127.0.0.1:8090";
+  const u = new URL(raw);
+  const port = u.port ? u.port : "8090";
+  const host = u.hostname || "127.0.0.1";
+  console.log(`${host}:${port}`);
+} catch {
+  console.log("127.0.0.1:8090");
+}
+')"
+
 stop_children() {
   if [ -n "${WEB_PID:-}" ]; then
     kill "$WEB_PID" >/dev/null 2>&1 || true
@@ -56,7 +68,7 @@ while true; do
   WORKER_PID=""
   PB_PID=""
 
-  "$PB_BIN" serve --dev --dir "$ROOT_DIR/pb/pb_data" --migrationsDir "$ROOT_DIR/pb/pb_migrations" > "$ROOT_DIR/pb/pocketbase.log" 2>&1 &
+  "$PB_BIN" serve --dev --dir "$ROOT_DIR/pb/pb_data" --migrationsDir "$ROOT_DIR/pb/pb_migrations" --http "$PB_HTTP" > "$ROOT_DIR/pb/pocketbase.log" 2>&1 &
   PB_PID=$!
 
   sleep 1
@@ -70,10 +82,10 @@ console.log(needs ? "1" : "0");
   if [ "$NEEDS_SETUP" = "1" ]; then
     echo "Setup required. Open: http://127.0.0.1:${MC_WEB_PORT:-4010}/setup"
   else
-    node "$ROOT_DIR/scripts/pb_bootstrap.mjs"
-    node "$ROOT_DIR/scripts/pb_set_settings.mjs" || true
-    node "$ROOT_DIR/scripts/pb_set_rules.mjs" || true
-    node "$ROOT_DIR/scripts/pb_backfill_vnext.mjs" || true
+    "$DOTENV_BIN" -e "$ROOT_DIR/.env" -- node "$ROOT_DIR/scripts/pb_bootstrap.mjs"
+    "$DOTENV_BIN" -e "$ROOT_DIR/.env" -- node "$ROOT_DIR/scripts/pb_set_settings.mjs" || true
+    "$DOTENV_BIN" -e "$ROOT_DIR/.env" -- node "$ROOT_DIR/scripts/pb_set_rules.mjs" || true
+    "$DOTENV_BIN" -e "$ROOT_DIR/.env" -- node "$ROOT_DIR/scripts/pb_backfill_vnext.mjs" || true
   fi
 
   if [ "$NEEDS_SETUP" != "1" ]; then

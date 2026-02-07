@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { mcFetch } from '@/lib/clientApi';
 
 export function NodeSync() {
   const router = useRouter();
@@ -14,7 +15,7 @@ export function NodeSync() {
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch('/api/nodes/sync', { method: 'POST' });
+      const res = await mcFetch('/api/nodes/sync', { method: 'POST' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || `Sync failed (${res.status})`);
       const count = typeof json?.upserted === 'number' ? json.upserted : null;
@@ -40,4 +41,3 @@ export function NodeSync() {
     </div>
   );
 }
-

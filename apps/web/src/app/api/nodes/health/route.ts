@@ -51,11 +51,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, output: stdout });
     }
 
-    const primary = await runOpenClaw(['nodes', 'exec', '--node', String(nodeId), '--cmd', cmd, '--json'], { timeoutMs: 20_000 });
+    // Modern OpenClaw uses `nodes run` (mac only) for remote shell execution. Prefer displayName/nodeId.
+    const primary = await runOpenClaw(
+      ['nodes', 'run', '--node', String(nodeId), '--raw', cmd, '--json'],
+      { timeoutMs: 35_000 }
+    );
     if (primary.ok) return NextResponse.json({ ok: true, output: primary.stdout });
-    const fallback = await runOpenClaw(['nodes', 'exec', '--id', String(nodeId), '--cmd', cmd, '--json'], { timeoutMs: 20_000 });
-    if (fallback.ok) return NextResponse.json({ ok: true, output: fallback.stdout });
-    throw new Error((fallback.stderr || fallback.stdout || primary.stderr || primary.stdout || fallback.message || primary.message || 'Failed to run health command').trim());
+
+    // Best-effort fallback: direct invoke of system.run on the node host (if supported by the node).
+    const invoke = await runOpenClaw(
+      ['nodes', 'invoke', '--node', String(nodeId), '--command', 'system.run', '--params', JSON.stringify({ cmd }), '--json'],
+      { timeoutMs: 35_000 }
+    );
+    if (invoke.ok) return NextResponse.json({ ok: true, output: invoke.stdout });
+
+    throw new Error(
+      (invoke.stderr ||
+        invoke.stdout ||
+        primary.stderr ||
+        primary.stdout ||
+        invoke.message ||
+        primary.message ||
+        'Failed to run health command').trim()
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to run health command';
     return NextResponse.json({ error: message }, { status: 500 });

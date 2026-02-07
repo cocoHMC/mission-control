@@ -63,6 +63,8 @@ export function SetupClient() {
   const [result, setResult] = React.useState<ApplyResponse | null>(null);
   const [openclawTest, setOpenclawTest] = React.useState<{ ok: boolean; message: string } | null>(null);
   const [testingOpenclaw, setTestingOpenclaw] = React.useState(false);
+  const [discoveringOpenclaw, setDiscoveringOpenclaw] = React.useState(false);
+  const [openclawDiscoverStatus, setOpenclawDiscoverStatus] = React.useState<string | null>(null);
   const [tailscale, setTailscale] = React.useState<TailscaleStatus | null>(null);
   const [loadingTailscale, setLoadingTailscale] = React.useState(false);
   const [restartSeconds, setRestartSeconds] = React.useState<number | null>(null);
@@ -135,7 +137,7 @@ export function SetupClient() {
     };
   }, []);
 
-  async function refreshTailscale() {
+  const refreshTailscale = React.useCallback(async () => {
     setLoadingTailscale(true);
     try {
       const res = await fetch('/api/setup/tailscale-status', { cache: 'no-store' });
@@ -154,12 +156,11 @@ export function SetupClient() {
     } finally {
       setLoadingTailscale(false);
     }
-  }
+  }, []);
 
   React.useEffect(() => {
     void refreshTailscale();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshTailscale]);
 
   React.useEffect(() => {
     if (!result || !('ok' in result) || !result.ok) return;
@@ -262,6 +263,49 @@ export function SetupClient() {
     }
   }
 
+  async function discoverOpenClawLocal() {
+    setDiscoveringOpenclaw(true);
+    setOpenclawDiscoverStatus(null);
+    try {
+      const res = await fetch('/api/setup/openclaw-local', { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.error || 'Failed to discover local OpenClaw config.');
+
+      const discoveredToken = String(json?.token || '');
+      const discoveredUrl = String(json?.url || '');
+      const discoveredPort = json?.gateway?.port ? String(json.gateway.port) : '';
+      const discoveredBind = json?.gateway?.bind ? String(json.gateway.bind) : '';
+
+      setForm((prev) => {
+        let nextUrl = prev.openclawGatewayUrl;
+        try {
+          const u = new URL(prev.openclawGatewayUrl);
+          const host = (u.hostname || '').toLowerCase();
+          const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+          // If the user is pointing at loopback, safely update the port.
+          if (loopback && discoveredUrl) nextUrl = discoveredUrl;
+        } catch {
+          if (discoveredUrl) nextUrl = discoveredUrl;
+        }
+        return {
+          ...prev,
+          openclawGatewayUrl: nextUrl,
+          openclawGatewayToken: discoveredToken || prev.openclawGatewayToken,
+          connectOpenClaw: true,
+        };
+      });
+
+      setOpenclawDiscoverStatus(
+        `Loaded from local OpenClaw config${discoveredPort ? ` (port ${discoveredPort})` : ''}${discoveredBind ? `, bind=${discoveredBind}` : ''}.`
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setOpenclawDiscoverStatus(message || 'Failed to discover local OpenClaw config.');
+    } finally {
+      setDiscoveringOpenclaw(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="mx-auto max-w-3xl p-8">
@@ -289,6 +333,102 @@ export function SetupClient() {
       </div>
 
       <form onSubmit={onSubmit} className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>AI Setup Assistant (Optional)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-xs text-muted">
+            <div>
+              If you&apos;re using an AI coding agent with terminal access (Codex, Claude Code, etc), install the
+              Mission Control setup skill and ask it to wire everything end-to-end (Tailscale/Headscale, OpenClaw,
+              nodes, notifications).
+            </div>
+            <details className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+              <summary className="cursor-pointer text-xs font-semibold text-[var(--foreground)]">
+                What are “Gateway”, “Agents”, and “Nodes”?
+              </summary>
+              <div className="mt-2 space-y-2 text-xs text-muted">
+                <div>
+                  <span className="font-semibold text-[var(--foreground)]">Gateway:</span> the OpenClaw service running
+                  on your main machine. Mission Control talks to it via <span className="font-mono">/tools/invoke</span>{' '}
+                  using a token.
+                </div>
+                <div>
+                  <span className="font-semibold text-[var(--foreground)]">Agents:</span> named worker identities (for
+                  example <span className="font-mono">main</span>, <span className="font-mono">dev</span>) that receive
+                  assignments/messages through the gateway.
+                </div>
+                <div>
+                  <span className="font-semibold text-[var(--foreground)]">Nodes:</span> additional machines paired to
+                  your gateway (optional). Node execution is powerful but risky; keep allowlists strict.
+                </div>
+              </div>
+            </details>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+              <div className="font-semibold text-[var(--foreground)]">Codex: install the skill</div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="font-mono">./scripts/install_codex_skill.sh</span>
+                <CopyButton value="./scripts/install_codex_skill.sh" label="Copy cmd" />
+              </div>
+              <div className="mt-2">
+                Skill file: <span className="font-mono">skills/mission-control-setup/SKILL.md</span>
+              </div>
+              <details className="mt-3">
+                <summary className="cursor-pointer text-xs font-semibold text-[var(--foreground)]">Step-by-step</summary>
+                <div className="mt-2 space-y-2 text-xs text-muted">
+                  <div className="font-semibold text-[var(--foreground)]">1) Install a terminal-enabled AI</div>
+                  <div>Use any AI that can run shell commands on your machine (Codex, Claude Code, etc).</div>
+
+                  <div className="font-semibold text-[var(--foreground)]">2) Download this repo (if needed)</div>
+                  <div className="mt-1 rounded-lg border border-[var(--border)] bg-[var(--background)] p-2 font-mono text-[11px] text-[var(--foreground)]">
+                    {[
+                      'git clone https://github.com/cocoHMC/mission-control.git',
+                      'cd mission-control',
+                      './scripts/install_codex_skill.sh',
+                    ].join('\n')}
+                  </div>
+
+                  <div className="font-semibold text-[var(--foreground)]">3) Restart Codex and use the skill</div>
+                  <div>
+                    If Codex is already open, restart it so it reloads skills. Then ask your AI to use the{' '}
+                    <span className="font-mono">mission-control-setup</span> skill.
+                  </div>
+                  <div>
+                    Codex skills folder: <span className="font-mono">$CODEX_HOME/skills</span> (defaults to{' '}
+                    <span className="font-mono">~/.codex/skills</span>).
+                  </div>
+                </div>
+              </details>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+              <div className="font-semibold text-[var(--foreground)]">Universal prompt</div>
+              <div className="mt-2">
+                Paste this into your AI (it will ask a few short questions, then run the setup):
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <CopyButton
+                  value={[
+                    'Use the "mission-control-setup" skill.',
+                    'Goal: make Mission Control fully operational across devices.',
+                    '',
+                    'Do:',
+                    '- install/run Mission Control (desktop app / source / Docker)',
+                    '- configure tailnet access safely (prefer tailscale serve; do NOT use funnel unless I explicitly ask)',
+                    '- connect OpenClaw gateway URL + Tools Invoke token and verify delivery',
+                    '- (optional) pair nodes with strict allowlists',
+                    '- enable notifications (desktop + web push/PWA on iPhone) and send tests',
+                    '',
+                    'When done, verify with:',
+                    '- ./scripts/healthcheck.sh',
+                    '- node scripts/openclaw_ping.mjs (if OpenClaw is enabled)',
+                  ].join('\n')}
+                  label="Copy prompt"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Tailscale (Recommended)</CardTitle>
@@ -526,6 +666,15 @@ export function SetupClient() {
                 type="button"
                 size="sm"
                 variant="secondary"
+                onClick={discoverOpenClawLocal}
+                disabled={discoveringOpenclaw}
+              >
+                {discoveringOpenclaw ? 'Discovering…' : 'Fill from local OpenClaw config'}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
                 onClick={testOpenClaw}
                 disabled={!form.connectOpenClaw || !form.openclawGatewayToken.trim() || testingOpenclaw}
               >
@@ -538,6 +687,11 @@ export function SetupClient() {
               ) : null}
               {openclawTest ? <CopyButton value={openclawTest.message} label="Copy result" /> : null}
             </div>
+            <div className="text-xs text-muted">
+              Local-only: this reads your OpenClaw config on this machine to fill the token. It only works on{' '}
+              <span className="font-mono">localhost</span>.
+            </div>
+            {openclawDiscoverStatus ? <div className="text-xs text-muted">{openclawDiscoverStatus}</div> : null}
             {openclawTest ? (
               <pre className="whitespace-pre-wrap rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-xs text-muted">
                 {openclawTest.message}

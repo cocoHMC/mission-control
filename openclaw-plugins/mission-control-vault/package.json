@@ -1,0 +1,10 @@
+{
+  "name": "mission-control-vault",
+  "version": "0.1.0",
+  "description": "Mission Control Vault plugin for OpenClaw (handle-based secret injection + redaction).",
+  "type": "module",
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  }
+}
+

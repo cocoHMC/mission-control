@@ -112,7 +112,20 @@ console.log(needs ? "1" : "0");
     export MC_APP_DIR="'"$ROOT_DIR"'";
     export MC_DATA_DIR="'"$DATA_DIR"'";
     export MC_AUTO_RESTART=1;
-    exec pnpm -C apps/web start -H "${MC_BIND_HOST:-127.0.0.1}" -p "${MC_WEB_PORT:-4010}"
+    export PORT="${MC_WEB_PORT:-4010}";
+    export HOSTNAME="${MC_BIND_HOST:-127.0.0.1}";
+
+    # Next standalone requires `.next/static` + `public/` next to server.js.
+    # In CI/desktop packaging we materialize these, but when running from source we
+    # link/copy them in-place to avoid 404s for JS/CSS.
+    STANDALONE_DIR="'"$ROOT_DIR"'/apps/web/.next/standalone/apps/web";
+    mkdir -p "$STANDALONE_DIR/.next";
+    rm -rf "$STANDALONE_DIR/.next/static" "$STANDALONE_DIR/public" 2>/dev/null || true;
+    ln -s "'"$ROOT_DIR"'/apps/web/.next/static" "$STANDALONE_DIR/.next/static" 2>/dev/null || cp -R "'"$ROOT_DIR"'/apps/web/.next/static" "$STANDALONE_DIR/.next/static";
+    ln -s "'"$ROOT_DIR"'/apps/web/public" "$STANDALONE_DIR/public" 2>/dev/null || cp -R "'"$ROOT_DIR"'/apps/web/public" "$STANDALONE_DIR/public";
+
+    cd "$STANDALONE_DIR";
+    exec node ./server.js
   ' &
   WEB_PID=$!
 

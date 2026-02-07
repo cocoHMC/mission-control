@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
   // Prefer HTTP checks (no CLI required). These are deterministic and do not wake the model.
   try {
     const base = new URL(gatewayUrl);
-    const health = await fetchWithTimeout(new URL('/health', base), { method: 'GET', timeoutMs: 2_500 });
+    const health = await fetchWithTimeout(new URL('/api/health', base), { method: 'GET', timeoutMs: 2_500 });
     if (health.ok) {
       ok = true;
       lines.push('Health: ok');

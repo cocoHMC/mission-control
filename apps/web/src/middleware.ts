@@ -39,5 +39,8 @@ export function middleware(req: NextRequest) {
 export const config = {
   // Let API routes work without browser basic-auth so server components can fetch.
   // UI pages remain gated.
-  matcher: ['/((?!api/|_next/static|_next/image|favicon.ico|sw.js|manifest.json|.*\\.(?:svg|png|ico)$).*)'],
+  // In dev, Next.js uses a WebSocket endpoint at `/_next/webpack-hmr` for HMR.
+  // If we gate that path behind basic-auth, the browser will spam console errors
+  // and HMR won't work. Exclude it from auth (it's dev-only; `next start` doesn't use it).
+  matcher: ['/((?!api/|_next/static|_next/image|_next/webpack-hmr|favicon.ico|sw.js|manifest.json|.*\\.(?:svg|png|ico)$).*)'],
 };

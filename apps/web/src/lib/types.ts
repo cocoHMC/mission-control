@@ -4,6 +4,7 @@ export type Task = {
   id: string;
   title: string;
   description?: string;
+  context?: string;
   status: TaskStatus;
   archived?: boolean;
   priority?: string;
@@ -98,4 +99,55 @@ export type Subtask = {
   dueAt?: string;
   createdAt?: string;
   updatedAt?: string;
+};
+
+export type VaultItemType = 'api_key' | 'username_password' | 'oauth_refresh' | 'secret';
+export type VaultExposureMode = 'inject_only' | 'revealable';
+
+export type VaultItem = {
+  id: string;
+  agent?: string;
+  handle: string;
+  type: VaultItemType;
+  service?: string;
+  username?: string;
+  exposureMode?: VaultExposureMode;
+  disabled?: boolean;
+  notes?: string;
+  tags?: unknown;
+  lastUsedAt?: string;
+  lastRotatedAt?: string;
+  created?: string;
+  updated?: string;
+};
+
+export type VaultAgentToken = {
+  id: string;
+  agent: string;
+  label?: string;
+  tokenPrefix: string;
+  disabled?: boolean;
+  lastUsedAt?: string;
+  created?: string;
+  updated?: string;
+};
+
+export type VaultAuditActorType = 'human' | 'agent';
+export type VaultAuditAction = 'create' | 'update' | 'rotate' | 'disable' | 'enable' | 'delete' | 'resolve' | 'reveal';
+export type VaultAuditStatus = 'ok' | 'deny' | 'error';
+
+export type VaultAudit = {
+  id: string;
+  ts: string;
+  actorType: VaultAuditActorType;
+  agent?: string;
+  vaultItem?: string;
+  action: VaultAuditAction;
+  sessionKey?: string;
+  toolName?: string;
+  status: VaultAuditStatus;
+  error?: string;
+  meta?: unknown;
+  created?: string;
+  updated?: string;
 };

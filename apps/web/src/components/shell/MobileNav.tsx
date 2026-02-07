@@ -3,7 +3,17 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, Brain, ClipboardCheck, LayoutDashboard, ListTodo, Server, Settings, Shield, SlidersHorizontal } from 'lucide-react';
+import {
+  BarChart3,
+  Brain,
+  ClipboardCheck,
+  LayoutDashboard,
+  ListTodo,
+  MessageSquare,
+  Server,
+  Settings,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const nav = [
@@ -11,10 +21,10 @@ const nav = [
   { href: '/tasks', label: 'Tasks', icon: ListTodo },
   { href: '/activity', label: 'Activity', icon: BarChart3 },
   { href: '/agents', label: 'Agents', icon: Brain },
+  { href: '/sessions', label: 'Sessions', icon: MessageSquare },
   { href: '/nodes', label: 'Nodes', icon: Server },
   { href: '/docs', label: 'Docs', icon: ClipboardCheck },
   { href: '/openclaw', label: 'OpenClaw', icon: SlidersHorizontal },
-  { href: '/security', label: 'Security', icon: Shield },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -43,7 +53,13 @@ export function MobileNav() {
   React.useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const active = el.querySelector<HTMLAnchorElement>(`a[data-mc-nav-href="${pathname}"]`);
+    const activeHref =
+      nav.find(
+        (item) =>
+          pathname === item.href ||
+          (item.href !== '/' && pathname.startsWith(item.href.endsWith('/') ? item.href : `${item.href}/`))
+      )?.href || pathname;
+    const active = el.querySelector<HTMLAnchorElement>(`a[data-mc-nav-href="${activeHref}"]`);
     if (!active) return;
 
     // If already visible, don't nudge scroll.
@@ -68,7 +84,9 @@ export function MobileNav() {
       }}
     >
       {nav.map((item) => {
-        const active = pathname === item.href;
+        const active =
+          pathname === item.href ||
+          (item.href !== '/' && pathname.startsWith(item.href.endsWith('/') ? item.href : `${item.href}/`));
         const Icon = item.icon;
         return (
           <Link
@@ -89,7 +107,7 @@ export function MobileNav() {
             className={cn(
               'flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-medium whitespace-nowrap transition',
               active
-                ? 'bg-[var(--accent)] text-[var(--background)]'
+                ? 'bg-[var(--accent)] text-[var(--accent-foreground)]'
                 : 'text-[var(--foreground)] hover:bg-[color:var(--foreground)]/5'
             )}
           >
