@@ -28,22 +28,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: "Workaround: isolate user directories (avoid Next glob EPERM on runner profile)"
-        shell: pwsh
-        run: |
-          $base = Join-Path $env:GITHUB_WORKSPACE '.ci-user'
-          $home = $base
-          $local = Join-Path $base 'AppData\\Local'
-          $roaming = Join-Path $base 'AppData\\Roaming'
-          $temp = Join-Path $local 'Temp'
-          New-Item -ItemType Directory -Force -Path $home, $local, $roaming, $temp | Out-Null
-          "USERPROFILE=$home" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "HOME=$home" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "LOCALAPPDATA=$local" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "APPDATA=$roaming" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "TEMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "TMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -141,6 +125,22 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: "Workaround: isolate user directories (avoid Next glob EPERM on runner profile)"
+        shell: pwsh
+        run: |
+          $base = Join-Path $env:GITHUB_WORKSPACE '.ci-user'
+          $home = $base
+          $local = Join-Path $base 'AppData\\Local'
+          $roaming = Join-Path $base 'AppData\\Roaming'
+          $temp = Join-Path $local 'Temp'
+          New-Item -ItemType Directory -Force -Path $home, $local, $roaming, $temp | Out-Null
+          "USERPROFILE=$home" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "HOME=$home" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LOCALAPPDATA=$local" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "APPDATA=$roaming" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TEMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Setup Node
         uses: actions/setup-node@v4
