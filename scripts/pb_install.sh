@@ -73,7 +73,22 @@ trap cleanup EXIT
 
 echo "Downloading PocketBase ${PB_VERSION} (${os}/${arch})..."
 curl -fsSL "$url" -o "$tmp/pb.zip"
-unzip -q "$tmp/pb.zip" -d "$tmp/unzip"
+if command -v unzip >/dev/null 2>&1; then
+  unzip -q "$tmp/pb.zip" -d "$tmp/unzip"
+else
+  py="python3"
+  if ! command -v "$py" >/dev/null 2>&1; then
+    py="python"
+  fi
+  if ! command -v "$py" >/dev/null 2>&1; then
+    echo "Missing unzip and python; unable to extract $tmp/pb.zip" >&2
+    exit 1
+  fi
+  "$py" - <<PY
+import zipfile
+zipfile.ZipFile("$tmp/pb.zip").extractall("$tmp/unzip")
+PY
+fi
 
 if [ "$os" = "windows" ]; then
   if [ ! -f "$tmp/unzip/pocketbase.exe" ]; then

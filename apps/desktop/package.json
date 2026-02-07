@@ -9,7 +9,11 @@
     "build": "tsc -p tsconfig.json",
     "start": "electron .",
     "dist:mac": "pnpm -w build && pnpm build && electron-builder --mac dmg zip",
-    "dist:mac:publish": "pnpm -w build && pnpm build && electron-builder --mac dmg zip --publish always"
+    "dist:mac:publish": "pnpm -w build && pnpm build && electron-builder --mac dmg zip --publish always",
+    "dist:linux": "pnpm -w build && pnpm build && electron-builder --linux AppImage deb",
+    "dist:linux:publish": "pnpm -w build && pnpm build && electron-builder --linux AppImage deb --publish always",
+    "dist:win": "pnpm -w build && pnpm build && electron-builder --win nsis zip",
+    "dist:win:publish": "pnpm -w build && pnpm build && electron-builder --win nsis zip --publish always"
   },
   "dependencies": {
     "electron-log": "^5.4.0",
@@ -93,6 +97,30 @@
     },
     "dmg": {
       "artifactName": "${productName}-${version}-${arch}.dmg"
+    },
+    "linux": {
+      "category": "Utility",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "appImage": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "deb": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
     },
     "publish": [
       {

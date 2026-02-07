@@ -6,8 +6,13 @@ This repo is meant to be “clone → run → open `/setup` → done”.
 
 ## Downloads
 - **macOS Desktop App (.dmg):** download the latest release from GitHub Releases (`https://github.com/cocoHMC/mission-control/releases/latest`) and install:
-  - Apple Silicon: `Mission Control-<version>-arm64.dmg`
-  - Intel: `Mission Control-<version>-x64.dmg` (if published)
+  - Apple Silicon: `Mission-Control-<version>-arm64.dmg`
+  - Intel: `Mission-Control-<version>-x64.dmg` (if published)
+- **Linux Desktop App:** download the latest release from GitHub Releases and install:
+  - AppImage: `Mission-Control-<version>-x64.AppImage`
+  - Debian/Ubuntu: `Mission-Control-<version>-x64.deb`
+- **Windows Desktop App:** download the latest release from GitHub Releases and install:
+  - Installer: `Mission-Control-Setup-<version>-x64.exe`
 - **Docker Compose (portable / Windows-friendly):** see the `Docker (Portable / Windows-Friendly)` section below.
 
 Note: the desktop app is not notarized/signed by default. On macOS you may need to allow it in System Settings → Privacy & Security.
@@ -101,12 +106,19 @@ pnpm -C apps/desktop dist:mac
 ```
 
 Build output:
-- `apps/desktop/dist/Mission Control-<version>-arm64.dmg`
+- `apps/desktop/dist/Mission-Control-<version>-arm64.dmg`
 
 ### Updates
 The desktop app checks for updates via **GitHub Releases** (not raw `main` commits).
 When you publish a new release, users will see an update available in the app menu and Settings → Desktop Updates.
 If you keep a fork private, end-users may need a GitHub token to download release assets (Settings → Desktop Updates → “Private GitHub Updates”).
+
+### Releasing Desktop Apps (CI)
+Pushing to `main` triggers GitHub Actions to:
+- create a new version tag `v<major>.<minor>.<patch>` (auto-increments patch), and
+- build + upload desktop installers for macOS/Linux/Windows to the corresponding GitHub Release.
+
+If you need to run it manually: push a `v*` tag (or dispatch `release-desktop.yml` against a `v*` tag ref).
 
 ### Prereqs
 - Node.js 22+

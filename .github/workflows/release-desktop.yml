@@ -1,4 +1,4 @@
-name: Release Desktop (macOS)
+name: Release Desktop (macOS, Linux, Windows)
 
 on:
   push:
@@ -14,7 +14,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure GitHub Release Exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "$TAG" != v* ]]; then
+            echo "This workflow must run against a v* tag (got: $TAG)" >&2
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already exists: $TAG"
+            exit 0
+          fi
+          gh release create "$TAG" --title "$TAG" --notes ""
+
   mac:
+    needs: prepare
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -55,6 +80,111 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm -C apps/desktop exec electron-builder --mac dmg zip --arm64 --x64 --publish always
+
+  linux:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Pin pnpm
+        run: corepack prepare pnpm@10.28.2 --activate
+
+      - name: Set Desktop Version From Tag
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          APP_VERSION="$VERSION" node -e "const fs=require('fs'); const p='apps/desktop/package.json'; const pkg=JSON.parse(fs.readFileSync(p,'utf8')); pkg.version=process.env.APP_VERSION; if(!pkg.version) throw new Error('APP_VERSION missing'); fs.writeFileSync(p, JSON.stringify(pkg,null,2)+'\\n'); console.log('desktop version ->', pkg.version);"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Linux Build Dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
+
+      - name: Download PocketBase Binary (Linux x64)
+        run: PB_OS=linux PB_ARCH=amd64 PB_BIN_PATH=pb/pocketbase-linux-amd64 bash scripts/pb_install.sh
+
+      - name: Build Web + Worker + Desktop
+        run: pnpm -r build
+
+      - name: Build + Publish Desktop (AppImage + DEB)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm -C apps/desktop exec electron-builder --linux AppImage deb --x64 --publish always
+
+  windows:
+    needs: prepare
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Pin pnpm
+        run: corepack prepare pnpm@10.28.2 --activate
+
+      - name: Set Desktop Version From Tag
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          APP_VERSION="$VERSION" node -e "const fs=require('fs'); const p='apps/desktop/package.json'; const pkg=JSON.parse(fs.readFileSync(p,'utf8')); pkg.version=process.env.APP_VERSION; if(!pkg.version) throw new Error('APP_VERSION missing'); fs.writeFileSync(p, JSON.stringify(pkg,null,2)+'\\n'); console.log('desktop version ->', pkg.version);"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download PocketBase Binary (Windows x64)
+        run: PB_OS=windows PB_ARCH=amd64 PB_BIN_PATH=pb/pocketbase-windows-amd64.exe bash scripts/pb_install.sh
+
+      - name: Build Web + Worker + Desktop
+        run: pnpm -r build
+
+      - name: Build + Publish Desktop (NSIS + ZIP)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm -C apps/desktop exec electron-builder --win nsis zip --x64 --publish always
+
+  finalize:
+    if: ${{ always() && startsWith(github.ref_name, 'v') }}
+    needs:
+      - prepare
+      - mac
+      - linux
+      - windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Update Release Notes
         env:
