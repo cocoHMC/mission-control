@@ -30,10 +30,16 @@ export function OpenClawIntegration() {
   const [test, setTest] = React.useState<TestResponse | null>(null);
   const [status, setStatus] = React.useState<string | null>(null);
 
-  const canDiscoverLocal = React.useMemo(() => {
-    if (typeof window === 'undefined') return false;
-    const h = (window.location.hostname || '').toLowerCase();
-    return h === '127.0.0.1' || h === 'localhost' || h === '::1';
+  // Avoid SSR/client hydration mismatches by computing this only after mount.
+  const [canDiscoverLocal, setCanDiscoverLocal] = React.useState(false);
+
+  React.useEffect(() => {
+    try {
+      const h = (window.location.hostname || '').toLowerCase();
+      setCanDiscoverLocal(h === '127.0.0.1' || h === 'localhost' || h === '::1');
+    } catch {
+      setCanDiscoverLocal(false);
+    }
   }, []);
 
   React.useEffect(() => {

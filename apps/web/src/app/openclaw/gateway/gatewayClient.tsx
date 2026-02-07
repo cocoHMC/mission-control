@@ -9,11 +9,6 @@ import { mcFetch } from '@/lib/clientApi';
 
 type GatewayStatus = any;
 
-function isTruthy(v: string | undefined) {
-  const s = String(v || '').trim().toLowerCase();
-  return ['1', 'true', 'yes', 'y', 'on'].includes(s);
-}
-
 export function GatewayClient() {
   const [loading, setLoading] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -23,7 +18,7 @@ export function GatewayClient() {
   const [probe, setProbe] = React.useState(false);
   const [deep, setDeep] = React.useState(false);
 
-  async function refresh() {
+  const refresh = React.useCallback(async () => {
     setLoading(true);
     setError(null);
     setSuccess(null);
@@ -39,12 +34,11 @@ export function GatewayClient() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [probe, deep]);
 
   React.useEffect(() => {
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [probe, deep]);
+  }, [refresh]);
 
   async function doAction(action: 'start' | 'stop' | 'restart') {
     const msg =

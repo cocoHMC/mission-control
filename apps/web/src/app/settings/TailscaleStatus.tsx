@@ -34,7 +34,7 @@ export function TailscaleStatusCard({ webPort }: { webPort: string }) {
     return ips.find((ip) => ip.includes('.')) || ips[0] || '';
   }, [status]);
 
-  async function refresh() {
+  const refresh = React.useCallback(async () => {
     setLoading(true);
     try {
       const res = await mcFetch('/api/setup/tailscale-status', { cache: 'no-store' });
@@ -53,12 +53,11 @@ export function TailscaleStatusCard({ webPort }: { webPort: string }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   React.useEffect(() => {
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refresh]);
 
   return (
     <Card>

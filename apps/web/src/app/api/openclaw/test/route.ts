@@ -20,6 +20,17 @@ function normalizeUrl(value: string) {
   }
 }
 
+async function fetchWithTimeout(url: URL, init: RequestInit & { timeoutMs?: number } = {}) {
+  const ctrl = new AbortController();
+  const timeoutMs = init.timeoutMs ?? 5_000;
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 export async function POST(req: NextRequest) {
   const guard = requireAdminAuth(req);
   if (guard) return guard;
@@ -45,7 +56,7 @@ export async function POST(req: NextRequest) {
 
   // 1) Quick health check (no auth required on many local setups).
   try {
-    const healthRes = await fetch(new URL('/api/health', base), { method: 'GET' });
+    const healthRes = await fetchWithTimeout(new URL('/api/health', base), { method: 'GET', timeoutMs: 2_500 });
     if (!healthRes.ok) {
       return NextResponse.json(
         { ok: false, error: `OpenClaw gateway is not healthy (${healthRes.status}). Is it running?` },
@@ -63,13 +74,14 @@ export async function POST(req: NextRequest) {
   let invokeRes: Response;
   let invokeJson: any = null;
   try {
-    invokeRes = await fetch(new URL('/tools/invoke', base), {
+    invokeRes = await fetchWithTimeout(new URL('/tools/invoke', base), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ tool: 'sessions_list', args: {} }),
+      timeoutMs: 5_000,
     });
     const text = await invokeRes.text().catch(() => '');
     try {

@@ -1,4 +1,4 @@
-name: Release Desktop (macOS)
+name: Release Desktop
 
 on:
   push:
@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   mac:
+    name: macOS
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -69,3 +70,87 @@ jobs:
             NOTES="$(git log --pretty=format:'- %s (%h)' "${TAG}")"
           fi
           gh release edit "$TAG" --title "$TAG" --notes "$NOTES"
+
+  linux:
+    name: Linux (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Pin pnpm
+        run: corepack prepare pnpm@10.28.2 --activate
+
+      - name: Set Desktop Version From Tag
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          APP_VERSION="$VERSION" node -e "const fs=require('fs'); const p='apps/desktop/package.json'; const pkg=JSON.parse(fs.readFileSync(p,'utf8')); pkg.version=process.env.APP_VERSION; if(!pkg.version) throw new Error('APP_VERSION missing'); fs.writeFileSync(p, JSON.stringify(pkg,null,2)+'\\n'); console.log('desktop version ->', pkg.version);"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download PocketBase Binary (linux x64)
+        run: PB_OS=linux PB_ARCH=amd64 PB_BIN_PATH=pb/pocketbase-linux-amd64 bash scripts/pb_install.sh
+
+      - name: Build Web + Worker + Desktop
+        run: pnpm -r build
+
+      - name: Build + Publish Desktop (AppImage + DEB + tar.gz)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm -C apps/desktop exec electron-builder --linux AppImage deb tar.gz --x64 --publish always
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Pin pnpm
+        run: corepack prepare pnpm@10.28.2 --activate
+
+      - name: Set Desktop Version From Tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          APP_VERSION="$VERSION" node -e "const fs=require('fs'); const p='apps/desktop/package.json'; const pkg=JSON.parse(fs.readFileSync(p,'utf8')); pkg.version=process.env.APP_VERSION; if(!pkg.version) throw new Error('APP_VERSION missing'); fs.writeFileSync(p, JSON.stringify(pkg,null,2)+'\\n'); console.log('desktop version ->', pkg.version);"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download PocketBase Binary (windows x64)
+        shell: bash
+        run: PB_OS=windows PB_ARCH=amd64 PB_BIN_PATH=pb/pocketbase-windows-amd64.exe bash scripts/pb_install.sh
+
+      - name: Build Web + Worker + Desktop
+        run: pnpm -r build
+
+      - name: Build + Publish Desktop (NSIS + ZIP)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm -C apps/desktop exec electron-builder --win nsis zip --x64 --publish always

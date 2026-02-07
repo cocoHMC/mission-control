@@ -40,7 +40,7 @@ export function ApprovalsClient() {
   const [node, setNode] = React.useState<string>('');
   const [pattern, setPattern] = React.useState<string>('');
 
-  async function refresh() {
+  const refresh = React.useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -55,11 +55,11 @@ export function ApprovalsClient() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [agentId]);
 
   React.useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
   async function updateAllowlist(action: 'add' | 'remove', agent: string, patternValue: string, nodeValue?: string) {
     const p = patternValue.trim();

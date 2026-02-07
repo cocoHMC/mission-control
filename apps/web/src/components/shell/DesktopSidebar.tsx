@@ -49,7 +49,7 @@ export function DesktopSidebar() {
   const pathname = usePathname();
   return (
     <aside className="mc-desktop-sidebar flex h-full flex-col">
-      <div className="px-3 pt-4">
+      <div className="mc-desktop-brand mc-titlebar px-3 pt-4">
         <div className="text-xs font-semibold tracking-[0.16em] text-muted">Mission Control</div>
       </div>
 

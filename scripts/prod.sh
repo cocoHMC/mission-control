@@ -23,7 +23,7 @@ Build complete.
 For macOS production:
 - Use launchd or a supervisor to run:
   - pb/pocketbase serve --dir pb/pb_data --migrationsDir pb/pb_migrations
-  - pnpm -C apps/web start -H $MC_BIND_HOST -p $MC_WEB_PORT
+  - (Next standalone) PORT=$MC_WEB_PORT HOSTNAME=$MC_BIND_HOST node apps/web/.next/standalone/apps/web/server.js
   - pnpm -C apps/worker start (or pnpm -C apps/worker dev in dev-only)
 
 See docs/RUNBOOK.md for launchd examples.

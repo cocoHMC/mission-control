@@ -31,29 +31,58 @@ function guessDesktopEnvPath() {
   return join(xdg, '@mission-control', 'desktop', 'data', '.env');
 }
 
+const REPO_ENV = resolve(__dirname, '..', '.env');
+const DESKTOP_ENV = guessDesktopEnvPath();
+const DATA_DIR_ENV = process.env.MC_DATA_DIR ? resolve(process.env.MC_DATA_DIR, '.env') : '';
+const ENV_OVERRIDE = (() => {
+  const i = process.argv.indexOf('--env');
+  return i >= 0 ? process.argv[i + 1] : '';
+})();
+
 function selectEnvPath() {
-  const override = (() => {
-    const i = process.argv.indexOf('--env');
-    return i >= 0 ? process.argv[i + 1] : '';
-  })();
-
-  const repoEnv = resolve(__dirname, '..', '.env');
-  const desktopEnv = guessDesktopEnvPath();
-  const dataDirEnv = process.env.MC_DATA_DIR ? resolve(process.env.MC_DATA_DIR, '.env') : '';
-
-  if (override) {
-    if (override === 'repo') return repoEnv;
-    if (override === 'desktop') return desktopEnv;
-    return resolve(override);
+  if (ENV_OVERRIDE) {
+    if (ENV_OVERRIDE === 'repo') return REPO_ENV;
+    if (ENV_OVERRIDE === 'desktop') return DESKTOP_ENV;
+    return resolve(ENV_OVERRIDE);
   }
 
-  if (dataDirEnv && existsSync(dataDirEnv)) return dataDirEnv;
-  if (existsSync(desktopEnv)) return desktopEnv;
-  return repoEnv;
+  if (DATA_DIR_ENV && existsSync(DATA_DIR_ENV)) return DATA_DIR_ENV;
+
+  // Prefer the repo env when it exists (local dev / source checkout). If it looks like
+  // a fresh placeholder env and the desktop env exists, fall back to desktop automatically.
+  // OpenClaw often invokes `missionctl` outside the repo cwd, so we can't rely on callers
+  // to pass `--env repo` explicitly.
+  if (existsSync(REPO_ENV)) {
+    try {
+      const parsed = dotenv.parse(readFileSync(REPO_ENV, 'utf8'));
+      const pass = parsed.PB_SERVICE_PASSWORD;
+      if (existsSync(DESKTOP_ENV) && isPlaceholderSecret(pass)) return DESKTOP_ENV;
+    } catch {
+      // ignore and fall back to repo env
+    }
+    return REPO_ENV;
+  }
+
+  if (existsSync(DESKTOP_ENV)) return DESKTOP_ENV;
+  return REPO_ENV;
 }
 
 const ENV_PATH = selectEnvPath();
-dotenv.config({ path: ENV_PATH });
+const FALLBACK_ENV_NAME =
+  ENV_OVERRIDE
+    ? ''
+    : ENV_PATH === REPO_ENV && existsSync(DESKTOP_ENV)
+      ? 'desktop'
+      : ENV_PATH === DESKTOP_ENV && existsSync(REPO_ENV)
+        ? 'repo'
+        : '';
+// Important: when switching env files (or when invoked by OpenClaw), the parent process can
+// inherit conflicting env vars (e.g. PB_URL). We want the selected env file to be authoritative.
+dotenv.config({ path: ENV_PATH, override: true });
+if (process.env.MISSIONCTL_DEBUG) {
+  // Debug helper (safe): never print secrets, only env resolution context.
+  console.error('[missionctl] env', { envPath: ENV_PATH, fallback: FALLBACK_ENV_NAME, pbUrl: process.env.PB_URL || '' });
+}
 
 const PB_URL = process.env.PB_URL || 'http://127.0.0.1:8090';
 const EMAIL = process.env.PB_SERVICE_EMAIL;
@@ -171,6 +200,24 @@ Env:
 `);
 }
 
+function commandInfo() {
+  // Support placing global flags (like `--env desktop`) before the command:
+  //   missionctl --env desktop list
+  //   missionctl list --env desktop
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (!a) continue;
+    if (a === '--env') {
+      i += 1; // skip env value
+      continue;
+    }
+    if (a.startsWith('-')) continue;
+    return { cmd: a, cmdIndex: i + 2 }; // absolute index in process.argv
+  }
+  return { cmd: '', cmdIndex: -1 };
+}
+
 function arg(flag) {
   const i = process.argv.indexOf(flag);
   return i >= 0 ? process.argv[i + 1] : undefined;
@@ -189,7 +236,7 @@ function argBool(flag) {
 }
 
 async function main() {
-  const cmd = process.argv[2];
+  const { cmd, cmdIndex } = commandInfo();
   if (!cmd || cmd === '-h' || cmd === '--help') return usage();
 
   const t = await token();
@@ -236,7 +283,7 @@ async function main() {
   }
 
   if (cmd === 'get') {
-    const taskId = process.argv[3];
+    const taskId = process.argv[cmdIndex + 1];
     const jsonFlag = process.argv.includes('--json');
     if (!taskId) throw new Error('taskId required');
     const task = await pb(`/api/collections/tasks/records/${taskId}`, { token: t });
@@ -304,7 +351,7 @@ async function main() {
   }
 
   if (cmd === 'claim') {
-    const taskId = process.argv[3];
+    const taskId = process.argv[cmdIndex + 1];
     const agent = arg('--agent') || DEFAULT_AGENT;
     if (!taskId) throw new Error('taskId required');
     const leaseMin = Number(process.env.LEASE_MINUTES || 45);
@@ -327,7 +374,7 @@ async function main() {
   }
 
   if (cmd === 'assign') {
-    const taskId = process.argv[3];
+    const taskId = process.argv[cmdIndex + 1];
     const assigneesRaw = argList('--assignees');
     if (!taskId) throw new Error('taskId required');
     if (!assigneesRaw.length) throw new Error('--assignees required');
@@ -342,7 +389,7 @@ async function main() {
   }
 
   if (cmd === 'say') {
-    const taskId = process.argv[3];
+    const taskId = process.argv[cmdIndex + 1];
     const agent = arg('--agent') || DEFAULT_AGENT;
     let text = arg('--text');
     const textFile = arg('--text-file');
@@ -366,7 +413,7 @@ async function main() {
   }
 
   if (cmd === 'status') {
-    const taskId = process.argv[3];
+    const taskId = process.argv[cmdIndex + 1];
     const status = arg('--status');
     if (!taskId) throw new Error('taskId required');
     if (!status) throw new Error('--status required');
@@ -385,8 +432,8 @@ async function main() {
     return;
   }
 
-  if (cmd === 'task' && process.argv[3] === 'set') {
-    const taskId = process.argv[4];
+  if (cmd === 'task' && process.argv[cmdIndex + 1] === 'set') {
+    const taskId = process.argv[cmdIndex + 2];
     if (!taskId) throw new Error('taskId required');
     const startAt = arg('--startAt');
     const dueAt = arg('--dueAt');
@@ -420,7 +467,7 @@ async function main() {
   }
 
   if (cmd === 'block') {
-    const taskId = process.argv[3];
+    const taskId = process.argv[cmdIndex + 1];
     const agent = arg('--agent') || DEFAULT_AGENT;
     const reason = arg('--reason');
     if (!taskId) throw new Error('taskId required');
@@ -441,7 +488,7 @@ async function main() {
   }
 
   if (cmd === 'doc') {
-    const taskId = process.argv[3];
+    const taskId = process.argv[cmdIndex + 1];
     const title = arg('--title');
     let content = arg('--content');
     const contentFile = arg('--content-file');
@@ -467,10 +514,10 @@ async function main() {
   }
 
   if (cmd === 'subtasks') {
-    const sub = process.argv[3];
+    const sub = process.argv[cmdIndex + 1];
 
     if (sub === 'list') {
-      const taskId = process.argv[4];
+      const taskId = process.argv[cmdIndex + 2];
       const jsonFlag = process.argv.includes('--json');
       if (!taskId) throw new Error('taskId required');
       const q = new URLSearchParams({ page: '1', perPage: '200', filter: `taskId = "${taskId}"` });
@@ -487,7 +534,7 @@ async function main() {
     }
 
     if (sub === 'add') {
-      const taskId = process.argv[4];
+      const taskId = process.argv[cmdIndex + 2];
       const title = arg('--title');
       if (!taskId) throw new Error('taskId required');
       if (!title) throw new Error('--title required');
@@ -511,7 +558,7 @@ async function main() {
     }
 
     if (sub === 'toggle') {
-      const subtaskId = process.argv[4];
+      const subtaskId = process.argv[cmdIndex + 2];
       if (!subtaskId) throw new Error('subtaskId required');
       const doneFlag = argBool('--done');
       let done = doneFlag;
@@ -531,7 +578,7 @@ async function main() {
   }
 
   if (cmd === 'subscribe') {
-    const taskId = process.argv[3];
+    const taskId = process.argv[cmdIndex + 1];
     const agent = arg('--agent') || DEFAULT_AGENT;
     if (!taskId) throw new Error('taskId required');
     const q = new URLSearchParams({ page: '1', perPage: '1', filter: `taskId = "${taskId}" && agentId = "${agent}"` });
@@ -550,7 +597,7 @@ async function main() {
   }
 
   if (cmd === 'notify') {
-    const agentId = process.argv[3];
+    const agentId = process.argv[cmdIndex + 1];
     const text = arg('--text');
     if (!agentId) throw new Error('agentId required');
     if (!text) throw new Error('--text required');
@@ -564,14 +611,14 @@ async function main() {
   }
 
   if (cmd === 'node') {
-    const sub = process.argv[3];
+    const sub = process.argv[cmdIndex + 1];
     if (sub === 'list') {
       const out = execFileSync(OPENCLAW_CLI, ['nodes', 'list', '--json'], { encoding: 'utf8' });
       console.log(out.trim());
       return;
     }
     if (sub === 'health') {
-      const nodeId = process.argv[4];
+      const nodeId = process.argv[cmdIndex + 2];
       const cmdArg = arg('--cmd');
       if (!nodeId) throw new Error('nodeId required');
       if (!cmdArg) throw new Error('--cmd required');
@@ -597,7 +644,7 @@ async function main() {
     }
   }
 
-  if (cmd === 'agent' && process.argv[3] === 'seed') {
+  if (cmd === 'agent' && process.argv[cmdIndex + 1] === 'seed') {
     const id = arg('--id');
     const name = arg('--name');
     const role = arg('--role') || 'Agent';
@@ -622,6 +669,21 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(String(e.message || e));
+  const msg = String(e?.message || e);
+  // Dev ergonomics: in setups where both a repo env and a desktop env exist (and both PB instances may be running),
+  // it's easy for agents to point at the wrong PocketBase and hit 404s. If no explicit env override was provided,
+  // try the other env once before failing.
+  if (!process.env.MISSIONCTL_NO_FALLBACK && FALLBACK_ENV_NAME && msg.includes('-> 404')) {
+    try {
+      execFileSync(process.execPath, [process.argv[1], ...process.argv.slice(2), '--env', FALLBACK_ENV_NAME], {
+        stdio: 'inherit',
+        env: { ...process.env, MISSIONCTL_NO_FALLBACK: '1' },
+      });
+      process.exit(0);
+    } catch {
+      // fall through to the original error
+    }
+  }
+  console.error(msg);
   process.exit(1);
 });

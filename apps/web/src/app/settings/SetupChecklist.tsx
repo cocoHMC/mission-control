@@ -34,7 +34,7 @@ export function SetupChecklist({
   const [status, setStatus] = React.useState<StatusResponse | null>(null);
   const [loading, setLoading] = React.useState(false);
 
-  async function refreshStatus() {
+  const refreshStatus = React.useCallback(async () => {
     setLoading(true);
     try {
       const res = await mcFetch('/api/openclaw/status', { cache: 'no-store' });
@@ -46,13 +46,12 @@ export function SetupChecklist({
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   React.useEffect(() => {
     void refreshStatus();
     // Only run once on mount to avoid polling.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshStatus]);
 
   const installCmd = `openclaw node install --host ${gatewayHostHint} --port ${gatewayPortHint} --display-name "<node-name>"`;
   const pendingCmd = 'openclaw nodes pending';

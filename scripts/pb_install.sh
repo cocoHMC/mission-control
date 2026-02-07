@@ -15,9 +15,9 @@ uname_s="$(uname -s | tr '[:upper:]' '[:lower:]')"
 uname_m="$(uname -m | tr '[:upper:]' '[:lower:]')"
 
 case "$uname_s" in
-  darwin*) os="darwin" ;;
-  linux*) os="linux" ;;
-  msys*|mingw*|cygwin*) os="windows" ;;
+  darwin*) host_os="darwin" ;;
+  linux*) host_os="linux" ;;
+  msys*|mingw*|cygwin*) host_os="windows" ;;
   *) echo "Unsupported OS: $uname_s" >&2; exit 1 ;;
 esac
 
@@ -26,6 +26,8 @@ case "$uname_m" in
   arm64|aarch64) arch="arm64" ;;
   *) echo "Unsupported CPU arch: $uname_m" >&2; exit 1 ;;
 esac
+
+os="$host_os"
 
 if [ -n "$PB_OS_OVERRIDE" ]; then
   os="$PB_OS_OVERRIDE"
@@ -73,7 +75,24 @@ trap cleanup EXIT
 
 echo "Downloading PocketBase ${PB_VERSION} (${os}/${arch})..."
 curl -fsSL "$url" -o "$tmp/pb.zip"
-unzip -q "$tmp/pb.zip" -d "$tmp/unzip"
+mkdir -p "$tmp/unzip"
+if command -v unzip >/dev/null 2>&1; then
+  unzip -q "$tmp/pb.zip" -d "$tmp/unzip"
+else
+  # GitHub Actions windows runners may not ship with `unzip`.
+  # Fall back to Python's zipfile module (python3 or python).
+  py="python3"
+  if ! command -v "$py" >/dev/null 2>&1; then
+    py="python"
+  fi
+  "$py" - <<'PY' "$tmp/pb.zip" "$tmp/unzip"
+import sys, zipfile
+src = sys.argv[1]
+dest = sys.argv[2]
+with zipfile.ZipFile(src) as z:
+  z.extractall(dest)
+PY
+fi
 
 if [ "$os" = "windows" ]; then
   if [ ! -f "$tmp/unzip/pocketbase.exe" ]; then
@@ -91,4 +110,11 @@ else
 fi
 
 echo "Installed PocketBase at $PB_BIN"
+if [ "${PB_SKIP_VERIFY:-}" = "1" ]; then
+  exit 0
+fi
+if [ "$os" != "$host_os" ]; then
+  echo "Skipping PocketBase --version check (downloaded $os binary on $host_os host)."
+  exit 0
+fi
 "$PB_BIN" --version

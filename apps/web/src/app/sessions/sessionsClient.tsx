@@ -749,6 +749,7 @@ export function SessionsThreadClient({
   const [modelCatalog, setModelCatalog] = React.useState<Array<{ key: string; name?: string }> | null>(null);
   const [modelCatalogLoading, setModelCatalogLoading] = React.useState(false);
   const [modelCatalogError, setModelCatalogError] = React.useState<string | null>(null);
+  const modelCatalogLoadingRef = React.useRef(false);
 
   const [memoryQuery, setMemoryQuery] = React.useState('');
   const [memoryResults, setMemoryResults] = React.useState<any[]>([]);
@@ -803,7 +804,7 @@ export function SessionsThreadClient({
   const headerRow = sessionInfo ?? selectedRow;
   const label = headerRow ? sessionTitle(headerRow, agents) : { title: 'Session', subtitle: '', icon: 'other' };
 
-  async function refreshHistory({ silent }: { silent?: boolean } = {}) {
+  const refreshHistory = React.useCallback(async ({ silent }: { silent?: boolean } = {}) => {
     if (!safeSessionKey) return;
     if (!silent) setError(null);
     if (!silent) setHistoryLoading(true);
@@ -826,27 +827,9 @@ export function SessionsThreadClient({
     } finally {
       if (!silent) setHistoryLoading(false);
     }
-  }
-
-  React.useEffect(() => {
-    void refreshHistory();
   }, [safeSessionKey, showTools]);
 
-  React.useEffect(() => {
-    if (!autoRefresh) return;
-    const id = setInterval(() => {
-      try {
-        if (document.visibilityState !== 'visible') return;
-      } catch {
-        // ignore
-      }
-      void refreshHistory({ silent: true });
-      void refreshSessionInfo({ silent: true });
-    }, 10_000);
-    return () => clearInterval(id);
-  }, [autoRefresh, safeSessionKey, showTools]);
-
-  async function refreshSessionInfo({ silent }: { silent?: boolean } = {}) {
+  const refreshSessionInfo = React.useCallback(async ({ silent }: { silent?: boolean } = {}) => {
     if (!safeSessionKey) return;
     if (!silent) setInfoError(null);
     if (!silent) setInfoLoading(true);
@@ -865,11 +848,29 @@ export function SessionsThreadClient({
     } finally {
       if (!silent) setInfoLoading(false);
     }
-  }
+  }, [safeSessionKey]);
+
+  React.useEffect(() => {
+    void refreshHistory();
+  }, [refreshHistory]);
 
   React.useEffect(() => {
     void refreshSessionInfo();
-  }, [safeSessionKey]);
+  }, [refreshSessionInfo]);
+
+  React.useEffect(() => {
+    if (!autoRefresh) return;
+    const id = setInterval(() => {
+      try {
+        if (document.visibilityState !== 'visible') return;
+      } catch {
+        // ignore
+      }
+      void refreshHistory({ silent: true });
+      void refreshSessionInfo({ silent: true });
+    }, 10_000);
+    return () => clearInterval(id);
+  }, [autoRefresh, refreshHistory, refreshSessionInfo]);
 
   React.useEffect(() => {
     setLabelDraft('');
@@ -905,6 +906,56 @@ export function SessionsThreadClient({
     setExecNodeDraft(next);
   }, [execNodeDirty, sessionInfo?.execNode]);
 
+  const refreshStatus = React.useCallback(async () => {
+    if (!safeSessionKey) return;
+    setStatusError(null);
+    setStatusLoading(true);
+    try {
+      const q = new URLSearchParams({ sessionKey: safeSessionKey });
+      const res = await mcFetch(`/api/openclaw/sessions/status?${q.toString()}`, { cache: 'no-store' });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || 'Failed to load status');
+      const text = typeof json?.statusText === 'string' ? json.statusText : null;
+      setStatusText(text);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setStatusError(msg || 'Failed to load status');
+      setStatusText(null);
+    } finally {
+      setStatusLoading(false);
+    }
+  }, [safeSessionKey]);
+
+  const loadModels = React.useCallback(async () => {
+    if (modelCatalogLoadingRef.current) return;
+    modelCatalogLoadingRef.current = true;
+    setModelCatalogError(null);
+    setModelCatalogLoading(true);
+    try {
+      const res = await mcFetch('/api/openclaw/models/list', { cache: 'no-store' });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || 'Failed to load models');
+      const models = Array.isArray(json?.models) ? (json.models as any[]) : [];
+      const rows = models
+        .map((m) => {
+          const key = typeof m?.key === 'string' ? m.key.trim() : '';
+          const name = typeof m?.name === 'string' ? m.name.trim() : '';
+          if (!key) return null;
+          return { key, name: name || undefined };
+        })
+        .filter(Boolean) as Array<{ key: string; name?: string }>;
+      rows.sort((a, b) => a.key.localeCompare(b.key));
+      setModelCatalog(rows);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setModelCatalogError(msg || 'Failed to load models');
+      setModelCatalog(null);
+    } finally {
+      modelCatalogLoadingRef.current = false;
+      setModelCatalogLoading(false);
+    }
+  }, []);
+
   // Closing the drawer on session switches prevents "stale details" when navigating quickly.
   React.useEffect(() => {
     setInspectorOpen(false);
@@ -913,13 +964,13 @@ export function SessionsThreadClient({
   React.useEffect(() => {
     if (!inspectorOpen) return;
     void refreshStatus();
-  }, [inspectorOpen, safeSessionKey]);
+  }, [inspectorOpen, refreshStatus]);
 
   React.useEffect(() => {
     if (!inspectorOpen) return;
     if (modelCatalog && modelCatalog.length) return;
     void loadModels();
-  }, [inspectorOpen]);
+  }, [inspectorOpen, modelCatalog, loadModels]);
 
   // Opening: render immediately (before paint) and then slide in on the next frame.
   React.useLayoutEffect(() => {
@@ -1008,54 +1059,6 @@ export function SessionsThreadClient({
       setInfoError(msg || 'Failed to update session');
     } finally {
       setPatching(false);
-    }
-  }
-
-  async function refreshStatus() {
-    if (!safeSessionKey) return;
-    setStatusError(null);
-    setStatusLoading(true);
-    try {
-      const q = new URLSearchParams({ sessionKey: safeSessionKey });
-      const res = await mcFetch(`/api/openclaw/sessions/status?${q.toString()}`, { cache: 'no-store' });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || 'Failed to load status');
-      const text = typeof json?.statusText === 'string' ? json.statusText : null;
-      setStatusText(text);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setStatusError(msg || 'Failed to load status');
-      setStatusText(null);
-    } finally {
-      setStatusLoading(false);
-    }
-  }
-
-  async function loadModels() {
-    if (modelCatalogLoading) return;
-    setModelCatalogError(null);
-    setModelCatalogLoading(true);
-    try {
-      const res = await mcFetch('/api/openclaw/models/list', { cache: 'no-store' });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || 'Failed to load models');
-      const models = Array.isArray(json?.models) ? (json.models as any[]) : [];
-      const rows = models
-        .map((m) => {
-          const key = typeof m?.key === 'string' ? m.key.trim() : '';
-          const name = typeof m?.name === 'string' ? m.name.trim() : '';
-          if (!key) return null;
-          return { key, name: name || undefined };
-        })
-        .filter(Boolean) as Array<{ key: string; name?: string }>;
-      rows.sort((a, b) => a.key.localeCompare(b.key));
-      setModelCatalog(rows);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setModelCatalogError(msg || 'Failed to load models');
-      setModelCatalog(null);
-    } finally {
-      setModelCatalogLoading(false);
     }
   }
 

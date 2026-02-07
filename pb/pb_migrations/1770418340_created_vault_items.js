@@ -1,5 +1,12 @@
 /// <reference path="../pb_data/types.d.ts" />
 migrate((app) => {
+  try {
+    // Backward/upgrade safety: older installs may already have this collection created
+    // (via bootstrap scripts or previous schema). Avoid crashing PocketBase on startup.
+    if (app.findCollectionByNameOrId("vault_items")) return;
+  } catch {
+    // ignore and proceed with creation
+  }
   const collection = new Collection({
     "createRule": null,
     "deleteRule": null,

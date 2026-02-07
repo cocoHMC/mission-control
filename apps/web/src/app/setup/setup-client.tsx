@@ -137,7 +137,7 @@ export function SetupClient() {
     };
   }, []);
 
-  async function refreshTailscale() {
+  const refreshTailscale = React.useCallback(async () => {
     setLoadingTailscale(true);
     try {
       const res = await fetch('/api/setup/tailscale-status', { cache: 'no-store' });
@@ -156,12 +156,11 @@ export function SetupClient() {
     } finally {
       setLoadingTailscale(false);
     }
-  }
+  }, []);
 
   React.useEffect(() => {
     void refreshTailscale();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshTailscale]);
 
   React.useEffect(() => {
     if (!result || !('ok' in result) || !result.ok) return;

@@ -196,6 +196,45 @@ body {
   backdrop-filter: blur(22px);
 }
 
+:root[data-mc-macos='1'] .mc-desktop-sidebar {
+  position: relative;
+}
+
+/* macOS: clear space for traffic lights (red/yellow/green) so sidebar branding doesn't sit underneath. */
+:root[data-mc-macos='1'] .mc-desktop-brand {
+  padding-top: 40px;
+  padding-left: 84px;
+  padding-bottom: 10px;
+}
+
+/* macOS: subtle "liquid glass" specular highlight + noise (desktop-only). */
+:root[data-mc-macos='1'] .mc-desktop-sidebar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(420px 240px at 30% 0%, rgba(255, 255, 255, 0.55), transparent 65%),
+    radial-gradient(520px 320px at 80% 20%, rgba(255, 255, 255, 0.35), transparent 70%);
+  opacity: 0.55;
+  mix-blend-mode: overlay;
+}
+
+:root[data-mc-macos='1'] .mc-desktop-sidebar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.08;
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.6) 0px,
+    rgba(0, 0, 0, 0.6) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
 :root[data-mc-desktop='1'] .mc-titlebar {
   -webkit-app-region: drag;
 }

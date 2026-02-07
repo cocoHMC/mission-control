@@ -50,8 +50,11 @@ export default function RootLayout({
     const t = localStorage.getItem('mc_theme');
     if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
     const ua = navigator.userAgent || '';
-    if (ua.includes('Electron') || (window && (window as any).MissionControlDesktop)) {
+    if (ua.includes('Electron') || (window && window.MissionControlDesktop)) {
       document.documentElement.dataset.mcDesktop = '1';
+      if (/Macintosh|Mac OS X|MacIntel/i.test(ua)) {
+        document.documentElement.dataset.mcMacos = '1';
+      }
     }
   } catch {}
 })();`}

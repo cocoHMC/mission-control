@@ -23,6 +23,7 @@
     "date-fns": "^4.1.0",
     "diff": "^8.0.3",
     "lucide-react": "^0.510.0",
+    "eventsource": "^4.1.0",
     "next": "16.1.6",
     "pocketbase": "^0.26.1",
     "react": "19.2.3",
