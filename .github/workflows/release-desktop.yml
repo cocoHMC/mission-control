@@ -178,6 +178,20 @@ jobs:
             }
           }
 
+          # Some legacy junctions can also exist under AppData\Local.
+          $localAppData = $env:LOCALAPPDATA
+          if ($null -ne $localAppData -and $localAppData -ne '') {
+            $localNames = @(
+              'Application Data'
+            )
+            foreach ($name in $localNames) {
+              $p = Join-Path $localAppData $name
+              if (Test-Path $p) {
+                cmd /c rmdir "$p" 2>$null
+              }
+            }
+          }
+
       - name: Set Desktop Version From Tag
         shell: bash
         run: |
