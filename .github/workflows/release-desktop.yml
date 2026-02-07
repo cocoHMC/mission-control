@@ -140,57 +140,17 @@ jobs:
       - name: "Workaround: remove legacy junctions that break Next glob"
         shell: pwsh
         run: |
-          # Next.js build on Windows can hit glob EPERM errors when it walks legacy
-          # user-profile junctions (ex: Application Data, Cookies).
-          $rootNames = @(
-            'Application Data',
-            'Cookies',
-            'Local Settings',
-            'My Documents',
-            'NetHood',
-            'PrintHood',
-            'Recent',
-            'SendTo',
-            'Start Menu',
-            'Templates'
-          )
-          foreach ($name in $rootNames) {
-            $p = Join-Path $env:USERPROFILE $name
-            if (Test-Path $p) {
-              cmd /c rmdir "$p" 2>$null
-            }
-          }
-
-          # These exist under Documents on GitHub-hosted Windows runners and can also cause
-          # EPERM when globbing (ex: Documents\My Pictures).
-          $documents = Join-Path $env:USERPROFILE 'Documents'
-          if (Test-Path $documents) {
-            $docNames = @(
-              'My Music',
-              'My Pictures',
-              'My Videos'
+          # Next.js build on GitHub-hosted Windows runners can hit glob EPERM errors when it
+          # walks legacy profile junctions / reparse points. Delete them (removes junctions,
+          # not their targets) before building.
+          $profile = $env:USERPROFILE
+          if ($null -ne $profile -and $profile -ne '' -and (Test-Path $profile)) {
+            $reparseDirs = @(
+              Get-ChildItem -LiteralPath $profile -Force -Recurse -Directory -Attributes ReparsePoint -ErrorAction SilentlyContinue
             )
-            foreach ($name in $docNames) {
-              $p = Join-Path $documents $name
-              if (Test-Path $p) {
-                cmd /c rmdir "$p" 2>$null
-              }
-            }
-          }
-
-          # Some legacy junctions can also exist under AppData\Local.
-          $localAppData = $env:LOCALAPPDATA
-          if ($null -ne $localAppData -and $localAppData -ne '') {
-            $localNames = @(
-              'Application Data',
-              'History',
-              'Temporary Internet Files'
-            )
-            foreach ($name in $localNames) {
-              $p = Join-Path $localAppData $name
-              if (Test-Path $p) {
-                cmd /c rmdir "$p" 2>$null
-              }
+            Write-Host "Found $($reparseDirs.Count) reparse-point directories under $profile"
+            foreach ($d in $reparseDirs) {
+              cmd /c rmdir "$($d.FullName)" 2>$null
             }
           }
 
