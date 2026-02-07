@@ -202,34 +202,21 @@ jobs:
           REPO="${GITHUB_REPOSITORY}"
           DOWNLOAD_BASE="https://github.com/${REPO}/releases/download/${TAG}"
 
-          # Grab assets that were uploaded by electron-builder.
-          ASSETS_JSON="$(gh release view "$TAG" --json assets)"
-          ASSET_NAMES="$(echo "$ASSETS_JSON" | python3 -c 'import sys,json; j=json.load(sys.stdin); print("\\n".join([a["name"] for a in (j.get("assets") or [])]))')"
-
-          mac_arm_dmg="$(echo "$ASSET_NAMES" | grep -E '\.dmg$' | grep -E 'arm64' | head -n 1 || true)"
-          mac_x64_dmg="$(echo "$ASSET_NAMES" | grep -E '\.dmg$' | grep -E 'x64' | head -n 1 || true)"
-          win_setup="$(echo "$ASSET_NAMES" | grep -E '\.exe$' | grep -E 'setup' | head -n 1 || true)"
-          linux_appimage="$(echo "$ASSET_NAMES" | grep -E '\.AppImage$' | head -n 1 || true)"
-          linux_deb="$(echo "$ASSET_NAMES" | grep -E '\.deb$' | head -n 1 || true)"
+          # Deterministic names (keeps the release body stable and human-friendly).
+          mac_arm_dmg="Mission-Control-v${VERSION}-macos-arm64.dmg"
+          mac_x64_dmg="Mission-Control-v${VERSION}-macos-x64.dmg"
+          win_setup="Mission-Control-v${VERSION}-windows-x64-setup.exe"
+          linux_appimage="Mission-Control-v${VERSION}-linux-x86_64.AppImage"
+          linux_deb="Mission-Control-v${VERSION}-linux-amd64.deb"
 
           {
             echo "## Downloads"
             echo ""
-            if [ -n "$mac_arm_dmg" ]; then
-              echo "- macOS Apple Silicon (M1/M2/M3): [$mac_arm_dmg](${DOWNLOAD_BASE}/${mac_arm_dmg})"
-            fi
-            if [ -n "$mac_x64_dmg" ]; then
-              echo "- macOS Intel: [$mac_x64_dmg](${DOWNLOAD_BASE}/${mac_x64_dmg})"
-            fi
-            if [ -n "$win_setup" ]; then
-              echo "- Windows 10/11 (x64): [$win_setup](${DOWNLOAD_BASE}/${win_setup})"
-            fi
-            if [ -n "$linux_appimage" ]; then
-              echo "- Linux (x86_64): [$linux_appimage](${DOWNLOAD_BASE}/${linux_appimage}) (recommended)"
-            fi
-            if [ -n "$linux_deb" ]; then
-              echo "- Linux (Debian/Ubuntu x86_64): [$linux_deb](${DOWNLOAD_BASE}/${linux_deb})"
-            fi
+            echo "- macOS Apple Silicon (M1/M2/M3): [$mac_arm_dmg](${DOWNLOAD_BASE}/${mac_arm_dmg})"
+            echo "- macOS Intel: [$mac_x64_dmg](${DOWNLOAD_BASE}/${mac_x64_dmg})"
+            echo "- Windows 10/11 (x64): [$win_setup](${DOWNLOAD_BASE}/${win_setup})"
+            echo "- Linux (x86_64): [$linux_appimage](${DOWNLOAD_BASE}/${linux_appimage}) (recommended)"
+            echo "- Linux (Debian/Ubuntu x86_64): [$linux_deb](${DOWNLOAD_BASE}/${linux_deb})"
             echo ""
             echo "Other files in Assets (latest*.yml, *.blockmap, *.zip) are for in-app auto-updates and can be ignored for manual installs."
             echo ""
