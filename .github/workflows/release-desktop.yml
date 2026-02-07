@@ -113,8 +113,8 @@ jobs:
         run: pnpm -C apps/desktop exec electron-builder --linux AppImage deb tar.gz --x64 --publish always
 
   windows:
-    name: Windows
-    runs-on: windows-latest
+    name: Windows (Wine)
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -132,8 +132,13 @@ jobs:
       - name: Pin pnpm
         run: corepack prepare pnpm@10.28.2 --activate
 
+      - name: Install Wine (for Windows builds)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y wine64 mono-devel
+
       - name: Set Desktop Version From Tag
-        shell: bash
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
@@ -144,7 +149,6 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Download PocketBase Binary (windows x64)
-        shell: bash
         run: PB_OS=windows PB_ARCH=amd64 PB_BIN_PATH=pb/pocketbase-windows-amd64.exe bash scripts/pb_install.sh
 
       - name: Build Web + Worker + Desktop

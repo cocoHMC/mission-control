@@ -1,5 +1,8 @@
 {
   "name": "@mission-control/desktop",
+  "description": "Mission Control desktop app",
+  "homepage": "https://github.com/cocoHMC/mission-control",
+  "author": "HMC <dev@hmcf.ca>",
   "private": true,
   "version": "0.1.23",
   "type": "module",
@@ -89,7 +92,8 @@
         "AppImage",
         "deb",
         "tar.gz"
-      ]
+      ],
+      "maintainer": "HMC <dev@hmcf.ca>"
     },
     "win": {
       "target": [
@@ -100,8 +104,14 @@
     "dmg": {
       "artifactName": "${productName}-${version}-${arch}.dmg"
     },
+    "appImage": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "deb": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
     "nsis": {
-      "artifactName": "${productName}-${version}-${arch}-setup.${ext}"
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
     },
     "publish": [
       {
