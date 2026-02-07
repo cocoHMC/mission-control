@@ -276,16 +276,36 @@ export function SetupClient() {
       const discoveredPort = json?.gateway?.port ? String(json.gateway.port) : '';
       const discoveredBind = json?.gateway?.bind ? String(json.gateway.bind) : '';
 
+      const bindLower = discoveredBind.trim().toLowerCase();
+      const isTailnetBind = bindLower === 'tailnet' || bindLower === 'tailscale';
+
+      let suggestedUrl = discoveredUrl;
+      if (isTailnetBind && tailscalePrimaryIp) {
+        const port = discoveredPort || (() => {
+          try {
+            const u = new URL(discoveredUrl);
+            return u.port || '';
+          } catch {
+            return '';
+          }
+        })();
+        suggestedUrl = `http://${tailscalePrimaryIp}:${port || '18789'}`;
+      }
+
       setForm((prev) => {
         let nextUrl = prev.openclawGatewayUrl;
-        try {
-          const u = new URL(prev.openclawGatewayUrl);
-          const host = (u.hostname || '').toLowerCase();
-          const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
-          // If the user is pointing at loopback, safely update the port.
-          if (loopback && discoveredUrl) nextUrl = discoveredUrl;
-        } catch {
-          if (discoveredUrl) nextUrl = discoveredUrl;
+        if (isTailnetBind) {
+          if (suggestedUrl) nextUrl = suggestedUrl;
+        } else {
+          try {
+            const u = new URL(prev.openclawGatewayUrl);
+            const host = (u.hostname || '').toLowerCase();
+            const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+            // If the user is pointing at loopback, safely update the port.
+            if (loopback && suggestedUrl) nextUrl = suggestedUrl;
+          } catch {
+            if (suggestedUrl) nextUrl = suggestedUrl;
+          }
         }
         return {
           ...prev,
@@ -296,7 +316,7 @@ export function SetupClient() {
       });
 
       setOpenclawDiscoverStatus(
-        `Loaded from local OpenClaw config${discoveredPort ? ` (port ${discoveredPort})` : ''}${discoveredBind ? `, bind=${discoveredBind}` : ''}.`
+        `Loaded from local OpenClaw config${discoveredPort ? ` (port ${discoveredPort})` : ''}${discoveredBind ? `, bind=${discoveredBind}` : ''}${suggestedUrl && suggestedUrl !== discoveredUrl ? ` (using ${suggestedUrl})` : ''}.`
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -308,22 +328,25 @@ export function SetupClient() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl p-8">
-        <div className="text-sm text-muted">Loading setup…</div>
+      <div className="h-[100dvh] overflow-auto mc-scroll">
+        <div className="mx-auto max-w-3xl p-8">
+          <div className="text-sm text-muted">Loading setup…</div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-8">
-      <div className="mb-6">
-        <div className="text-xs uppercase tracking-[0.2em] text-muted">Mission Control</div>
-        <div className="mt-2 text-3xl font-semibold headline">First-run Setup</div>
-        <div className="mt-2 text-sm text-muted">
-          This configures Basic Auth, bootstraps PocketBase, and (optionally) connects to OpenClaw. Mission Control
-          will restart automatically after applying.
+    <div className="h-[100dvh] overflow-auto mc-scroll">
+      <div className="mx-auto max-w-3xl p-8">
+        <div className="mb-6">
+          <div className="text-xs uppercase tracking-[0.2em] text-muted">Mission Control</div>
+          <div className="mt-2 text-3xl font-semibold headline">First-run Setup</div>
+          <div className="mt-2 text-sm text-muted">
+            This configures Basic Auth, bootstraps PocketBase, and (optionally) connects to OpenClaw. Mission Control
+            will restart automatically after applying.
+          </div>
         </div>
-      </div>
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <Badge className="border-none bg-[var(--accent)] text-[var(--background)]">
@@ -332,12 +355,12 @@ export function SetupClient() {
         <Badge className="border-none bg-[var(--highlight)] text-[var(--foreground)]">tailnet-only recommended</Badge>
       </div>
 
-      <form onSubmit={onSubmit} className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>AI Setup Assistant (Optional)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-xs text-muted">
+        <form onSubmit={onSubmit} className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>AI Setup Assistant (Optional)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-xs text-muted">
             <div>
               If you&apos;re using an AI coding agent with terminal access (Codex, Claude Code, etc), install the
               Mission Control setup skill and ask it to wire everything end-to-end (Tailscale/Headscale, OpenClaw,
@@ -785,6 +808,7 @@ export function SetupClient() {
           </Card>
         ) : null}
       </form>
+    </div>
     </div>
   );
 }
