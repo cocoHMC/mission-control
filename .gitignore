@@ -15,6 +15,14 @@ apps/*/node_modules/
 dist/
 release/
 .next/
+.next-dev/
+
+# Desktop cross-build/test outputs (electron-builder)
+apps/desktop/release-*/
+
+# CI/downloader PocketBase binaries (platform-specific)
+pb/pocketbase-*
+pb/pocketbase-*.exe
 
 # Local build/progress artifacts (may contain machine-specific info)
 docs/BUILD_STATUS.json
