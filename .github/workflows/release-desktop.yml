@@ -206,11 +206,11 @@ jobs:
           ASSETS_JSON="$(gh release view "$TAG" --json assets)"
           ASSET_NAMES="$(echo "$ASSETS_JSON" | python3 -c 'import sys,json; j=json.load(sys.stdin); print("\\n".join([a["name"] for a in (j.get("assets") or [])]))')"
 
-          mac_arm_dmg="$(echo "$ASSET_NAMES" | grep -E '\\.dmg$' | grep -E 'arm64' | head -n 1 || true)"
-          mac_x64_dmg="$(echo "$ASSET_NAMES" | grep -E '\\.dmg$' | grep -E 'x64' | head -n 1 || true)"
-          win_setup="$(echo "$ASSET_NAMES" | grep -E '\\.exe$' | grep -E 'setup' | head -n 1 || true)"
-          linux_appimage="$(echo "$ASSET_NAMES" | grep -E '\\.AppImage$' | head -n 1 || true)"
-          linux_deb="$(echo "$ASSET_NAMES" | grep -E '\\.deb$' | head -n 1 || true)"
+          mac_arm_dmg="$(echo "$ASSET_NAMES" | grep -E '\.dmg$' | grep -E 'arm64' | head -n 1 || true)"
+          mac_x64_dmg="$(echo "$ASSET_NAMES" | grep -E '\.dmg$' | grep -E 'x64' | head -n 1 || true)"
+          win_setup="$(echo "$ASSET_NAMES" | grep -E '\.exe$' | grep -E 'setup' | head -n 1 || true)"
+          linux_appimage="$(echo "$ASSET_NAMES" | grep -E '\.AppImage$' | head -n 1 || true)"
+          linux_deb="$(echo "$ASSET_NAMES" | grep -E '\.deb$' | head -n 1 || true)"
 
           {
             echo "## Downloads"
