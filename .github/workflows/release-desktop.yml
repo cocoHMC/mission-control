@@ -137,13 +137,28 @@ jobs:
       - name: Pin pnpm
         run: corepack prepare pnpm@10.28.2 --activate
 
-      - name: "Workaround: remove legacy junction that breaks Next glob"
+      - name: "Workaround: remove legacy junctions that break Next glob"
         shell: pwsh
         run: |
-          $p = Join-Path $env:USERPROFILE 'Application Data'
-          if (Test-Path $p) {
-            # Avoid Next.js / glob failures like: EPERM scandir 'C:\Users\runneradmin\Application Data'
-            cmd /c rmdir "$p" 2>$null
+          # Next.js build on Windows can hit glob EPERM errors when it walks legacy
+          # user-profile junctions (ex: Application Data, Cookies).
+          $names = @(
+            'Application Data',
+            'Cookies',
+            'Local Settings',
+            'My Documents',
+            'NetHood',
+            'PrintHood',
+            'Recent',
+            'SendTo',
+            'Start Menu',
+            'Templates'
+          )
+          foreach ($name in $names) {
+            $p = Join-Path $env:USERPROFILE $name
+            if (Test-Path $p) {
+              cmd /c rmdir "$p" 2>$null
+            }
           }
 
       - name: Set Desktop Version From Tag
