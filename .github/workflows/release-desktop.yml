@@ -62,20 +62,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm -C apps/desktop exec electron-builder --mac dmg zip --arm64 --x64 --publish always
 
-      - name: Update Release Notes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          PREV="$(git tag --list 'v*' --sort=-v:refname | grep -v "^${TAG}$" | head -n 1 || true)"
-          if [ -n "$PREV" ]; then
-            NOTES="$(git log --pretty=format:'- %s (%h)' "${PREV}..${TAG}")"
-          else
-            NOTES="$(git log --pretty=format:'- %s (%h)' "${TAG}")"
-          fi
-          gh release edit "$TAG" --title "$TAG" --notes "$NOTES"
-
   linux:
     name: Linux (Ubuntu)
     runs-on: ubuntu-latest
@@ -112,10 +98,10 @@ jobs:
       - name: Build Web + Worker + Desktop
         run: pnpm -r build
 
-      - name: Build + Publish Desktop (AppImage + DEB + tar.gz)
+      - name: Build + Publish Desktop (AppImage + DEB)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm -C apps/desktop exec electron-builder --linux AppImage deb tar.gz --x64 --publish always
+        run: pnpm -C apps/desktop exec electron-builder --linux AppImage deb --x64 --publish always
 
   windows:
     name: Windows
@@ -188,7 +174,75 @@ jobs:
       - name: Build Web + Worker + Desktop
         run: pnpm -r build
 
-      - name: Build + Publish Desktop (NSIS + ZIP)
+      - name: Build + Publish Desktop (NSIS)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm -C apps/desktop exec electron-builder --win nsis zip --x64 --publish always
+        run: pnpm -C apps/desktop exec electron-builder --win nsis --x64 --publish always
+
+  notes:
+    name: Update Release Notes
+    runs-on: ubuntu-latest
+    needs:
+      - mac
+      - linux
+      - windows
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Write Notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          REPO="${GITHUB_REPOSITORY}"
+          DOWNLOAD_BASE="https://github.com/${REPO}/releases/download/${TAG}"
+
+          # Grab assets that were uploaded by electron-builder.
+          ASSETS_JSON="$(gh release view "$TAG" --json assets)"
+          ASSET_NAMES="$(echo "$ASSETS_JSON" | python3 -c 'import sys,json; j=json.load(sys.stdin); print("\\n".join([a["name"] for a in (j.get("assets") or [])]))')"
+
+          mac_arm_dmg="$(echo "$ASSET_NAMES" | grep -E '\\.dmg$' | grep -E 'arm64' | head -n 1 || true)"
+          mac_x64_dmg="$(echo "$ASSET_NAMES" | grep -E '\\.dmg$' | grep -E 'x64' | head -n 1 || true)"
+          win_setup="$(echo "$ASSET_NAMES" | grep -E '\\.exe$' | grep -E 'setup' | head -n 1 || true)"
+          linux_appimage="$(echo "$ASSET_NAMES" | grep -E '\\.AppImage$' | head -n 1 || true)"
+          linux_deb="$(echo "$ASSET_NAMES" | grep -E '\\.deb$' | head -n 1 || true)"
+
+          {
+            echo "## Downloads"
+            echo ""
+            if [ -n "$mac_arm_dmg" ]; then
+              echo "- macOS Apple Silicon (M1/M2/M3): [$mac_arm_dmg](${DOWNLOAD_BASE}/${mac_arm_dmg})"
+            fi
+            if [ -n "$mac_x64_dmg" ]; then
+              echo "- macOS Intel: [$mac_x64_dmg](${DOWNLOAD_BASE}/${mac_x64_dmg})"
+            fi
+            if [ -n "$win_setup" ]; then
+              echo "- Windows 10/11 (x64): [$win_setup](${DOWNLOAD_BASE}/${win_setup})"
+            fi
+            if [ -n "$linux_appimage" ]; then
+              echo "- Linux (x86_64): [$linux_appimage](${DOWNLOAD_BASE}/${linux_appimage}) (recommended)"
+            fi
+            if [ -n "$linux_deb" ]; then
+              echo "- Linux (Debian/Ubuntu x86_64): [$linux_deb](${DOWNLOAD_BASE}/${linux_deb})"
+            fi
+            echo ""
+            echo "Other files in Assets (latest*.yml, *.blockmap, *.zip) are for in-app auto-updates and can be ignored for manual installs."
+            echo ""
+            echo "## Changes"
+            echo ""
+
+            PREV="$(git tag --list 'v*' --sort=-v:refname | grep -v "^${TAG}$" | head -n 1 || true)"
+            if [ -n "$PREV" ]; then
+              git log --pretty=format:'- %s (%h)' "${PREV}..${TAG}"
+            else
+              git log --pretty=format:'- %s (%h)' "${TAG}"
+            fi
+            echo ""
+          } > RELEASE_NOTES.md
+
+          gh release edit "$TAG" --title "$TAG" --notes-file RELEASE_NOTES.md

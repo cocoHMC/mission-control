@@ -13,10 +13,10 @@
     "start": "electron .",
     "dist:mac": "pnpm -w build && pnpm build && electron-builder --mac dmg zip",
     "dist:mac:publish": "pnpm -w build && pnpm build && electron-builder --mac dmg zip --publish always",
-    "dist:linux": "pnpm -w build && pnpm build && electron-builder --linux AppImage deb tar.gz",
-    "dist:linux:publish": "pnpm -w build && pnpm build && electron-builder --linux AppImage deb tar.gz --publish always",
-    "dist:win": "pnpm -w build && pnpm build && electron-builder --win nsis zip",
-    "dist:win:publish": "pnpm -w build && pnpm build && electron-builder --win nsis zip --publish always"
+    "dist:linux": "pnpm -w build && pnpm build && electron-builder --linux AppImage deb",
+    "dist:linux:publish": "pnpm -w build && pnpm build && electron-builder --linux AppImage deb --publish always",
+    "dist:win": "pnpm -w build && pnpm build && electron-builder --win nsis",
+    "dist:win:publish": "pnpm -w build && pnpm build && electron-builder --win nsis --publish always"
   },
   "dependencies": {
     "electron-log": "^5.4.0",
@@ -81,6 +81,7 @@
     "afterPack": "build/afterPack.cjs",
     "mac": {
       "category": "public.app-category.productivity",
+      "artifactName": "Mission-Control-v${version}-macos-${arch}.${ext}",
       "target": [
         "dmg",
         "zip"
@@ -88,30 +89,29 @@
     },
     "linux": {
       "category": "Utility",
+      "artifactName": "Mission-Control-v${version}-linux-${arch}.${ext}",
       "target": [
         "AppImage",
-        "deb",
-        "tar.gz"
+        "deb"
       ],
       "maintainer": "HMC <dev@hmcf.ca>"
     },
     "win": {
       "target": [
-        "nsis",
-        "zip"
+        "nsis"
       ]
     },
     "dmg": {
-      "artifactName": "${productName}-${version}-${arch}.dmg"
+      "artifactName": "Mission-Control-v${version}-macos-${arch}.${ext}"
     },
     "appImage": {
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "Mission-Control-v${version}-linux-${arch}.${ext}"
     },
     "deb": {
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "Mission-Control-v${version}-linux-${arch}.${ext}"
     },
     "nsis": {
-      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+      "artifactName": "Mission-Control-v${version}-windows-${arch}-setup.${ext}"
     },
     "publish": [
       {
