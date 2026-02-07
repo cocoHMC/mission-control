@@ -142,7 +142,7 @@ jobs:
         run: |
           # Next.js build on Windows can hit glob EPERM errors when it walks legacy
           # user-profile junctions (ex: Application Data, Cookies).
-          $names = @(
+          $rootNames = @(
             'Application Data',
             'Cookies',
             'Local Settings',
@@ -154,10 +154,27 @@ jobs:
             'Start Menu',
             'Templates'
           )
-          foreach ($name in $names) {
+          foreach ($name in $rootNames) {
             $p = Join-Path $env:USERPROFILE $name
             if (Test-Path $p) {
               cmd /c rmdir "$p" 2>$null
+            }
+          }
+
+          # These exist under Documents on GitHub-hosted Windows runners and can also cause
+          # EPERM when globbing (ex: Documents\My Pictures).
+          $documents = Join-Path $env:USERPROFILE 'Documents'
+          if (Test-Path $documents) {
+            $docNames = @(
+              'My Music',
+              'My Pictures',
+              'My Videos'
+            )
+            foreach ($name in $docNames) {
+              $p = Join-Path $documents $name
+              if (Test-Path $p) {
+                cmd /c rmdir "$p" 2>$null
+              }
             }
           }
 
