@@ -2,7 +2,9 @@ import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 import { Fira_Code, Fira_Sans } from 'next/font/google';
 import './globals.css';
+import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 import { DesktopNotificationsProvider } from '@/components/notifications/DesktopNotificationsProvider';
+import { Toaster } from '@/features/full-calendar/ui/sonner';
 
 const display = Fira_Code({
   variable: '--font-display',
@@ -49,6 +51,10 @@ export default function RootLayout({
   try {
     const t = localStorage.getItem('mc_theme');
     if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    const effectiveTheme = t === 'light' || t === 'dark'
+      ? t
+      : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.classList.toggle('dark', effectiveTheme === 'dark');
     const ua = navigator.userAgent || '';
     if (ua.includes('Electron') || (window && window.MissionControlDesktop)) {
       document.documentElement.dataset.mcDesktop = '1';
@@ -60,6 +66,7 @@ export default function RootLayout({
 })();`}
         </Script>
         <DesktopNotificationsProvider />
+        <Toaster richColors closeButton />
         {children}
       </body>
     </html>

@@ -6,12 +6,13 @@ export const dynamic = 'force-dynamic';
 
 export default function OpenClawUpdatePage() {
   return (
-    <AppShell>
-      <Topbar title="OpenClaw Update" subtitle="Check for updates and switch channels (stable/beta/dev)." />
-      <div className="mt-4 sm:mt-8">
-        <UpdateClient />
+    <AppShell padding="dense">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <Topbar title="OpenClaw Update" subtitle="Check for updates and switch channels (stable/beta/dev)." density="compact" />
+        <div className="min-h-0 flex-1">
+          <UpdateClient />
+        </div>
       </div>
     </AppShell>
   );
 }
-

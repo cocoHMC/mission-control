@@ -6,12 +6,13 @@ export const dynamic = 'force-dynamic';
 
 export default function OpenClawApprovalsPage() {
   return (
-    <AppShell>
-      <Topbar title="OpenClaw Approvals" subtitle="Manage exec allowlists (token-safe)." />
-      <div className="mt-4 sm:mt-8">
-        <ApprovalsClient />
+    <AppShell padding="dense">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <Topbar title="OpenClaw Approvals" subtitle="Manage exec allowlists (token-safe)." density="compact" />
+        <div className="min-h-0 flex-1">
+          <ApprovalsClient />
+        </div>
       </div>
     </AppShell>
   );
 }
-

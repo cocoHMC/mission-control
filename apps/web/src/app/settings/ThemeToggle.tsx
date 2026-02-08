@@ -22,6 +22,11 @@ function applyTheme(mode: ThemeMode) {
     root.dataset.theme = mode;
     window.localStorage.setItem('mc_theme', mode);
   }
+
+  // Tailwind dark: classes in the codebase rely on `.dark` being present.
+  const effective =
+    mode === 'system' ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : mode;
+  root.classList.toggle('dark', effective === 'dark');
 }
 
 export function ThemeToggle() {
@@ -36,6 +41,10 @@ export function ThemeToggle() {
     mq.addEventListener?.('change', update);
     return () => mq.removeEventListener?.('change', update);
   }, []);
+
+  React.useEffect(() => {
+    if (mode === 'system') applyTheme('system');
+  }, [mode, systemMode]);
 
   function choose(next: ThemeMode) {
     setMode(next);
@@ -62,4 +71,3 @@ export function ThemeToggle() {
     </div>
   );
 }
-

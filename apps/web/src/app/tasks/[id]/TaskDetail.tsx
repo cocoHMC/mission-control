@@ -12,30 +12,47 @@ import { MentionsTextarea } from '@/components/mentions/MentionsTextarea';
 import { Textarea } from '@/components/ui/textarea';
 import { CopyButton } from '@/components/ui/copy-button';
 import { cn, formatShortDate, fromDateTimeLocalValue, toDateTimeLocalValue } from '@/lib/utils';
-import type { Agent, DocumentRecord, Message, NodeRecord, Subtask, Task } from '@/lib/types';
-import { mcFetch } from '@/lib/clientApi';
+import type { Agent, DocumentRecord, Message, NodeRecord, Subtask, Task, TaskFile } from '@/lib/types';
+import { mcApiUrl, mcFetch } from '@/lib/clientApi';
 
 const STATUSES = ['inbox', 'assigned', 'in_progress', 'review', 'blocked', 'done'];
 type Status = (typeof STATUSES)[number];
 
-type OpenClawNode = {
-  nodeId?: string;
-  displayName?: string;
-  remoteIp?: string;
-  platform?: string;
-  paired?: boolean;
-  connected?: boolean;
-};
+function normalizeSelect(value: unknown, fallback: string) {
+  const s = String(value ?? '').trim();
+  return s ? s : fallback;
+}
 
-type OpenClawNodesStatus = {
-  nodes?: OpenClawNode[];
-};
+function sameStringArray(a: string[], b: string[]) {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function sameSubtasks(a: Subtask[], b: Subtask[]) {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const aa = a[i];
+    const bb = b[i];
+    if (!aa || !bb) return false;
+    if (aa.id !== bb.id) return false;
+    if (aa.title !== bb.title) return false;
+    if (Boolean(aa.done) !== Boolean(bb.done)) return false;
+    if ((aa.order ?? 0) !== (bb.order ?? 0)) return false;
+  }
+  return true;
+}
 
 export function TaskDetail({
   task,
   agents,
   messages,
   documents,
+  files,
   subtasks,
   nodes = [],
   onUpdated,
@@ -44,6 +61,7 @@ export function TaskDetail({
   agents: Agent[];
   messages: Message[];
   documents: DocumentRecord[];
+  files: TaskFile[];
   subtasks: Subtask[];
   nodes?: NodeRecord[];
   onUpdated?: () => void | Promise<void>;
@@ -59,6 +77,8 @@ export function TaskDetail({
   const [assignees, setAssignees] = React.useState<string[]>(task.assigneeIds ?? []);
   const [labelsInput, setLabelsInput] = React.useState((task.labels ?? []).join(', '));
   const [requiredNodeId, setRequiredNodeId] = React.useState(task.requiredNodeId ?? '');
+  const [aiEffort, setAiEffort] = React.useState(normalizeSelect(task.aiEffort, 'auto'));
+  const [aiModelTier, setAiModelTier] = React.useState(normalizeSelect(task.aiModelTier, 'auto'));
   const [blockReason, setBlockReason] = React.useState('');
   const [archived, setArchived] = React.useState(Boolean(task.archived));
   const [requiresReview, setRequiresReview] = React.useState(Boolean(task.requiresReview));
@@ -66,7 +86,10 @@ export function TaskDetail({
   const [dueAt, setDueAt] = React.useState(toDateTimeLocalValue(task.dueAt));
   const [subtaskItems, setSubtaskItems] = React.useState<Subtask[]>(subtasks ?? []);
   const [newSubtaskTitle, setNewSubtaskTitle] = React.useState('');
-  const [openclawNodes, setOpenclawNodes] = React.useState<OpenClawNode[]>([]);
+  const [uploadTitle, setUploadTitle] = React.useState('');
+  const [uploadFile, setUploadFile] = React.useState<File | null>(null);
+  const [uploading, setUploading] = React.useState(false);
+  const [uploadError, setUploadError] = React.useState<string | null>(null);
 
   const openclawAssigneeIds = React.useMemo(() => {
     const ids: string[] = [];
@@ -101,15 +124,39 @@ export function TaskDetail({
   }, [openclawAssigneeIds, leadAgentId]);
 
   React.useEffect(() => {
-    setStatus(task.status);
-    setAssignees(task.assigneeIds ?? []);
-    setLabelsInput((task.labels ?? []).join(', '));
-    setRequiredNodeId(task.requiredNodeId ?? '');
-    setArchived(Boolean(task.archived));
-    setRequiresReview(Boolean(task.requiresReview));
-    setStartAt(toDateTimeLocalValue(task.startAt));
-    setDueAt(toDateTimeLocalValue(task.dueAt));
-    setContextDraft(task.context ?? '');
+    const nextStatus = normalizeSelect(task.status, 'inbox') as Status;
+    setStatus((prev) => (prev === nextStatus ? prev : nextStatus));
+
+    const nextAssignees = Array.isArray(task.assigneeIds) ? task.assigneeIds : [];
+    setAssignees((prev) => (sameStringArray(prev, nextAssignees) ? prev : nextAssignees));
+
+    const nextLabelsInput = (Array.isArray(task.labels) ? task.labels : []).join(', ');
+    setLabelsInput((prev) => (prev === nextLabelsInput ? prev : nextLabelsInput));
+
+    const nextRequiredNodeId = String(task.requiredNodeId ?? '');
+    setRequiredNodeId((prev) => (prev === nextRequiredNodeId ? prev : nextRequiredNodeId));
+
+    const nextEffort = normalizeSelect(task.aiEffort, 'auto');
+    setAiEffort((prev) => (prev === nextEffort ? prev : nextEffort));
+
+    const nextTier = normalizeSelect(task.aiModelTier, 'auto');
+    setAiModelTier((prev) => (prev === nextTier ? prev : nextTier));
+
+    const nextArchived = Boolean(task.archived);
+    setArchived((prev) => (prev === nextArchived ? prev : nextArchived));
+
+    const nextRequiresReview = Boolean(task.requiresReview);
+    setRequiresReview((prev) => (prev === nextRequiresReview ? prev : nextRequiresReview));
+
+    const nextStartAt = toDateTimeLocalValue(task.startAt);
+    setStartAt((prev) => (prev === nextStartAt ? prev : nextStartAt));
+
+    const nextDueAt = toDateTimeLocalValue(task.dueAt);
+    setDueAt((prev) => (prev === nextDueAt ? prev : nextDueAt));
+
+    const nextContextDraft = String(task.context ?? '');
+    setContextDraft((prev) => (prev === nextContextDraft ? prev : nextContextDraft));
+
     setEditingContext(false);
   }, [
     task.id,
@@ -117,6 +164,8 @@ export function TaskDetail({
     task.assigneeIds,
     task.labels,
     task.requiredNodeId,
+    task.aiEffort,
+    task.aiModelTier,
     task.archived,
     task.requiresReview,
     task.startAt,
@@ -125,28 +174,9 @@ export function TaskDetail({
   ]);
 
   React.useEffect(() => {
-    setSubtaskItems(subtasks ?? []);
+    const next = Array.isArray(subtasks) ? subtasks : [];
+    setSubtaskItems((prev) => (sameSubtasks(prev, next) ? prev : next));
   }, [task.id, subtasks]);
-
-  React.useEffect(() => {
-    // Best-effort live node list from OpenClaw for the node picker.
-    let cancelled = false;
-    mcFetch('/api/openclaw/nodes/status', { cache: 'no-store' })
-      .then((r) => r.json().catch(() => null))
-      .then((json) => {
-        if (cancelled) return;
-        if (!json?.ok) return;
-        const next = (json?.status as OpenClawNodesStatus) || null;
-        const list = Array.isArray(next?.nodes) ? next!.nodes! : [];
-        setOpenclawNodes(list.filter((n) => n && n.nodeId));
-      })
-      .catch(() => {
-        // ignore
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   async function updateTask(payload: Record<string, unknown>) {
     await mcFetch(`/api/tasks/${task.id}`, {
@@ -321,6 +351,48 @@ export function TaskDetail({
     });
     setDocTitle('');
     setDocContent('');
+    router.refresh();
+    if (onUpdated) await onUpdated();
+  }
+
+  async function uploadAttachment(event: React.FormEvent) {
+    event.preventDefault();
+    if (!uploadFile || uploading) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const fd = new FormData();
+      fd.set('taskId', task.id);
+      if (uploadTitle.trim()) fd.set('title', uploadTitle.trim());
+      fd.set('file', uploadFile);
+      const res = await mcFetch('/api/task-files', { method: 'POST', body: fd });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || 'Upload failed');
+      setUploadTitle('');
+      setUploadFile(null);
+      router.refresh();
+      if (onUpdated) await onUpdated();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setUploadError(msg || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function rotateShareToken(fileId: string) {
+    await mcFetch(`/api/task-files/${fileId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rotateShareToken: true }),
+    });
+    router.refresh();
+    if (onUpdated) await onUpdated();
+  }
+
+  async function deleteAttachment(fileId: string) {
+    if (!window.confirm('Delete attachment?')) return;
+    await mcFetch(`/api/task-files/${fileId}`, { method: 'DELETE' });
     router.refresh();
     if (onUpdated) await onUpdated();
   }
@@ -535,14 +607,89 @@ export function TaskDetail({
         </div>
 
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="text-sm font-semibold">Files</div>
+            <div className="text-xs text-muted">{files.length}</div>
+          </div>
+          <div className="mt-2 text-xs text-muted">
+            Attach images/PDFs/logs to give agents concrete artifacts. Copy the public link into an agent session when needed.
+          </div>
+
+          {uploadError ? (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{uploadError}</div>
+          ) : null}
+
+          <div className="mt-4 space-y-3">
+            {files.map((f) => {
+              const shareUrl = f.shareToken ? mcApiUrl(`/api/task-files/public/${f.shareToken}`) : '';
+              const fileName = Array.isArray(f.file) ? String(f.file[0] || '') : String(f.file || '');
+              return (
+                <div key={f.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium">{f.title || fileName || 'Attachment'}</div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                        {fileName ? <span className="font-mono">{fileName}</span> : null}
+                        {f.updatedAt ? <span>Updated {formatShortDate(f.updatedAt)}</span> : null}
+                      </div>
+                      {shareUrl ? (
+                        <a
+                          href={shareUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 block truncate font-mono text-xs text-[var(--foreground)] underline underline-offset-2"
+                        >
+                          {shareUrl}
+                        </a>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {shareUrl ? <CopyButton value={shareUrl} label="Copy link" /> : null}
+                      <Button type="button" size="sm" variant="secondary" onClick={() => void rotateShareToken(f.id)}>
+                        Rotate
+                      </Button>
+                      <Button type="button" size="sm" variant="destructive" onClick={() => void deleteAttachment(f.id)}>
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {!files.length ? <div className="text-sm text-muted">No files yet.</div> : null}
+          </div>
+
+          <form onSubmit={uploadAttachment} className="mt-6 space-y-3">
+            <Input value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} placeholder="Optional title (defaults to filename)" />
+            <input
+              type="file"
+              onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+              className="block w-full text-sm text-muted file:mr-4 file:rounded-full file:border-0 file:bg-[var(--accent)] file:px-4 file:py-2 file:text-sm file:font-medium file:text-[var(--accent-foreground)] hover:file:bg-[var(--accent-strong)]"
+            />
+            <Button type="submit" variant="secondary" disabled={uploading || !uploadFile}>
+              {uploading ? 'Uploading…' : 'Upload file'}
+            </Button>
+          </form>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
           <div className="text-sm font-semibold">Documents</div>
           <div className="mt-4 space-y-3">
             {documents.map((doc) => (
-              <div key={doc.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                <div className="text-xs uppercase tracking-[0.2em] text-muted">{doc.type}</div>
-                <div className="mt-2 text-sm font-medium">{doc.title}</div>
-                <div className="mt-2 text-xs text-muted">Updated {formatShortDate(doc.updatedAt)}</div>
-              </div>
+              <Link
+                key={doc.id}
+                href={`/docs?doc=${encodeURIComponent(doc.id)}`}
+                className="group block rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 transition hover:bg-[color:var(--foreground)]/5"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs uppercase tracking-[0.2em] text-muted">{doc.type}</div>
+                    <div className="mt-2 truncate text-sm font-medium">{doc.title}</div>
+                    <div className="mt-2 text-xs text-muted">Updated {formatShortDate(doc.updatedAt)}</div>
+                  </div>
+                  <div className="shrink-0 pt-1 text-xs text-muted opacity-0 transition group-hover:opacity-100">Open</div>
+                </div>
+              </Link>
             ))}
             {!documents.length && <div className="text-sm text-muted">No documents yet.</div>}
           </div>
@@ -631,6 +778,50 @@ export function TaskDetail({
             </div>
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+            <div className="text-xs uppercase tracking-[0.2em] text-muted">AI controls</div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs uppercase tracking-[0.2em] text-muted">Effort</label>
+                <select
+                  value={aiEffort}
+                  onChange={async (e) => {
+                    const value = e.target.value;
+                    setAiEffort(value);
+                    await updateTask({ aiEffort: value });
+                  }}
+                  className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+                >
+                  <option value="auto">Auto (agent default)</option>
+                  <option value="efficient">Efficient</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="heavy">Heavy</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-[0.2em] text-muted">Model tier</label>
+                <select
+                  value={aiModelTier}
+                  onChange={async (e) => {
+                    const value = e.target.value;
+                    setAiModelTier(value);
+                    await updateTask({ aiModelTier: value });
+                  }}
+                  className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+                >
+                  <option value="auto">Auto (agent default)</option>
+                  <option value="cheap">Cheap</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="heavy">Heavy</option>
+                  <option value="code">Code</option>
+                  <option value="vision">Vision</option>
+                </select>
+              </div>
+            </div>
+            <div className="mt-2 text-xs text-muted">
+              Mission Control can prefix OpenClaw messages with inline directives (ex: <span className="font-mono">/t low</span>, <span className="font-mono">/model cheap</span>) to control cost per task.
+            </div>
+          </div>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
             <div className="text-xs uppercase tracking-[0.2em] text-muted">Dates</div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <div>
@@ -658,16 +849,10 @@ export function TaskDetail({
               className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
             >
               <option value="">Gateway (this machine)</option>
-              {(openclawNodes.length
-                ? openclawNodes.map((n) => ({
-                    id: n.nodeId || '',
-                    label: `${n.displayName || n.nodeId}${n.remoteIp ? ` (${n.remoteIp})` : ''}`,
-                  }))
-                : nodes.map((node) => ({
-                    id: node.nodeId ?? node.id,
-                    label: node.displayName ?? node.nodeId ?? node.id,
-                  }))
-              ).map((node) => (
+              {nodes.map((node) => ({
+                id: node.nodeId ?? node.id,
+                label: node.displayName ?? node.nodeId ?? node.id,
+              })).map((node) => (
                 <option key={node.id} value={node.id}>
                   {node.label}
                 </option>

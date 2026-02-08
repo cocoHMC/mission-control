@@ -2,7 +2,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { Topbar } from '@/components/shell/Topbar';
 import { pbFetch } from '@/lib/pbServer';
 import type { DocumentRecord, PBList } from '@/lib/types';
-import { DocumentsList } from '@/app/docs/DocumentsList';
+import { DocumentsClient } from '@/app/docs/DocumentsClient';
 
 export default async function DocsPage() {
   const q = new URLSearchParams({ page: '1', perPage: '200' });
@@ -10,10 +10,18 @@ export default async function DocsPage() {
   const docs = data.items ?? [];
 
   return (
-    <AppShell>
-      <Topbar title="Documents" subtitle="Shared deliverables, protocols, and research." />
-      <div className="mt-4 sm:mt-8">
-        <DocumentsList initialDocs={docs} />
+    <AppShell padding="dense">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <Topbar
+          title="Documents"
+          subtitle="Shared deliverables, protocols, and research."
+          actionHref="/docs?new=1"
+          actionLabel="New doc"
+          density="compact"
+        />
+        <div className="min-h-0 flex-1">
+          <DocumentsClient initialDocs={docs} />
+        </div>
       </div>
     </AppShell>
   );

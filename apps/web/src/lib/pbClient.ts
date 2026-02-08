@@ -30,7 +30,7 @@ export type PBRealtimeEvent<T> = {
 
 async function fetchToken() {
   if (!tokenPromise) {
-    tokenPromise = fetch('/api/pb-token', { headers: { 'content-type': 'application/json' } })
+    tokenPromise = fetch(mcApiUrl('/api/pb-token'), { headers: { 'content-type': 'application/json' } })
       .then(async (res) => {
         if (!res.ok) {
           const text = await res.text();

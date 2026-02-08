@@ -97,6 +97,7 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   await deleteRelated('notifications', `taskId = "${id}"`);
   await deleteRelated('task_subscriptions', `taskId = "${id}"`);
   await deleteRelated('subtasks', `taskId = "${id}"`);
+  await deleteRelated('task_files', `taskId = "${id}"`);
 
   await pbFetch(`/api/collections/tasks/records/${id}`, { method: 'DELETE' });
 

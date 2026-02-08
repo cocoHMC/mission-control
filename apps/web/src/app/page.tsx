@@ -27,8 +27,14 @@ export default async function DashboardPage() {
   }, {});
 
   return (
-    <AppShell>
-      <Topbar title="Mission Control" subtitle={`Push-based orchestration for ${leadName} + future nodes`} actionHref="/tasks/new" actionLabel="New task" />
+    <AppShell padding="dense">
+      <Topbar
+        title="Mission Control"
+        subtitle={`Push-based orchestration for ${leadName} + future nodes`}
+        actionHref="/tasks/new"
+        actionLabel="New task"
+        density="compact"
+      />
 
       <div className="mt-4 grid gap-6 sm:mt-8 lg:grid-cols-3">
         <Card className="lg:col-span-2">

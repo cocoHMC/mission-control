@@ -29,3 +29,9 @@ docs/PROGRESS.log
 apps/web/dev.log
 ops/proof_of_work.sh
 ops/proof_ping.sh
+
+# Local scratch space (screenshots, clones, experiments)
+tmp/
+
+# Lockfiles should live at repo root (pnpm workspace)
+apps/web/pnpm-lock.yaml

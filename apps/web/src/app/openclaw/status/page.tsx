@@ -6,12 +6,17 @@ export const dynamic = 'force-dynamic';
 
 export default function OpenClawStatusPage() {
   return (
-    <AppShell>
-      <Topbar title="OpenClaw Status" subtitle="Token usage, sessions, heartbeats, and channel health (deterministic, no LLM polling)." />
-      <div className="mt-4 sm:mt-8">
-        <StatusClient />
+    <AppShell padding="dense">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <Topbar
+          title="OpenClaw Status"
+          subtitle="Token usage, sessions, heartbeats, and channel health (deterministic, no LLM polling)."
+          density="compact"
+        />
+        <div className="min-h-0 flex-1">
+          <StatusClient />
+        </div>
       </div>
     </AppShell>
   );
 }
-

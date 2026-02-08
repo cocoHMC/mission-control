@@ -11,10 +11,12 @@ export default async function AgentsPage() {
   const agents = data.items ?? [];
 
   return (
-    <AppShell>
-      <Topbar title="Agents" subtitle={`Lead agent: ${leadName}. Add more agents when ready.`} />
-      <div className="mt-4 sm:mt-8">
-        <AgentsGrid initialAgents={agents} />
+    <AppShell padding="dense">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <Topbar title="Agents" subtitle={`Lead agent: ${leadName}. Add more agents when ready.`} density="compact" />
+        <div className="min-h-0 flex-1">
+          <AgentsGrid initialAgents={agents} />
+        </div>
       </div>
     </AppShell>
   );

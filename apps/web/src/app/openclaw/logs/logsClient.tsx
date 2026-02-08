@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { mcFetch } from '@/lib/clientApi';
 
 export function LogsClient() {
   const [limit, setLimit] = React.useState(200);
@@ -17,7 +18,7 @@ export function LogsClient() {
     setError(null);
     try {
       const q = new URLSearchParams({ limit: String(limit) });
-      const res = await fetch(`/api/openclaw/logs?${q.toString()}`, { cache: 'no-store' });
+      const res = await mcFetch(`/api/openclaw/logs?${q.toString()}`, { cache: 'no-store' });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error || `Failed to load logs (${res.status})`);
       setLines(Array.isArray(json?.lines) ? json.lines : []);
@@ -95,4 +96,3 @@ export function LogsClient() {
     </div>
   );
 }
-

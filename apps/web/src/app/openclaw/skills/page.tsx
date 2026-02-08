@@ -6,12 +6,13 @@ export const dynamic = 'force-dynamic';
 
 export default function OpenClawSkillsPage() {
   return (
-    <AppShell>
-      <Topbar title="OpenClaw Skills" subtitle="Discover installed skills and missing requirements." />
-      <div className="mt-4 sm:mt-8">
-        <SkillsClient />
+    <AppShell padding="dense">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <Topbar title="OpenClaw Skills" subtitle="Discover installed skills and missing requirements." density="compact" />
+        <div className="min-h-0 flex-1">
+          <SkillsClient />
+        </div>
       </div>
     </AppShell>
   );
 }
-

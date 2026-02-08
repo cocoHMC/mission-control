@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { CopyButton } from '@/components/ui/copy-button';
+import { mcFetch } from '@/lib/clientApi';
 
 type StatusResponse = {
   configured: boolean;
@@ -104,7 +105,7 @@ export function SetupClient() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch('/api/setup/status', { cache: 'no-store' });
+        const res = await mcFetch('/api/setup/status', { cache: 'no-store' });
         const json = (await res.json()) as StatusResponse;
         if (cancelled) return;
         setStatus(json);
@@ -140,7 +141,7 @@ export function SetupClient() {
   const refreshTailscale = React.useCallback(async () => {
     setLoadingTailscale(true);
     try {
-      const res = await fetch('/api/setup/tailscale-status', { cache: 'no-store' });
+      const res = await mcFetch('/api/setup/tailscale-status', { cache: 'no-store' });
       const json = (await res.json()) as TailscaleStatus;
       setTailscale(json);
     } catch (err: unknown) {
@@ -178,7 +179,7 @@ export function SetupClient() {
       // Once the process restarts, /api/setup/status will report configured=true.
       // That route is not behind Basic Auth so we can poll safely here.
       try {
-        const res = await fetch('/api/setup/status', { cache: 'no-store' });
+        const res = await mcFetch('/api/setup/status', { cache: 'no-store' });
         const json = (await res.json()) as StatusResponse;
         if (json?.configured) {
           window.location.href = '/';
@@ -213,7 +214,7 @@ export function SetupClient() {
         pbAdminPassword: form.mcAdminPassword,
         pbServicePassword: form.mcAdminPassword,
       };
-      const res = await fetch('/api/setup/apply', {
+      const res = await mcFetch('/api/setup/apply', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
@@ -233,7 +234,7 @@ export function SetupClient() {
     setTestingOpenclaw(true);
     setOpenclawTest(null);
     try {
-      const res = await fetch('/api/setup/test-openclaw', {
+      const res = await mcFetch('/api/setup/test-openclaw', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ gatewayUrl: form.openclawGatewayUrl, token: form.openclawGatewayToken }),
@@ -267,7 +268,7 @@ export function SetupClient() {
     setDiscoveringOpenclaw(true);
     setOpenclawDiscoverStatus(null);
     try {
-      const res = await fetch('/api/setup/openclaw-local', { cache: 'no-store' });
+      const res = await mcFetch('/api/setup/openclaw-local', { cache: 'no-store' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error || 'Failed to discover local OpenClaw config.');
 

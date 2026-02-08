@@ -18,9 +18,11 @@ export default function SettingsPage() {
   const gatewayHostHint = process.env.MC_GATEWAY_HOST_HINT || '<gateway-tailnet-ip>';
   const gatewayPortHint = process.env.MC_GATEWAY_PORT_HINT || '18789';
   return (
-    <AppShell>
-      <Topbar title="Settings" subtitle="Local-only configuration and operational notes." />
-      <div className="mt-4 grid gap-6 sm:mt-8 lg:grid-cols-2">
+    <AppShell padding="dense">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <Topbar title="Settings" subtitle="Local-only configuration and operational notes." density="compact" />
+        <div className="min-h-0 flex-1">
+          <div className="grid gap-6 lg:grid-cols-2">
         <SetupChecklist
           leadAgentId={leadId}
           leadAgentName={leadName}
@@ -76,6 +78,8 @@ export default function SettingsPage() {
             <NotificationSettings />
           </CardContent>
         </Card>
+          </div>
+        </div>
       </div>
     </AppShell>
   );

@@ -6,12 +6,17 @@ export const dynamic = 'force-dynamic';
 
 export default function OpenClawLogsPage() {
   return (
-    <AppShell>
-      <Topbar title="OpenClaw Logs" subtitle="Tail recent gateway logs (redacted). Useful for debugging connectivity and channels." />
-      <div className="mt-4 sm:mt-8">
-        <LogsClient />
+    <AppShell padding="dense">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <Topbar
+          title="OpenClaw Logs"
+          subtitle="Tail recent gateway logs (redacted). Useful for debugging connectivity and channels."
+          density="compact"
+        />
+        <div className="min-h-0 flex-1">
+          <LogsClient />
+        </div>
       </div>
     </AppShell>
   );
 }
-

@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Command } from 'cmdk';
-import { BarChart3, FilePlus2, ListTodo, MessageSquare, Server, Settings, UserRound } from 'lucide-react';
+import { BarChart3, Command as CommandIcon, FilePlus2, ListTodo, MessageSquare, Server, Settings, UserRound } from 'lucide-react';
 
 const actions = [
   { label: 'Create new task', icon: FilePlus2, href: '/tasks/new' },
@@ -16,7 +16,7 @@ const actions = [
   { label: 'Settings', icon: Settings, href: '/settings' },
 ];
 
-export function CommandPalette() {
+export function CommandPalette({ variant = 'default' }: { variant?: 'default' | 'icon' } = {}) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
 
@@ -34,12 +34,23 @@ export function CommandPalette() {
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
-        <button
-          className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm font-medium text-[var(--foreground)]"
-          type="button"
-        >
-          Cmd+K Command
-        </button>
+        {variant === 'icon' ? (
+          <button
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] transition hover:bg-[var(--surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            type="button"
+            aria-label="Open command palette (Cmd+K)"
+            title="Cmd+K"
+          >
+            <CommandIcon className="h-4 w-4" />
+          </button>
+        ) : (
+          <button
+            className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            type="button"
+          >
+            Cmd+K Command
+          </button>
+        )}
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" />

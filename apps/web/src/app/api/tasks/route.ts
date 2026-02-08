@@ -18,6 +18,8 @@ export async function POST(req: NextRequest) {
     context: body.context ?? '',
     status: body.status ?? 'inbox',
     priority: body.priority ?? 'p2',
+    aiEffort: body.aiEffort ?? 'auto',
+    aiModelTier: body.aiModelTier ?? 'auto',
     assigneeIds: body.assigneeIds ?? [],
     labels: body.labels ?? [],
     requiredNodeId: body.requiredNodeId ?? '',

@@ -6,12 +6,13 @@ export const dynamic = 'force-dynamic';
 
 export default function OpenClawDevicesPage() {
   return (
-    <AppShell>
-      <Topbar title="OpenClaw Devices" subtitle="Paired device inventory and tokens (read-only for now)." />
-      <div className="mt-4 sm:mt-8">
-        <DevicesClient />
+    <AppShell padding="dense">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <Topbar title="OpenClaw Devices" subtitle="Paired device inventory and tokens (read-only for now)." density="compact" />
+        <div className="min-h-0 flex-1">
+          <DevicesClient />
+        </div>
       </div>
     </AppShell>
   );
 }
-

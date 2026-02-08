@@ -11,9 +11,11 @@ type DrawerProps = {
   agents: Agent[];
   nodes: NodeRecord[];
   onClose: () => void;
+  initialStartAt?: string;
+  initialDueAt?: string;
 };
 
-export function TaskCreateDrawer({ open, agents, nodes, onClose }: DrawerProps) {
+export function TaskCreateDrawer({ open, agents, nodes, onClose, initialStartAt, initialDueAt }: DrawerProps) {
   const TRANSITION_MS = 220;
   const [rendered, setRendered] = React.useState(open);
   const [visible, setVisible] = React.useState(open);
@@ -87,7 +89,13 @@ export function TaskCreateDrawer({ open, agents, nodes, onClose }: DrawerProps) 
           </Button>
         </div>
         <div className="flex-1 overflow-y-auto p-6">
-          <TaskForm agents={agents} nodes={nodes} onCreated={() => onClose()} />
+          <TaskForm
+            agents={agents}
+            nodes={nodes}
+            initialStartAt={initialStartAt}
+            initialDueAt={initialDueAt}
+            onCreated={() => onClose()}
+          />
         </div>
       </div>
     </div>

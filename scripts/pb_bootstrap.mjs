@@ -77,6 +77,18 @@ function schemaToFields(schema) {
     if (type === 'editor') {
       return { ...base, maxSize: 500000 };
     }
+    if (type === 'file') {
+      return {
+        ...base,
+        maxSelect: options?.maxSelect ?? 1,
+        maxSize: options?.maxSize ?? 104857600,
+        mimeTypes: options?.mimeTypes ?? [],
+        thumbs: options?.thumbs ?? [],
+        // When exposed directly from PB, files are protected and require auth.
+        // Mission Control serves capability URLs for agent access instead.
+        protected: typeof options?.protected === 'boolean' ? options.protected : true,
+      };
+    }
     if (type === 'text') {
       return { ...base, min: null, max: null, pattern: '' };
     }
@@ -231,6 +243,7 @@ async function main() {
         { type: 'text', name: 'displayName' },
         { type: 'text', name: 'role' },
         { type: 'text', name: 'openclawAgentId' },
+        { type: 'file', name: 'avatar', options: { maxSelect: 1, maxSize: 8 * 1024 * 1024, mimeTypes: ['image/*'], protected: true } },
         { type: 'select', name: 'status', options: { maxSelect: 1, values: ['idle', 'active', 'blocked', 'offline'] } },
         { type: 'text', name: 'currentTaskId' },
         { type: 'date', name: 'lastSeenAt' },
@@ -263,6 +276,9 @@ async function main() {
         { type: 'editor', name: 'context' },
         { type: 'select', name: 'status', required: true, options: { maxSelect: 1, values: ['inbox', 'assigned', 'in_progress', 'review', 'done', 'blocked'] } },
         { type: 'select', name: 'priority', options: { maxSelect: 1, values: ['p0', 'p1', 'p2', 'p3'] } },
+        // Task-level cost controls (OpenClaw inline directives).
+        { type: 'select', name: 'aiEffort', options: { maxSelect: 1, values: ['auto', 'efficient', 'balanced', 'heavy'] } },
+        { type: 'select', name: 'aiModelTier', options: { maxSelect: 1, values: ['auto', 'cheap', 'balanced', 'heavy', 'vision', 'code'] } },
         { type: 'json', name: 'assigneeIds' },
         { type: 'text', name: 'requiredNodeId' },
         { type: 'json', name: 'labels' },
@@ -284,6 +300,33 @@ async function main() {
         { type: 'number', name: 'order' },
         { type: 'number', name: 'subtasksTotal' },
         { type: 'number', name: 'subtasksDone' },
+      ],
+    },
+    {
+      name: 'task_files',
+      type: 'base',
+      schema: [
+        { type: 'text', name: 'taskId', required: true },
+        { type: 'text', name: 'title' },
+        {
+          type: 'file',
+          name: 'file',
+          required: true,
+          options: {
+            maxSelect: 1,
+            maxSize: 104857600,
+            mimeTypes: ['application/pdf', 'image/*', 'text/plain', 'application/json', 'application/zip'],
+            protected: true,
+            thumbs: [],
+          },
+        },
+        { type: 'text', name: 'shareToken', required: true },
+        { type: 'date', name: 'createdAt', required: true },
+        { type: 'date', name: 'updatedAt', required: true },
+      ],
+      indexes: [
+        'CREATE INDEX `idx_taskId_task_files` ON `task_files` (`taskId`)',
+        'CREATE UNIQUE INDEX `idx_shareToken_task_files` ON `task_files` (`shareToken`)',
       ],
     },
     {

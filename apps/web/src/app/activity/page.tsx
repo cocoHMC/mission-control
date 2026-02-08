@@ -12,10 +12,12 @@ export default async function ActivityPage() {
   const items = data.items ?? [];
 
   return (
-    <AppShell>
-      <Topbar title="Activity" subtitle="Append-only system record." />
-      <div className="mt-4 sm:mt-8">
-        <ActivityFeed initialItems={items} />
+    <AppShell padding="dense">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <Topbar title="Activity" subtitle="Append-only system record." density="compact" />
+        <div className="min-h-0 flex-1">
+          <ActivityFeed initialItems={items} />
+        </div>
       </div>
     </AppShell>
   );
