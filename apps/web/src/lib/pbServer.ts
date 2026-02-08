@@ -29,19 +29,41 @@ async function authToken(): Promise<string> {
   return json.token;
 }
 
+export async function pbServiceToken() {
+  return authToken();
+}
+
 export async function pbFetch<T = unknown>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
-  const token = await authToken();
-  const res = await fetch(new URL(path, pbUrl()), {
-    method: init.method ?? 'GET',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${token}`,
-    },
-    body: init.body ? JSON.stringify(init.body) : undefined,
-    cache: 'no-store',
-  });
-  const text = await res.text();
-  const json = text ? JSON.parse(text) : null;
+  async function doFetch(token: string) {
+    const res = await fetch(new URL(path, pbUrl()), {
+      method: init.method ?? 'GET',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+      },
+      body: init.body ? JSON.stringify(init.body) : undefined,
+      cache: 'no-store',
+    });
+    const text = await res.text().catch(() => '');
+    let json: any = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      json = text;
+    }
+    return { res, json };
+  }
+
+  let token = await authToken();
+  let { res, json } = await doFetch(token);
+
+  // If the cached auth token expired early, retry once with a fresh login.
+  if (res.status === 401) {
+    cached = null;
+    token = await authToken();
+    ({ res, json } = await doFetch(token));
+  }
+
   if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
   return json as T;
 }

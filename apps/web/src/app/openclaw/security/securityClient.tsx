@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
+import { mcFetch } from '@/lib/clientApi';
 
 type Finding = {
   checkId?: string;
@@ -48,7 +49,7 @@ export function SecurityClient() {
     setDeep(deepMode);
     try {
       const q = new URLSearchParams(deepMode ? { deep: '1' } : {});
-      const res = await fetch(`/api/openclaw/security/audit?${q.toString()}`, { cache: 'no-store' });
+      const res = await mcFetch(`/api/openclaw/security/audit?${q.toString()}`, { cache: 'no-store' });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error || 'Audit failed');
       setAudit((json?.audit as Audit) || null);
@@ -156,4 +157,3 @@ export function SecurityClient() {
     </div>
   );
 }
-

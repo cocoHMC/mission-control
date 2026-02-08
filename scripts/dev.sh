@@ -45,6 +45,31 @@ try {
 }
 ')"
 
+PB_URL="$("$DOTENV_BIN" -e "$ROOT_DIR/.env" -- node -e '
+try {
+  const raw = String(process.env.PB_URL || "").trim() || "http://127.0.0.1:8090";
+  const u = new URL(raw);
+  console.log(u.toString());
+} catch {
+  console.log("http://127.0.0.1:8090");
+}
+')"
+
+pb_is_up() {
+  "$DOTENV_BIN" -e "$ROOT_DIR/.env" -- node -e '
+  (async () => {
+    try {
+      const raw = String(process.env.PB_URL || "").trim() || "http://127.0.0.1:8090";
+      const u = new URL(raw);
+      const res = await fetch(new URL("/api/health", u.toString()), { cache: "no-store" });
+      process.exit(res.ok ? 0 : 1);
+    } catch {
+      process.exit(1);
+    }
+  })();
+  ' >/dev/null 2>&1
+}
+
 stop_children() {
   if [ -n "${WEB_PID:-}" ]; then
     kill "$WEB_PID" >/dev/null 2>&1 || true
@@ -68,10 +93,13 @@ while true; do
   WORKER_PID=""
   PB_PID=""
 
-  "$PB_BIN" serve --dev --dir "$ROOT_DIR/pb/pb_data" --migrationsDir "$ROOT_DIR/pb/pb_migrations" --http "$PB_HTTP" > "$ROOT_DIR/pb/pocketbase.log" 2>&1 &
-  PB_PID=$!
-
-  sleep 1
+  if pb_is_up; then
+    echo "[mission-control] PocketBase already running at $PB_URL (reusing)"
+  else
+    "$PB_BIN" serve --dev --dir "$ROOT_DIR/pb/pb_data" --migrationsDir "$ROOT_DIR/pb/pb_migrations" --http "$PB_HTTP" > "$ROOT_DIR/pb/pocketbase.log" 2>&1 &
+    PB_PID=$!
+    sleep 1
+  fi
 
   NEEDS_SETUP="$("$DOTENV_BIN" -e "$ROOT_DIR/.env" -- node -e '
 const bad=(v)=>!v||String(v).trim().toLowerCase()==="change-me"||String(v).trim().toLowerCase()==="changeme";

@@ -44,6 +44,8 @@ const Env = z.object({
   MC_LEAD_AGENT_NAME: z.string().optional(),
   MC_LEAD_AGENT: z.string().optional(),
   MC_NOTIFICATION_PREFIX: z.string().default('[Mission Control]'),
+  // Base URL for Mission Control web server (used for capability URLs, e.g. task file share links).
+  MC_BASE_URL: z.string().optional(),
   MC_NOTIFICATION_TTL_MS: z.coerce.number().int().default(30_000),
   MC_DELIVER_DEBOUNCE_MS: z.coerce.number().int().positive().default(750),
   MC_DELIVER_INTERVAL_MS: z.coerce.number().int().positive().default(20_000),
@@ -79,6 +81,7 @@ const env = Env.parse({
   MC_LEAD_AGENT_NAME: process.env.MC_LEAD_AGENT_NAME,
   MC_LEAD_AGENT: process.env.MC_LEAD_AGENT,
   MC_NOTIFICATION_PREFIX: process.env.MC_NOTIFICATION_PREFIX,
+  MC_BASE_URL: process.env.MC_BASE_URL,
   MC_NOTIFICATION_TTL_MS: process.env.MC_NOTIFICATION_TTL_MS,
   MC_DELIVER_DEBOUNCE_MS: process.env.MC_DELIVER_DEBOUNCE_MS,
   MC_DELIVER_INTERVAL_MS: process.env.MC_DELIVER_INTERVAL_MS,
@@ -98,6 +101,21 @@ const pb = new PocketBase(env.PB_URL);
 pb.autoCancellation(false);
 
 const leadAgentId = env.MC_LEAD_AGENT_ID || env.MC_LEAD_AGENT || 'coco';
+
+function normalizeBaseUrl(value: string) {
+  const raw = String(value || '').trim().replace(/\/$/, '');
+  if (!raw) return '';
+  try {
+    return new URL(raw).toString().replace(/\/$/, '');
+  } catch {
+    return raw;
+  }
+}
+
+const mcBaseUrl = normalizeBaseUrl(
+  env.MC_BASE_URL ||
+    `http://127.0.0.1:${process.env.MC_WEB_PORT || process.env.PORT || '4015'}`
+);
 
 const taskCache = new Map<string, any>();
 const agentByRecordId = new Map<string, any>();
@@ -135,6 +153,13 @@ function minutesFromNow(mins: number) {
 
 function notificationKey(agentId: string, taskId: string | undefined, kind: string) {
   return `${agentId}|${taskId ?? ''}|${kind}`;
+}
+
+function taskFilePublicUrl(shareToken: string) {
+  const token = String(shareToken || '').trim();
+  if (!token) return '';
+  if (!mcBaseUrl) return '';
+  return `${mcBaseUrl}/api/task-files/public/${token}`;
 }
 
 function shouldNotify(key: string) {
@@ -286,6 +311,46 @@ function normalizeAgentIds(agentIds?: string[] | null) {
   return Array.from(normalized);
 }
 
+function normalizeModelTier(value: unknown) {
+  const v = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (!v || v === 'auto' || v === 'default') return '';
+  if (v === 'cheap') return 'cheap';
+  if (v === 'balanced' || v === 'mid' || v === 'medium') return 'balanced';
+  if (v === 'heavy' || v === 'high' || v === 'expensive') return 'heavy';
+  if (v === 'vision') return 'vision';
+  if (v === 'code') return 'code';
+  return '';
+}
+
+function normalizeThinkingEffort(value: unknown) {
+  const v = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (!v || v === 'auto' || v === 'default') return '';
+  if (v === 'efficient' || v === 'low' || v === 'cheap') return 'low';
+  if (v === 'balanced' || v === 'mid' || v === 'medium') return 'medium';
+  if (v === 'heavy' || v === 'high' || v === 'expensive') return 'high';
+  return '';
+}
+
+function openclawInlineDirectivesFor(agentId: string, taskId?: string | null) {
+  const safeTask = taskId ? String(taskId).trim() : '';
+  if (!safeTask) return [] as string[];
+
+  const task = taskCache.get(safeTask) || null;
+  const agent = agentByOpenclawId.get(agentId) || null;
+
+  const thinking = normalizeThinkingEffort(task?.aiEffort);
+  const modelTier = normalizeModelTier(task?.aiModelTier) || normalizeModelTier(agent?.modelTier);
+
+  const directives: string[] = [];
+  if (modelTier) directives.push(`/model ${modelTier}`);
+  if (thinking) directives.push(`/t ${thinking}`);
+  return directives;
+}
+
 async function sendToAgent(agentId: string, message: string, taskId?: string | null) {
   const resolved = normalizeAgentId(agentId);
   if (!resolved) throw new Error('UNKNOWN_AGENT');
@@ -295,13 +360,15 @@ async function sendToAgent(agentId: string, message: string, taskId?: string | n
   }
 
   const sessionKey = sessionKeyForAgent(resolved, taskId);
+  const directives = openclawInlineDirectivesFor(resolved, taskId);
+  const prefixed = directives.length ? `${directives.join('\n')}\n${message}` : message;
   // Do not fallback to the OpenClaw CLI here:
   // - It may not actually deliver (some versions just list sessions for `openclaw sessions ...`)
   // - It could bypass the gateway controls and create unexpected token spend
   // Use timeoutSeconds=0 so tools/invoke returns immediately ("accepted") instead of
   // waiting for the agent to finish a full turn. Waiting caused worker timeouts,
   // retries, and notification storms (token burn).
-  await toolsInvoke('sessions_send', { sessionKey, message, timeoutSeconds: 0 });
+  await toolsInvoke('sessions_send', { sessionKey, message: prefixed, timeoutSeconds: 0 });
 }
 
 async function createActivity(token: string, type: string, summary: string, taskId?: string, actorAgentId?: string) {
@@ -362,6 +429,22 @@ async function hasAnyNotificationForTask(token: string, agentId: string, taskId:
   });
   const existing = await pbFetch(`/api/collections/notifications/records?${q.toString()}`, { token });
   return Boolean(existing?.items?.length);
+}
+
+async function listTaskFiles(token: string, taskId: string) {
+  if (!taskId) return [] as any[];
+  try {
+    const q = new URLSearchParams({
+      page: '1',
+      perPage: '20',
+      sort: '-updatedAt',
+      filter: `taskId = "${pbFilterString(taskId)}"`,
+    });
+    const list = await pbFetch(`/api/collections/task_files/records?${q.toString()}`, { token });
+    return list?.items ?? [];
+  } catch {
+    return [] as any[];
+  }
 }
 
 async function listPushSubscriptions(token: string) {
@@ -615,7 +698,17 @@ async function handleTaskEvent(token: string, record: any, action: string) {
       const snippet = desc ? (desc.length > snippetLimit ? `${desc.slice(0, snippetLimit - 1)}…` : desc) : '';
       const ctxSnippet = ctx ? (ctx.length > ctxLimit ? `${ctx.slice(0, ctxLimit - 1)}…` : ctx) : '';
       const parts = [snippet, ctxSnippet ? `Context: ${ctxSnippet}` : ''].filter(Boolean);
-      const content = parts.length ? `Assigned: ${record.title} — ${parts.join(' ')}` : `Assigned: ${record.title}`;
+      let content = parts.length ? `Assigned: ${record.title} — ${parts.join(' ')}` : `Assigned: ${record.title}`;
+      try {
+        const attachments = await listTaskFiles(token, record.id);
+        const links = attachments
+          .map((f: any) => taskFilePublicUrl(String(f?.shareToken || '')))
+          .filter(Boolean)
+          .slice(0, 3);
+        if (links.length) content += ` Files: ${links.join(' ')}`;
+      } catch {
+        // ignore attachment lookup errors (task assignment should still deliver)
+      }
       await createNotification(token, agentId, content, record.id, 'assigned');
     }
   }
@@ -692,6 +785,21 @@ async function handleDocumentEvent(token: string, record: any, action: string) {
 
   const type = action === 'create' ? 'document_created' : 'document_updated';
   await createActivity(token, type, `Document ${action}d: ${record.title}`, taskId, record.authorAgentId || '');
+}
+
+async function handleTaskFileEvent(token: string, record: any, action: string) {
+  const taskId = String(record.taskId || '').trim();
+  if (!taskId) return;
+
+  await pbFetch(`/api/collections/tasks/records/${taskId}`, {
+    method: 'PATCH',
+    token,
+    body: { lastProgressAt: nowIso(), leaseExpiresAt: minutesFromNow(env.LEASE_MINUTES), updatedAt: nowIso() },
+  });
+
+  const title = String(record.title || '').trim() || 'file';
+  const type = action === 'create' ? 'file_added' : action === 'update' ? 'file_updated' : 'file_changed';
+  await createActivity(token, type, `File ${action}d: ${title}`, taskId);
 }
 
 async function handleSubtaskEvent(token: string, record: any, action: string) {
@@ -888,7 +996,17 @@ async function backfillAssignedTaskNotifications(token: string) {
           }
         }
 
-        const content = buildAssignedNotificationContent(record, desc, ctx);
+        let content = buildAssignedNotificationContent(record, desc, ctx);
+        try {
+          const attachments = await listTaskFiles(token, taskId);
+          const links = attachments
+            .map((f: any) => taskFilePublicUrl(String(f?.shareToken || '')))
+            .filter(Boolean)
+            .slice(0, 3);
+          if (links.length) content += ` Files: ${links.join(' ')}`;
+        } catch {
+          // ignore attachment lookup errors
+        }
         await createNotification(token, normalized, content, taskId, 'assigned');
         created++;
       }
@@ -1020,6 +1138,13 @@ async function subscribeWithRetry(token: string) {
         await handleDocumentEvent(token, e.record, e.action);
       }
     });
+    try {
+      await pb.collection('task_files').subscribe('*', async (e) => {
+        await handleTaskFileEvent(token, e.record, e.action);
+      });
+    } catch {
+      // Optional collection (may not exist on older schemas).
+    }
     await pb.collection('subtasks').subscribe('*', async (e) => handleSubtaskEvent(token, e.record, e.action));
     await pb.collection('notifications').subscribe('*', async () => scheduleDeliver(token));
   };

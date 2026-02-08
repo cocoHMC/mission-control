@@ -78,11 +78,24 @@ export async function GET(req: NextRequest) {
     sessions.find((s: any) => normalizeSessionKey(String(s?.key || '')) === sessionKey) ??
     sessions.find((s: any) => String(s?.key || '').trim() === sessionKey) ??
     null;
+  const defaults = parsed.defaults && typeof parsed.defaults === 'object' ? parsed.defaults : null;
   if (!found) {
-    return NextResponse.json({ ok: false, error: 'Session not found (it may have been deleted).' }, { status: 404 });
+    // If the session exists but isn't returned by sessions.list (provider/version quirks),
+    // we still want a 200 so the UI doesn't spam console errors. The history endpoint
+    // is the source of truth for the transcript anyway.
+    return NextResponse.json(
+      {
+        ok: true,
+        row: {
+          sessionKey,
+          missing: true,
+        },
+        defaults,
+      },
+      { status: 200 }
+    );
   }
 
-  const defaults = parsed.defaults && typeof parsed.defaults === 'object' ? parsed.defaults : null;
   const used = typeof found?.totalTokens === 'number' ? found.totalTokens : null;
   const max =
     typeof found?.contextTokens === 'number'
@@ -135,4 +148,3 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ ok: true, row, defaults });
 }
-

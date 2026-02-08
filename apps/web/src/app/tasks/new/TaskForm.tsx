@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { fromDateTimeLocalValue } from '@/lib/utils';
+import { fromDateTimeLocalValue, toDateTimeLocalValue } from '@/lib/utils';
 import { mcFetch } from '@/lib/clientApi';
 
 type Agent = { id: string; displayName?: string; openclawAgentId?: string };
@@ -27,10 +27,14 @@ export function TaskForm({
   agents,
   nodes,
   onCreated,
+  initialStartAt,
+  initialDueAt,
 }: {
   agents: Agent[];
   nodes: NodeRecord[];
   onCreated?: (taskId?: string) => void;
+  initialStartAt?: string;
+  initialDueAt?: string;
 }) {
   const router = useRouter();
   const [pending, setPending] = React.useState(false);
@@ -38,11 +42,13 @@ export function TaskForm({
   const [description, setDescription] = React.useState('');
   const [context, setContext] = React.useState('');
   const [priority, setPriority] = React.useState('p2');
+  const [aiEffort, setAiEffort] = React.useState('auto');
+  const [aiModelTier, setAiModelTier] = React.useState('auto');
   const [assignees, setAssignees] = React.useState<string[]>([]);
   const [labels, setLabels] = React.useState('');
   const [requiredNodeId, setRequiredNodeId] = React.useState('');
-  const [startAt, setStartAt] = React.useState('');
-  const [dueAt, setDueAt] = React.useState('');
+  const [startAt, setStartAt] = React.useState(() => toDateTimeLocalValue(initialStartAt));
+  const [dueAt, setDueAt] = React.useState(() => toDateTimeLocalValue(initialDueAt));
   const [requiresReview, setRequiresReview] = React.useState(false);
   const [subtasks, setSubtasks] = React.useState<{ id: string; title: string }[]>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = React.useState('');
@@ -119,6 +125,8 @@ export function TaskForm({
         description,
         context,
         priority,
+        aiEffort,
+        aiModelTier,
         assigneeIds: assignees,
         status: assignees.length ? 'assigned' : 'inbox',
         labels: labelList,
@@ -212,6 +220,40 @@ export function TaskForm({
               </option>
             ))}
           </select>
+        </div>
+        <div>
+          <label className="text-sm font-medium">AI effort</label>
+          <select
+            className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+            value={aiEffort}
+            onChange={(event) => setAiEffort(event.target.value)}
+          >
+            <option value="auto">Auto (agent default)</option>
+            <option value="efficient">Efficient (low tokens)</option>
+            <option value="balanced">Balanced</option>
+            <option value="heavy">Heavy (thorough)</option>
+          </select>
+          <div className="mt-2 text-xs text-muted">
+            Used to prefix OpenClaw directives for this task (cheap vs heavy thinking).
+          </div>
+        </div>
+        <div>
+          <label className="text-sm font-medium">Model tier</label>
+          <select
+            className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+            value={aiModelTier}
+            onChange={(event) => setAiModelTier(event.target.value)}
+          >
+            <option value="auto">Auto (agent default)</option>
+            <option value="cheap">Cheap</option>
+            <option value="balanced">Balanced</option>
+            <option value="heavy">Heavy</option>
+            <option value="code">Code</option>
+            <option value="vision">Vision</option>
+          </select>
+          <div className="mt-2 text-xs text-muted">
+            Optional inline <span className="font-mono">/model</span> override for agent messages on this task.
+          </div>
         </div>
         <div>
           <label className="text-sm font-medium">Execution device (optional)</label>

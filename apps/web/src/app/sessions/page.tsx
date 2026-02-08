@@ -14,9 +14,9 @@ async function getAgents() {
 export default async function SessionsPage() {
   const agents = await getAgents();
   return (
-    <AppShell scroll="none">
+    <AppShell scroll="none" padding="dense">
       <div className="flex h-full min-h-0 flex-col">
-        <Topbar title="Sessions" actionHref="/sessions?new=1" actionLabel="New session" />
+        <Topbar title="Sessions" actionHref="/sessions?new=1" actionLabel="New session" density="compact" />
         <div className="mt-2 min-h-0 flex-1 sm:mt-4">
           <SessionsInboxClient agents={agents.items ?? []} />
         </div>

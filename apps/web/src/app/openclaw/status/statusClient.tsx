@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
+import { mcFetch } from '@/lib/clientApi';
 
 type StatusReport = any;
 type UsageCost = any;
@@ -45,8 +46,8 @@ export function StatusClient() {
         all: all ? '1' : '0',
       });
       const [statusRes, usageRes] = await Promise.all([
-        fetch(`/api/openclaw/status/report?${q.toString()}`, { cache: 'no-store' }),
-        fetch(`/api/openclaw/gateway/usage-cost?days=${days}`, { cache: 'no-store' }),
+        mcFetch(`/api/openclaw/status/report?${q.toString()}`, { cache: 'no-store' }),
+        mcFetch(`/api/openclaw/gateway/usage-cost?days=${days}`, { cache: 'no-store' }),
       ]);
 
       const statusJson = await statusRes.json().catch(() => null);

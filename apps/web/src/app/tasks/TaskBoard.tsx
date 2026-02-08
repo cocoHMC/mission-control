@@ -2,271 +2,261 @@
 
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { DndContext, DragEndEvent, PointerSensor, closestCenter, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
+import {
+  DndContext,
+  DragOverlay,
+  type CollisionDetection,
+  PointerSensor,
+  closestCorners,
+  pointerWithin,
+  rectIntersection,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { GripVertical } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { cn, formatShortDate, titleCase } from '@/lib/utils';
-import { TaskDrawer } from '@/app/tasks/TaskDrawer';
+import { Button } from '@/components/ui/button';
+import { AgentAvatar } from '@/components/ui/agent-avatar';
+import { TaskViewToggle } from '@/app/tasks/TaskViewToggle';
 import { TaskCreateDrawer } from '@/app/tasks/TaskCreateDrawer';
-import { getPocketBaseClient, type PBRealtimeEvent } from '@/lib/pbClient';
+import { TaskDrawer } from '@/app/tasks/TaskDrawer';
 import { mcFetch } from '@/lib/clientApi';
+import { getPocketBaseClient, type PBRealtimeEvent } from '@/lib/pbClient';
+import type { Agent, NodeRecord, Task, TaskStatus } from '@/lib/types';
+import { cn, formatShortDate, titleCase } from '@/lib/utils';
 
-const columns = [
-  { id: 'inbox', label: 'Inbox' },
-  { id: 'assigned', label: 'Assigned' },
-  { id: 'in_progress', label: 'In Progress' },
-  { id: 'review', label: 'Review' },
-  { id: 'blocked', label: 'Blocked' },
-  { id: 'done', label: 'Done' },
+const columns: Array<{ id: TaskStatus; label: string; tone: string }> = [
+  { id: 'inbox', label: 'Inbox', tone: 'slate' },
+  { id: 'assigned', label: 'Assigned', tone: 'blue' },
+  { id: 'in_progress', label: 'In Progress', tone: 'teal' },
+  { id: 'review', label: 'Review', tone: 'amber' },
+  { id: 'blocked', label: 'Blocked', tone: 'red' },
+  { id: 'done', label: 'Done', tone: 'emerald' },
 ];
 
-type Task = {
-  id: string;
-  title: string;
-  priority?: string;
-  status: string;
-  archived?: boolean;
-  order?: number;
-  dueAt?: string;
-  subtasksTotal?: number;
-  subtasksDone?: number;
-  assigneeIds?: string[];
-  labels?: string[];
-  requiredNodeId?: string;
-};
+function computeOrderAtIndex(sorted: Task[], idx: number) {
+  const prev = idx > 0 ? sorted[idx - 1] : null;
+  const next = idx < sorted.length ? sorted[idx] : null;
+  const prevOrder = typeof prev?.order === 'number' ? prev.order : null;
+  const nextOrder = typeof next?.order === 'number' ? next.order : null;
 
-type Agent = {
-  id: string;
-  displayName?: string;
-  openclawAgentId?: string;
-};
+  if (prevOrder == null && nextOrder == null) return Date.now();
+  if (prevOrder == null && nextOrder != null) return nextOrder - 1000;
+  if (prevOrder != null && nextOrder == null) return prevOrder + 1000;
+  if (prevOrder != null && nextOrder != null) {
+    if (prevOrder === nextOrder) return prevOrder + 1;
+    return (prevOrder + nextOrder) / 2;
+  }
+  return Date.now();
+}
 
-type NodeRecord = {
-  id: string;
-  displayName?: string;
-  nodeId?: string;
-};
-
-function TaskCard({
-  task,
-  onOpen,
-  nodeLabel,
+function EventAvatars({
+  ids,
+  agentLabelById,
+  max = 3,
 }: {
-  task: Task;
-  onOpen: (taskId: string) => void;
-  nodeLabel?: string;
+  ids: string[];
+  agentLabelById: Map<string, string>;
+  max?: number;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: task.id,
-    data: { status: task.status },
-  });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
+  const cleaned = Array.from(new Set((ids || []).map((v) => String(v || '').trim()).filter(Boolean)));
+  const head = cleaned.slice(0, max);
+  const extra = Math.max(0, cleaned.length - head.length);
 
   return (
-    <button
-      ref={setNodeRef}
-      style={style}
+    <div className="flex items-center gap-1">
+      {head.map((id) => {
+        const label = agentLabelById.get(id) || id;
+        return <AgentAvatar key={id} id={id} label={label} size={24} />;
+      })}
+      {extra ? (
+        <span className="inline-flex h-6 items-center rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 text-[10px] font-semibold text-muted">
+          +{extra}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function TaskCardShell({
+  task,
+  nodeLabel,
+  agentLabelById,
+  dragging,
+  children,
+  onOpen,
+}: {
+  task: Task;
+  nodeLabel?: string;
+  agentLabelById: Map<string, string>;
+  dragging?: boolean;
+  children?: React.ReactNode;
+  onOpen?: () => void;
+}) {
+  const assignees = Array.isArray(task.assigneeIds) ? task.assigneeIds : [];
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') onOpen?.();
+      }}
       className={cn(
-        'group w-full rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-left text-sm shadow-sm transition select-none',
-        isDragging
-          ? 'opacity-60 cursor-grabbing'
-          : 'cursor-grab hover:-translate-y-0.5 hover:shadow-md'
+        'group w-full rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-left shadow-sm transition',
+        'hover:-translate-y-0.5 hover:shadow-md',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+        dragging ? 'opacity-60' : ''
       )}
-      type="button"
-      onClick={() => onOpen(task.id)}
-      {...attributes}
-      {...listeners}
     >
-      <div className="flex items-stretch gap-3">
-        <div
-          aria-hidden="true"
-          className="relative flex w-6 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)]/60 opacity-70 transition group-hover:opacity-95"
-          style={{
-            backgroundImage:
-              'repeating-linear-gradient(180deg, rgba(15,23,42,0.22) 0, rgba(15,23,42,0.22) 2px, transparent 2px, transparent 6px)',
-          }}
-        />
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 shrink-0">
+          {children}
+        </div>
         <div className="min-w-0 flex-1">
-          <div
-            className="font-medium"
-            style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
-          >
-            {task.title}
-          </div>
-          {(task.labels?.length || task.requiredNodeId) && (
-            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted">
-              {task.requiredNodeId && (
-                <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">
-                  run:{nodeLabel || task.requiredNodeId}
-                </span>
-              )}
-              {(task.labels ?? []).slice(0, 2).map((label) => (
-                <span key={label} className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">
-                  {label}
-                </span>
-              ))}
-              {(task.labels?.length ?? 0) > 2 && (
-                <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">
-                  +{(task.labels?.length ?? 0) - 2}
-                </span>
-              )}
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="font-semibold text-[var(--foreground)]" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                {task.title}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+                <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">{titleCase(task.status)}</span>
+                <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">{String(task.priority || 'p2').toUpperCase()}</span>
+                {task.requiredNodeId ? (
+                  <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">run:{nodeLabel || task.requiredNodeId}</span>
+                ) : null}
+              </div>
             </div>
-          )}
-          <div className="mt-2 flex items-center gap-2 text-xs text-muted">
-            <Badge className="border-none">{task.priority ?? 'p2'}</Badge>
-            {task.subtasksTotal ? (
-              <span>
-                {task.subtasksDone ?? 0}/{task.subtasksTotal}
-              </span>
-            ) : null}
-            {task.dueAt ? <span>due {formatShortDate(task.dueAt)}</span> : null}
-            <span>{task.assigneeIds?.length ? `${task.assigneeIds.length} assignee(s)` : 'Unassigned'}</span>
+
+            <div className="shrink-0">
+              {assignees.length ? <EventAvatars ids={assignees} agentLabelById={agentLabelById} max={3} /> : null}
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted">
+            <div className="flex items-center gap-2">
+              {task.subtasksTotal ? (
+                <span className="tabular-nums">
+                  {task.subtasksDone ?? 0}/{task.subtasksTotal}
+                </span>
+              ) : null}
+              {task.startAt ? <span className="whitespace-nowrap">start {formatShortDate(task.startAt)}</span> : null}
+              {task.dueAt ? <span className="whitespace-nowrap">due {formatShortDate(task.dueAt)}</span> : null}
+            </div>
+            <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">{assignees.length || '0'} agents</Badge>
           </div>
         </div>
-      </div>
-    </button>
-  );
-}
-
-function TaskCardStatic({
-  task,
-  onOpen,
-  nodeLabel,
-}: {
-  task: Task;
-  onOpen: (taskId: string) => void;
-  nodeLabel?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onOpen(task.id)}
-      className={cn('group w-full rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-left text-sm shadow-sm transition hover:-translate-y-0.5 hover:shadow-md')}
-    >
-      <div className="flex items-stretch gap-3">
-        <div
-          aria-hidden="true"
-          className="relative flex w-6 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)]/60 opacity-70"
-          style={{
-            backgroundImage:
-              'repeating-linear-gradient(180deg, rgba(15,23,42,0.22) 0, rgba(15,23,42,0.22) 2px, transparent 2px, transparent 6px)',
-          }}
-        />
-        <div className="min-w-0 flex-1">
-          <div
-            className="font-medium"
-            style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
-          >
-            {task.title}
-          </div>
-          {(task.labels?.length || task.requiredNodeId) && (
-            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted">
-              {task.requiredNodeId && (
-                <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">
-                  run:{nodeLabel || task.requiredNodeId}
-                </span>
-              )}
-              {(task.labels ?? []).slice(0, 2).map((label) => (
-                <span key={label} className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">
-                  {label}
-                </span>
-              ))}
-              {(task.labels?.length ?? 0) > 2 && (
-                <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5">
-                  +{(task.labels?.length ?? 0) - 2}
-                </span>
-              )}
-            </div>
-          )}
-          <div className="mt-2 flex items-center gap-2 text-xs text-muted">
-            <Badge className="border-none">{task.priority ?? 'p2'}</Badge>
-            {task.subtasksTotal ? (
-              <span>
-                {task.subtasksDone ?? 0}/{task.subtasksTotal}
-              </span>
-            ) : null}
-            {task.dueAt ? <span>due {formatShortDate(task.dueAt)}</span> : null}
-            <span>{task.assigneeIds?.length ? `${task.assigneeIds.length} assignee(s)` : 'Unassigned'}</span>
-          </div>
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function Column({
-  status,
-  tasks,
-  onOpen,
-  nodeLabelById,
-}: {
-  status: string;
-  tasks: Task[];
-  onOpen: (taskId: string) => void;
-  nodeLabelById: Map<string, string>;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id: status, data: { status } });
-
-  return (
-    <div className="flex w-[240px] shrink-0 flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] sm:w-[260px] lg:w-[300px]">
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)]/95 px-3 py-3 backdrop-blur">
-        <div className="text-xs uppercase tracking-[0.2em] text-muted">{titleCase(status)}</div>
-        <Badge className="bg-[var(--surface)] text-[var(--foreground)]">{tasks.length}</Badge>
-      </div>
-      <div
-        ref={setNodeRef}
-        className={cn('space-y-3 p-3 transition', isOver ? 'bg-[color:var(--card)]/70' : '')}
-        style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}
-      >
-        <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-          {tasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              onOpen={onOpen}
-              nodeLabel={task.requiredNodeId ? nodeLabelById.get(task.requiredNodeId) : undefined}
-            />
-          ))}
-        </SortableContext>
-        {!tasks.length && <div className="rounded-xl border border-dashed border-[var(--border)] p-4 text-xs text-muted">Drop tasks here</div>}
       </div>
     </div>
   );
 }
 
-function ColumnStatic({
-  status,
-  tasks,
+function SortableTaskCard({
+  task,
+  nodeLabel,
+  agentLabelById,
   onOpen,
-  nodeLabelById,
 }: {
-  status: string;
-  tasks: Task[];
-  onOpen: (taskId: string) => void;
-  nodeLabelById: Map<string, string>;
+  task: Task;
+  nodeLabel?: string;
+  agentLabelById: Map<string, string>;
+  onOpen: () => void;
 }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: task.id,
+    data: { status: task.status },
+  });
+
   return (
-    <div className="flex w-[240px] shrink-0 flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] sm:w-[260px] lg:w-[300px]">
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)]/95 px-3 py-3 backdrop-blur">
-        <div className="text-xs uppercase tracking-[0.2em] text-muted">{titleCase(status)}</div>
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(isDragging && 'z-10')}
+    >
+      <TaskCardShell task={task} nodeLabel={nodeLabel} agentLabelById={agentLabelById} dragging={isDragging} onOpen={onOpen}>
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          aria-label="Drag task"
+          className={cn(
+            'inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]',
+            'transition hover:bg-[var(--card)]',
+            isDragging ? 'cursor-grabbing' : 'cursor-grab'
+          )}
+          onClick={(e) => e.stopPropagation()}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4 opacity-80" />
+        </button>
+      </TaskCardShell>
+    </div>
+  );
+}
+
+function Column({
+  status,
+  label,
+  tasks,
+  nodeLabelById,
+  agentLabelById,
+  onOpen,
+}: {
+  status: TaskStatus;
+  label: string;
+  tasks: Task[];
+  nodeLabelById: Map<string, string>;
+  agentLabelById: Map<string, string>;
+  onOpen: (taskId: string) => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: status });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'flex w-[280px] shrink-0 flex-col rounded-3xl border border-[var(--border)] bg-[var(--surface)] shadow-sm sm:w-[320px]',
+        // Make the whole column a drop target (including the header) to feel like a proper Kanban.
+        isOver ? 'ring-2 ring-[var(--ring)] ring-offset-2 ring-offset-[var(--surface)]' : ''
+      )}
+    >
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[linear-gradient(135deg,var(--glass-1),var(--glass-2))] px-4 py-3 backdrop-blur">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">{label}</div>
+          <div className="mt-1 text-xs text-muted">{tasks.length} task(s)</div>
+        </div>
         <Badge className="border-none bg-[var(--card)] text-[var(--foreground)]">{tasks.length}</Badge>
       </div>
-      <div className={cn('space-y-3 p-3 transition')} style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
-        {tasks.map((task) => (
-          <TaskCardStatic
-            key={task.id}
-            task={task}
-            onOpen={onOpen}
-            nodeLabel={task.requiredNodeId ? nodeLabelById.get(task.requiredNodeId) : undefined}
-          />
-        ))}
-        {!tasks.length && (
-          <div className="rounded-xl border border-dashed border-[var(--border)] p-4 text-xs text-muted">No tasks</div>
+
+      <div
+        className={cn(
+          'min-h-0 flex-1 overflow-y-auto p-3 transition-colors',
+          isOver ? 'bg-[color:var(--foreground)]/4' : ''
         )}
+      >
+        <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-3">
+            {tasks.map((t) => (
+              <SortableTaskCard
+                key={t.id}
+                task={t}
+                nodeLabel={t.requiredNodeId ? nodeLabelById.get(t.requiredNodeId) : undefined}
+                agentLabelById={agentLabelById}
+                onOpen={() => onOpen(t.id)}
+              />
+            ))}
+          </div>
+        </SortableContext>
+        {!tasks.length ? (
+          <div className="mt-3 rounded-2xl border border-dashed border-[var(--border)] bg-[var(--card)] p-6 text-xs text-muted">Drop tasks here</div>
+        ) : null}
       </div>
     </div>
   );
@@ -275,15 +265,14 @@ function ColumnStatic({
 export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[]; agents: Agent[]; nodes: NodeRecord[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+
   const [tasks, setTasks] = React.useState<Task[]>(initialTasks);
   const [mounted, setMounted] = React.useState(false);
   const [createOpen, setCreateOpen] = React.useState(false);
-  // Optimistic open/close to avoid a jittery UX while the URL updates.
-  // `undefined` => follow URL `?task=...`
-  // `string`    => force open that task immediately
-  // `null`      => force closed immediately
   const [overrideTaskId, setOverrideTaskId] = React.useState<string | null | undefined>(undefined);
-  const draggingRef = React.useRef(false);
+
+  const [activeId, setActiveId] = React.useState<string | null>(null);
+  const dragSnapshotRef = React.useRef<{ id: string; status: TaskStatus; order?: number } | null>(null);
   const suppressOpenRef = React.useRef(false);
   const suppressOpenTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -292,6 +281,22 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
       activationConstraint: { distance: 6 },
     })
   );
+
+  // Multi-column boards need a pointer-first collision strategy so empty columns
+  // are valid drop targets (closestCorners tends to snap to the nearest card).
+  // Also exclude the active draggable id so we never "drop onto ourselves".
+  const collisionDetection: CollisionDetection = React.useCallback((args) => {
+    const withoutActive = <T extends { id: unknown }>(collisions: T[]) =>
+      collisions.filter((c) => String(c.id) !== String(args.active.id));
+
+    const pointerHits = withoutActive(pointerWithin(args));
+    if (pointerHits.length) return pointerHits;
+
+    const rectHits = withoutActive(rectIntersection(args));
+    if (rectHits.length) return rectHits;
+
+    return withoutActive(closestCorners(args));
+  }, []);
 
   React.useEffect(() => {
     setTasks(initialTasks);
@@ -311,12 +316,24 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
     return map;
   }, [nodes]);
 
+  const agentLabelById = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of agents) {
+      const key = String(a.openclawAgentId ?? a.id);
+      const label = String(a.displayName ?? key);
+      if (a.id) map.set(a.id, label);
+      if (a.openclawAgentId) map.set(a.openclawAgentId, label);
+      map.set(key, label);
+    }
+    return map;
+  }, [agents]);
+
   React.useEffect(() => {
     let pollId: ReturnType<typeof setInterval> | null = setInterval(async () => {
       const res = await mcFetch('/api/tasks?page=1&perPage=200');
       if (!res.ok) return;
-      const json = await res.json();
-      setTasks(json.items ?? []);
+      const json = await res.json().catch(() => null);
+      setTasks(json?.items ?? []);
     }, 30_000);
 
     let cancelled = false;
@@ -348,11 +365,7 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
     return () => {
       cancelled = true;
       if (pollId) clearInterval(pollId);
-      if (unsubscribe) {
-        void unsubscribe().catch(() => {
-          // Ignore realtime teardown errors on fast refresh/unmounted sessions.
-        });
-      }
+      if (unsubscribe) void unsubscribe().catch(() => {});
     };
   }, []);
 
@@ -369,6 +382,40 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
     if (typeof overrideTaskId === 'string' && taskParam === overrideTaskId) setOverrideTaskId(undefined);
   }, [overrideTaskId, taskParam]);
 
+  const grouped = React.useMemo(() => {
+    const by = new Map<TaskStatus, Task[]>();
+    for (const c of columns) by.set(c.id, []);
+    for (const t of tasks) {
+      if (t.archived) continue;
+      const list = by.get(t.status as TaskStatus);
+      if (!list) continue;
+      list.push(t);
+    }
+    for (const [k, list] of by.entries()) {
+      list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      by.set(k, list);
+    }
+    return by;
+  }, [tasks]);
+
+  function openDrawer(taskId: string) {
+    if (suppressOpenRef.current) return;
+    setOverrideTaskId(taskId);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('new');
+    params.set('task', taskId);
+    const next = params.toString();
+    router.replace(next ? `/tasks?${next}` : '/tasks', { scroll: false });
+  }
+
+  function closeDrawer() {
+    setOverrideTaskId(null);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('task');
+    const next = params.toString();
+    router.replace(next ? `/tasks?${next}` : '/tasks', { scroll: false });
+  }
+
   function closeCreateDrawer() {
     setCreateOpen(false);
     const params = new URLSearchParams(searchParams.toString());
@@ -377,7 +424,7 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
     router.replace(next ? `/tasks?${next}` : '/tasks', { scroll: false });
   }
 
-  async function updateTask(taskId: string, patch: Record<string, unknown>) {
+  async function patchTask(taskId: string, patch: Record<string, unknown>) {
     await mcFetch(`/api/tasks/${taskId}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
@@ -385,139 +432,229 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
     });
   }
 
-  function handleDragEnd(event: DragEndEvent) {
-    draggingRef.current = false;
+  function findTask(id: string) {
+    return tasks.find((t) => t.id === id) || null;
+  }
+
+  function columnOfId(id: string): TaskStatus | null {
+    const colIds = new Set(columns.map((c) => c.id));
+    if (colIds.has(id as any)) return id as TaskStatus;
+    const t = findTask(id);
+    return t ? (t.status as TaskStatus) : null;
+  }
+
+  function setSuppressOpen() {
     suppressOpenRef.current = true;
     if (suppressOpenTimerRef.current) clearTimeout(suppressOpenTimerRef.current);
     suppressOpenTimerRef.current = setTimeout(() => {
       suppressOpenRef.current = false;
       suppressOpenTimerRef.current = null;
     }, 250);
-    const { active, over } = event;
-    if (!over) return;
-    const activeId = String(active.id);
-    const overId = String(over.id);
-    const task = tasks.find((t) => t.id === activeId);
-    if (!task) return;
-
-    const columnIds = new Set(columns.map((c) => c.id));
-    let nextStatus = task.status;
-    let insertBeforeTaskId: string | null = null;
-
-    if (columnIds.has(overId)) {
-      nextStatus = overId;
-    } else {
-      const overTask = tasks.find((t) => t.id === overId);
-      if (!overTask) return;
-      nextStatus = overTask.status;
-      insertBeforeTaskId = overTask.id;
-    }
-
-    const currentColumn = (grouped[nextStatus] ?? [])
-      .filter((t) => t.id !== activeId)
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    const insertIdx = insertBeforeTaskId ? currentColumn.findIndex((t) => t.id === insertBeforeTaskId) : currentColumn.length;
-    const idx = insertIdx === -1 ? currentColumn.length : insertIdx;
-    const prev = idx > 0 ? currentColumn[idx - 1] : null;
-    const next = idx < currentColumn.length ? currentColumn[idx] : null;
-    const prevOrder = prev?.order ?? 0;
-    const nextOrder = next?.order ?? prevOrder + 1000;
-    let nextOrderValue: number;
-    if (!prev && !next) {
-      const maxOrder = tasks.reduce((acc, t) => Math.max(acc, Number(t.order ?? 0)), 0);
-      nextOrderValue = maxOrder + 1000;
-    }
-    else if (!prev) nextOrderValue = nextOrder - 1000;
-    else if (!next) nextOrderValue = prevOrder + 1000;
-    else nextOrderValue = (prevOrder + nextOrder) / 2;
-
-    // Avoid a degenerate order that doesn't move the task.
-    if (Number.isFinite(task.order) && task.order === nextOrderValue && task.status === nextStatus) return;
-
-    setTasks((prevTasks) =>
-      prevTasks.map((t) => (t.id === activeId ? { ...t, status: nextStatus, order: nextOrderValue } : t))
-    );
-    const patch: Record<string, unknown> = { order: nextOrderValue };
-    if (nextStatus !== task.status) patch.status = nextStatus;
-    void updateTask(activeId, patch);
   }
 
-  const grouped = columns.reduce<Record<string, Task[]>>((acc, col) => {
-    acc[col.id] = tasks
-      .filter((task) => task.status === col.id && !task.archived)
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    return acc;
-  }, {});
-
-  function openDrawer(taskId: string) {
-    // Guardrail: avoid opening a task drawer as a side-effect of a drag gesture.
-    if (draggingRef.current) return;
-    if (suppressOpenRef.current) return;
-    setOverrideTaskId(taskId);
-    router.replace(`/tasks?task=${taskId}`, { scroll: false });
+  function onDragStart(e: DragStartEvent) {
+    const id = String(e.active.id);
+    const t = findTask(id);
+    if (!t) return;
+    setActiveId(id);
+    dragSnapshotRef.current = { id, status: t.status as TaskStatus, order: t.order };
   }
 
-  function closeDrawer() {
-    setOverrideTaskId(null);
-    router.replace('/tasks', { scroll: false });
+  function onDragOver(e: DragOverEvent) {
+    const active = String(e.active.id);
+    const over = e.over ? String(e.over.id) : '';
+    if (!active || !over) return;
+
+    const activeTask = findTask(active);
+    if (!activeTask) return;
+
+    const source = columnOfId(active);
+    const target = columnOfId(over);
+    if (!source || !target) return;
+    if (source === target) return;
+
+    const targetTasks = (grouped.get(target) || []).filter((t) => t.id !== active);
+    const overIsColumn = columns.some((c) => c.id === (over as any));
+    const idx = overIsColumn ? targetTasks.length : targetTasks.findIndex((t) => t.id === over);
+    const insertIdx = idx === -1 ? targetTasks.length : idx;
+    const nextOrder = computeOrderAtIndex(targetTasks, insertIdx);
+
+    setTasks((prev) => prev.map((t) => (t.id === active ? { ...t, status: target, order: nextOrder } : t)));
+  }
+
+  function onDragCancel() {
+    const snap = dragSnapshotRef.current;
+    setActiveId(null);
+    dragSnapshotRef.current = null;
+    if (!snap) return;
+
+    setTasks((prev) => prev.map((t) => (t.id === snap.id ? { ...t, status: snap.status, order: snap.order } : t)));
+    setSuppressOpen();
+  }
+
+  function onDragEnd(e: DragEndEvent) {
+    const snap = dragSnapshotRef.current;
+    dragSnapshotRef.current = null;
+    setActiveId(null);
+
+    const active = String(e.active.id);
+    const over = e.over ? String(e.over.id) : '';
+    if (!snap) return;
+    if (!active || !over) {
+      // Revert to snapshot.
+      setTasks((prev) => prev.map((t) => (t.id === snap.id ? { ...t, status: snap.status, order: snap.order } : t)));
+      setSuppressOpen();
+      return;
+    }
+
+    const activeTask = findTask(active);
+    if (!activeTask) return;
+
+    const source = snap.status;
+    const target = columnOfId(over) || source;
+
+    // Reorder within a column.
+    if (source === target) {
+      const colTasks = (grouped.get(source) || []).filter((t) => t.id !== active);
+      const overIsColumn = columns.some((c) => c.id === (over as any));
+      const idx = overIsColumn ? colTasks.length : colTasks.findIndex((t) => t.id === over);
+      const insertIdx = idx === -1 ? colTasks.length : idx;
+
+      const reordered = [...colTasks];
+      reordered.splice(insertIdx, 0, activeTask);
+
+      // Compute a new order for the active task based on its neighbors.
+      const newIndex = reordered.findIndex((t) => t.id === active);
+      const before = newIndex > 0 ? reordered[newIndex - 1] : null;
+      const after = newIndex < reordered.length - 1 ? reordered[newIndex + 1] : null;
+      const beforeOrder = typeof before?.order === 'number' ? before.order : null;
+      const afterOrder = typeof after?.order === 'number' ? after.order : null;
+
+      let nextOrder: number;
+      if (beforeOrder == null && afterOrder == null) nextOrder = Date.now();
+      else if (beforeOrder == null && afterOrder != null) nextOrder = afterOrder - 1000;
+      else if (beforeOrder != null && afterOrder == null) nextOrder = beforeOrder + 1000;
+      else nextOrder = beforeOrder != null && afterOrder != null ? (beforeOrder + afterOrder) / 2 : Date.now();
+
+      if (activeTask.order === nextOrder) {
+        setSuppressOpen();
+        return;
+      }
+
+      setTasks((prev) => prev.map((t) => (t.id === active ? { ...t, order: nextOrder } : t)));
+      void patchTask(active, { order: nextOrder });
+      setSuppressOpen();
+      return;
+    }
+
+    // Cross-column move.
+    const targetTasks = (grouped.get(target) || []).filter((t) => t.id !== active);
+    const overIsColumn = columns.some((c) => c.id === (over as any));
+    const idx = overIsColumn ? targetTasks.length : targetTasks.findIndex((t) => t.id === over);
+    const insertIdx = idx === -1 ? targetTasks.length : idx;
+    const nextOrder = computeOrderAtIndex(targetTasks, insertIdx);
+
+    setTasks((prev) => prev.map((t) => (t.id === active ? { ...t, status: target, order: nextOrder } : t)));
+    void patchTask(active, { status: target, order: nextOrder });
+    setSuppressOpen();
   }
 
   const effectiveTaskId = overrideTaskId !== undefined ? overrideTaskId : taskParam;
   const drawerOpen = Boolean(effectiveTaskId);
 
+  const activeTask = activeId ? findTask(activeId) : null;
+
   return (
-    <div>
-      <div className="mb-4 hidden flex-wrap gap-3 text-xs text-muted sm:flex">
-        <span>Active agents: {agents.length}</span>
-        <span>Drag tasks across columns to update status.</span>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 pb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          {/* On mobile the page titlebar is hidden to free space; keep Board/Calendar switch here. */}
+          <div className="lg:hidden">
+            <TaskViewToggle variant="inline" />
+          </div>
+          <div className="hidden sm:block text-xs text-muted">
+            Drag to reorder. Drop into another column to change status.
+          </div>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            const params = new URLSearchParams(searchParams.toString());
+            params.delete('task');
+            params.set('new', '1');
+            const next = params.toString();
+            router.replace(next ? `/tasks?${next}` : '/tasks', { scroll: false });
+          }}
+        >
+          New task
+        </Button>
       </div>
+
       {mounted ? (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={() => {
-            draggingRef.current = true;
-          }}
-          onDragCancel={() => {
-            draggingRef.current = false;
-            suppressOpenRef.current = true;
-            if (suppressOpenTimerRef.current) clearTimeout(suppressOpenTimerRef.current);
-            suppressOpenTimerRef.current = setTimeout(() => {
-              suppressOpenRef.current = false;
-              suppressOpenTimerRef.current = null;
-            }, 250);
-          }}
-          onDragEnd={handleDragEnd}
+          collisionDetection={collisionDetection}
+          onDragStart={onDragStart}
+          onDragOver={onDragOver}
+          onDragEnd={onDragEnd}
+          onDragCancel={onDragCancel}
         >
-          <div className="-mx-3 overflow-x-auto pb-4 sm:-mx-4">
-            <div className="flex w-max gap-4 px-3 sm:px-4">
+          <div className="min-h-0 flex-1 -mx-3 overflow-x-auto pb-4 sm:-mx-4">
+            <div className="flex h-full min-h-0 w-max gap-4 px-3 sm:px-4">
               {columns.map((col) => (
                 <Column
                   key={col.id}
                   status={col.id}
-                  tasks={grouped[col.id] ?? []}
-                  onOpen={openDrawer}
+                  label={col.label}
+                  tasks={grouped.get(col.id) || []}
                   nodeLabelById={nodeLabelById}
+                  agentLabelById={agentLabelById}
+                  onOpen={openDrawer}
                 />
               ))}
             </div>
           </div>
+
+          <DragOverlay>
+            {activeTask ? (
+              <div className="w-[320px]">
+                <TaskCardShell
+                  task={activeTask}
+                  nodeLabel={activeTask.requiredNodeId ? nodeLabelById.get(activeTask.requiredNodeId) : undefined}
+                  agentLabelById={agentLabelById}
+                  dragging
+                >
+                  <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+                    <GripVertical className="h-4 w-4 opacity-80" />
+                  </div>
+                </TaskCardShell>
+              </div>
+            ) : null}
+          </DragOverlay>
         </DndContext>
       ) : (
-        <div className="-mx-3 overflow-x-auto pb-4 sm:-mx-4">
-          <div className="flex w-max gap-4 px-3 sm:px-4">
+        <div className="min-h-0 flex-1 -mx-3 overflow-x-auto pb-4 sm:-mx-4">
+          <div className="flex h-full min-h-0 w-max gap-4 px-3 sm:px-4">
             {columns.map((col) => (
-              <ColumnStatic
+              <div
                 key={col.id}
-                status={col.id}
-                tasks={grouped[col.id] ?? []}
-                onOpen={openDrawer}
-                nodeLabelById={nodeLabelById}
-              />
+                className="flex w-[280px] shrink-0 flex-col rounded-3xl border border-[var(--border)] bg-[var(--surface)] shadow-sm sm:w-[320px]"
+              >
+                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[linear-gradient(135deg,var(--glass-1),var(--glass-2))] px-4 py-3 backdrop-blur">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">{col.label}</div>
+                  <Badge className="border-none bg-[var(--card)] text-[var(--foreground)]">0</Badge>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                  <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--card)] p-6 text-xs text-muted">Loading…</div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
       )}
+
       <TaskDrawer open={drawerOpen} taskId={effectiveTaskId} agents={agents} nodes={nodes} onClose={closeDrawer} />
       <TaskCreateDrawer open={createOpen} agents={agents} nodes={nodes} onClose={closeCreateDrawer} />
     </div>

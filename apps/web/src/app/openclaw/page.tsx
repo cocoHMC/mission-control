@@ -6,10 +6,12 @@ export const dynamic = 'force-dynamic';
 
 export default function OpenClawSettingsPage() {
   return (
-    <AppShell>
-      <Topbar title="OpenClaw" subtitle="Gateway status, models, security, approvals, and sessions." />
-      <div className="mt-4 sm:mt-8">
-        <OpenClawOverviewClient />
+    <AppShell padding="dense">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <Topbar title="OpenClaw" subtitle="Gateway status, models, security, approvals, and sessions." density="compact" />
+        <div className="min-h-0 flex-1">
+          <OpenClawOverviewClient />
+        </div>
       </div>
     </AppShell>
   );

@@ -6,12 +6,13 @@ export const dynamic = 'force-dynamic';
 
 export default function OpenClawModelsPage() {
   return (
-    <AppShell>
-      <Topbar title="OpenClaw Models" subtitle="Default model, fallbacks, and auth health." />
-      <div className="mt-4 sm:mt-8">
-        <ModelsClient />
+    <AppShell padding="dense">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <Topbar title="OpenClaw Models" subtitle="Default model, fallbacks, and auth health." density="compact" />
+        <div className="min-h-0 flex-1">
+          <ModelsClient />
+        </div>
       </div>
     </AppShell>
   );
 }
-

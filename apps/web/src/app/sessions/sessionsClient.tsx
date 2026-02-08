@@ -10,6 +10,7 @@ import {
   Layers,
   ListTodo,
   MessageCircle,
+  ArrowUpRight,
   SlidersHorizontal,
   RefreshCw,
   Search,
@@ -24,7 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { cn, formatShortDate } from '@/lib/utils';
+import { cn, formatShortDate, titleCase } from '@/lib/utils';
 import { mcFetch } from '@/lib/clientApi';
 import type { Agent } from '@/lib/types';
 import { SessionCreateDrawer } from '@/app/sessions/SessionCreateDrawer';
@@ -87,6 +88,15 @@ function agentIdFromSessionKey(sessionKey: string) {
   const parts = sessionKey.split(':');
   if (parts.length < 3) return null;
   return parts[1] || null;
+}
+
+function taskIdFromSessionKey(sessionKey: string) {
+  const parts = String(sessionKey || '')
+    .split(':')
+    .filter(Boolean);
+  const idx = parts.indexOf('mc');
+  if (idx === -1) return '';
+  return parts[idx + 1] || '';
 }
 
 function isAgentMainSessionKey(sessionKey: string) {
@@ -254,6 +264,9 @@ export function SessionsInboxClient({ agents }: { agents: Agent[] }) {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [rows, setRows] = React.useState<SessionRow[]>([]);
+  const [taskMetaById, setTaskMetaById] = React.useState<
+    Record<string, { id: string; title: string; status?: string; archived?: boolean }>
+  >({});
   const [selectedAgent, setSelectedAgent] = React.useState('');
   const [inboxMode, setInboxMode] = React.useState<InboxMode>('all');
   const [groupBy, setGroupBy] = React.useState<'agent' | 'type'>('agent');
@@ -331,6 +344,45 @@ export function SessionsInboxClient({ agents }: { agents: Agent[] }) {
     return out;
   }, [rows, selectedAgent, inboxMode, query]);
 
+  const taskMetaFetchKeyRef = React.useRef('');
+
+  const refreshTaskMeta = React.useCallback(
+    async (nextRows: SessionRow[]) => {
+      const ids = Array.from(
+        new Set(
+          (nextRows ?? [])
+            .filter((r) => sessionCategory(r) === 'mc')
+            .map((r) => taskIdFromSessionKey(r.sessionKey))
+            .filter(Boolean)
+        )
+      ).sort((a, b) => a.localeCompare(b));
+
+      const key = ids.join(',');
+      if (key === taskMetaFetchKeyRef.current) return;
+      taskMetaFetchKeyRef.current = key;
+
+      if (!ids.length) {
+        setTaskMetaById({});
+        return;
+      }
+
+      try {
+        const res = await mcFetch('/api/tasks/resolve', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        });
+        const json = await res.json().catch(() => null);
+        if (!res.ok) return;
+        const next = json?.byId && typeof json.byId === 'object' ? json.byId : {};
+        setTaskMetaById(next);
+      } catch {
+        // ignore task title lookup errors (sessions still render)
+      }
+    },
+    [setTaskMetaById]
+  );
+
   const groupedRows = React.useMemo(() => {
     const buckets: Record<InboxMode, SessionRow[]> = {
       all: [],
@@ -399,7 +451,7 @@ export function SessionsInboxClient({ agents }: { agents: Agent[] }) {
       .filter((section) => section.rows.length > 0);
   }, [agentIds, agentLabelById, filteredRows, groupBy, groupedRows, inboxMode]);
 
-  async function refreshSessions({ silent }: { silent?: boolean } = {}) {
+  const refreshSessions = React.useCallback(async ({ silent }: { silent?: boolean } = {}) => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     if (!silent) setLoading(true);
@@ -409,7 +461,9 @@ export function SessionsInboxClient({ agents }: { agents: Agent[] }) {
       const res = await mcFetch(`/api/openclaw/sessions?${q.toString()}`, { cache: 'no-store' });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error || 'Failed to load sessions');
-      setRows(json.rows ?? []);
+      const nextRows = json.rows ?? [];
+      setRows(nextRows);
+      void refreshTaskMeta(nextRows);
     } catch (err: unknown) {
       if (!silent) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -419,7 +473,7 @@ export function SessionsInboxClient({ agents }: { agents: Agent[] }) {
       refreshingRef.current = false;
       if (!silent) setLoading(false);
     }
-  }
+  }, [refreshTaskMeta]);
 
   async function deleteSession(sessionKey: string) {
     if (!sessionKey) return;
@@ -476,14 +530,14 @@ export function SessionsInboxClient({ agents }: { agents: Agent[] }) {
       // ignore
     }
     void refreshSessions();
-  }, []);
+  }, [refreshSessions]);
 
   React.useEffect(() => {
     const id = setInterval(() => {
       void refreshSessions({ silent: true });
     }, 30_000);
     return () => clearInterval(id);
-  }, []);
+  }, [refreshSessions]);
 
   const hasActiveFilters = Boolean(query.trim() || selectedAgent || inboxMode !== 'all' || groupBy !== 'agent');
 
@@ -573,6 +627,8 @@ export function SessionsInboxClient({ agents }: { agents: Agent[] }) {
                       const updatedMs = r.updatedAt ? Date.parse(r.updatedAt) : 0;
                       const unread = Boolean(updatedMs && updatedMs > lastSeen);
                       const category = sessionCategory(r);
+                      const linkedTaskId = category === 'mc' ? taskIdFromSessionKey(r.sessionKey) : '';
+                      const linkedTask = linkedTaskId ? taskMetaById?.[linkedTaskId] : null;
                       const badge =
                         category === 'mc'
                           ? 'Task'
@@ -595,6 +651,13 @@ export function SessionsInboxClient({ agents }: { agents: Agent[] }) {
                           : pct !== null && pct >= 80
                             ? 'bg-amber-300 text-amber-950 border-transparent'
                             : 'bg-[var(--highlight)] text-[var(--highlight-foreground)]';
+
+                      const title = linkedTask?.title ? linkedTask.title : info.title;
+                      const subtitle = (() => {
+                        if (category !== 'mc') return info.subtitle;
+                        const status = linkedTask?.status ? titleCase(linkedTask.status) : '';
+                        return status ? `${info.subtitle} · ${status}` : info.subtitle;
+                      })();
 
                       return (
                         <div
@@ -622,9 +685,9 @@ export function SessionsInboxClient({ agents }: { agents: Agent[] }) {
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-2">
                                     {unread ? <span className="h-2 w-2 rounded-full bg-[var(--accent)]" /> : null}
-                                    <div className="truncate text-sm font-semibold text-[var(--foreground)]">{info.title}</div>
+                                    <div className="truncate text-sm font-semibold text-[var(--foreground)]">{title}</div>
                                   </div>
-                                  <div className="mt-1 truncate text-xs text-muted">{info.subtitle}</div>
+                                  <div className="mt-1 truncate text-xs text-muted">{subtitle}</div>
                                 </div>
                                 <div className="shrink-0 text-right">
                                   {when ? <div className="text-xs text-muted">{when}</div> : null}
@@ -648,6 +711,19 @@ export function SessionsInboxClient({ agents }: { agents: Agent[] }) {
                           </Link>
 
                           <div className="flex shrink-0 flex-row gap-2 opacity-100 transition sm:flex-col sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                            {linkedTaskId ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                className="h-9 w-9 px-0"
+                                onClick={() => router.push(`/tasks?task=${encodeURIComponent(linkedTaskId)}`)}
+                                aria-label="Open linked task"
+                                title="Open linked task"
+                              >
+                                <ArrowUpRight className="h-4 w-4" />
+                              </Button>
+                            ) : null}
                             <Button
                               type="button"
                               size="sm"
@@ -776,6 +852,8 @@ export function SessionsThreadClient({
 
   const safeSessionKey = React.useMemo(() => sessionKey.replace(/ /g, '+'), [sessionKey]);
   const agentId = React.useMemo(() => agentIdFromSessionKey(safeSessionKey) || '', [safeSessionKey]);
+  const linkedTaskId = React.useMemo(() => taskIdFromSessionKey(safeSessionKey) || '', [safeSessionKey]);
+  const [linkedTask, setLinkedTask] = React.useState<{ id: string; title: string; status?: string } | null>(null);
 
   const allAgentIds = React.useMemo(() => {
     const set = new Set<string>();
@@ -857,6 +935,34 @@ export function SessionsThreadClient({
   React.useEffect(() => {
     void refreshSessionInfo();
   }, [refreshSessionInfo]);
+
+  React.useEffect(() => {
+    if (!linkedTaskId) {
+      setLinkedTask(null);
+      return;
+    }
+    let cancelled = false;
+    mcFetch(`/api/tasks/${encodeURIComponent(linkedTaskId)}`, { cache: 'no-store' })
+      .then((r) => r.json().catch(() => null))
+      .then((json) => {
+        if (cancelled) return;
+        if (!json?.id) {
+          setLinkedTask(null);
+          return;
+        }
+        setLinkedTask({
+          id: String(json.id),
+          title: String(json.title || json.id),
+          status: typeof json.status === 'string' ? json.status : undefined,
+        });
+      })
+      .catch(() => {
+        // ignore
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedTaskId]);
 
   React.useEffect(() => {
     if (!autoRefresh) return;
@@ -2300,6 +2406,39 @@ export function SessionsThreadClient({
           </Button>
         </div>
       </header>
+
+      {linkedTaskId ? (
+        <div className="border-b border-[var(--border)] bg-[var(--highlight)]/60 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--highlight-foreground)]/80">
+                Linked task
+              </div>
+              <div className="mt-1 truncate text-sm font-semibold text-[var(--foreground)]">
+                {linkedTask?.title ?? `Task ${linkedTaskId}`}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                <span className="font-mono">{linkedTaskId}</span>
+                {linkedTask?.status ? (
+                  <Badge className="border-none bg-[var(--card)] text-[var(--foreground)]">{titleCase(linkedTask.status)}</Badge>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link href={`/tasks?task=${encodeURIComponent(linkedTaskId)}`}>
+                <Button type="button" size="sm" variant="secondary">
+                  Open in board
+                </Button>
+              </Link>
+              <Link href={`/tasks/${encodeURIComponent(linkedTaskId)}`}>
+                <Button type="button" size="sm" variant="secondary">
+                  Open page
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>

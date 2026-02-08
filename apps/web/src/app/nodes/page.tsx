@@ -24,9 +24,11 @@ export default async function NodesPage() {
   const installCmd = `openclaw node install --host ${gatewayHostHint} --port ${gatewayPortHint} --display-name "<node-name>"`;
 
   return (
-    <AppShell>
-      <Topbar title="Nodes" subtitle="Pair new devices through headscale + OpenClaw." />
-      <div className="mt-4 grid gap-6 sm:mt-8 lg:grid-cols-[2fr,1fr]">
+    <AppShell padding="dense">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <Topbar title="Nodes" subtitle="Pair new devices through headscale + OpenClaw." density="compact" />
+        <div className="min-h-0 flex-1 overflow-y-auto mc-scroll">
+      <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
@@ -104,8 +106,10 @@ export default async function NodesPage() {
         </Card>
       </div>
 
-      <div className="mt-4 sm:mt-8">
-        <NodeActions nodes={nodes} actionsEnabled={actionsEnabled} healthCmds={healthCmds} />
+          <div className="mt-6">
+            <NodeActions nodes={nodes} actionsEnabled={actionsEnabled} healthCmds={healthCmds} />
+          </div>
+        </div>
       </div>
     </AppShell>
   );

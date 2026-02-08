@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { TaskDetail } from '@/app/tasks/[id]/TaskDetail';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { mcFetch } from '@/lib/clientApi';
 import { getPocketBaseClient, type PBRealtimeEvent } from '@/lib/pbClient';
-import type { Agent, DocumentRecord, Message, NodeRecord, PBList, Subtask, Task } from '@/lib/types';
+import type { Agent, DocumentRecord, Message, NodeRecord, PBList, Subtask, Task, TaskFile } from '@/lib/types';
 
 type DrawerProps = {
   open: boolean;
@@ -17,7 +18,9 @@ type DrawerProps = {
 };
 
 async function fetchJson<T>(url: string) {
-  const res = await fetch(url, { headers: { 'content-type': 'application/json' }, cache: 'no-store' });
+  // Use mcFetch to avoid browsers rejecting URLs when the app is opened with
+  // basic auth in the URL (http://user:pass@host/...).
+  const res = await mcFetch(url, { headers: { 'content-type': 'application/json' }, cache: 'no-store' });
   if (!res.ok) throw new Error(`Request failed ${res.status}`);
   return (await res.json()) as T;
 }
@@ -30,6 +33,7 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
   const [task, setTask] = React.useState<Task | null>(null);
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [documents, setDocuments] = React.useState<DocumentRecord[]>([]);
+  const [files, setFiles] = React.useState<TaskFile[]>([]);
   const [subtasks, setSubtasks] = React.useState<Subtask[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -88,7 +92,7 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
     setLoading(true);
     setError(null);
     try {
-      const [taskData, messageList, docList, subtaskList] = await Promise.all([
+      const [taskData, messageList, docList, fileList, subtaskList] = await Promise.all([
         fetchJson<Task>(`/api/tasks/${liveTaskId}`),
         fetchJson<PBList<Message>>(
           `/api/messages?${new URLSearchParams({ page: '1', perPage: '200', filter: `taskId = \"${liveTaskId}\"`, sort: 'createdAt' }).toString()}`
@@ -96,6 +100,9 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
         fetchJson<PBList<DocumentRecord>>(
           `/api/documents?${new URLSearchParams({ page: '1', perPage: '100', filter: `taskId = \"${liveTaskId}\"`, sort: '-updatedAt' }).toString()}`
         ),
+        fetchJson<PBList<TaskFile>>(
+          `/api/task-files?${new URLSearchParams({ page: '1', perPage: '100', filter: `taskId = \"${liveTaskId}\"`, sort: '-updatedAt' }).toString()}`
+        ).catch(() => ({ items: [], page: 1, perPage: 100, totalItems: 0, totalPages: 1 } as PBList<TaskFile>)),
         fetchJson<PBList<Subtask>>(
           `/api/subtasks?${new URLSearchParams({ page: '1', perPage: '200', filter: `taskId = \"${liveTaskId}\"`, sort: 'order' }).toString()}`
         ),
@@ -103,6 +110,7 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
       setTask(taskData);
       setMessages(messageList.items ?? []);
       setDocuments(docList.items ?? []);
+      setFiles(fileList.items ?? []);
       setSubtasks(subtaskList.items ?? []);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load task');
@@ -122,6 +130,7 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
     let unsubscribeTasks: (() => Promise<void>) | null = null;
     let unsubscribeMessages: (() => Promise<void>) | null = null;
     let unsubscribeDocs: (() => Promise<void>) | null = null;
+    let unsubscribeFiles: (() => Promise<void>) | null = null;
     let unsubscribeSubtasks: (() => Promise<void>) | null = null;
 
     const upsert = <T extends { id: string }>(list: T[], record: T) => {
@@ -160,6 +169,19 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
             setDocuments((prev) => upsert(prev, e.record as DocumentRecord));
           }
         });
+        try {
+          await pb.collection('task_files').subscribe('*', (e: PBRealtimeEvent<TaskFile>) => {
+            if (e?.record?.taskId !== liveTaskId) return;
+            if (e.action === 'delete') {
+              setFiles((prev) => prev.filter((f) => f.id !== e.record.id));
+            } else {
+              setFiles((prev) => upsert(prev, e.record as TaskFile));
+            }
+          });
+          unsubscribeFiles = async () => pb.collection('task_files').unsubscribe('*');
+        } catch {
+          // older schemas may not have task_files yet
+        }
         await pb.collection('subtasks').subscribe('*', (e: PBRealtimeEvent<Subtask>) => {
           if (e?.record?.taskId !== liveTaskId) return;
           if (e.action === 'delete') {
@@ -184,6 +206,7 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
       if (unsubscribeTasks) void unsubscribeTasks().catch(() => {});
       if (unsubscribeMessages) void unsubscribeMessages().catch(() => {});
       if (unsubscribeDocs) void unsubscribeDocs().catch(() => {});
+      if (unsubscribeFiles) void unsubscribeFiles().catch(() => {});
       if (unsubscribeSubtasks) void unsubscribeSubtasks().catch(() => {});
     };
   }, [open, liveTaskId, refresh]);
@@ -239,7 +262,16 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
               <div className="h-40 rounded-2xl border border-[var(--border)] bg-[var(--surface)]" />
             </div>
           ) : (
-            <TaskDetail task={task} agents={agents} nodes={nodes} messages={messages} documents={documents} subtasks={subtasks} onUpdated={refresh} />
+            <TaskDetail
+              task={task}
+              agents={agents}
+              nodes={nodes}
+              messages={messages}
+              documents={documents}
+              files={files}
+              subtasks={subtasks}
+              onUpdated={refresh}
+            />
           )}
         </div>
       </div>

@@ -204,6 +204,31 @@ When you run `./scripts/dev.sh`, it starts:
 - Worker (logs are written under `apps/worker/` but are gitignored)
 - Web UI (default `http://127.0.0.1:4010`)
 
+#### Development Notes (Testing)
+Local dev (hot reload):
+```bash
+cd mission-control
+./scripts/install.sh   # first time only
+./scripts/dev.sh
+```
+
+Then open:
+- `http://127.0.0.1:<MC_WEB_PORT>/` (default: `4010`)
+- If it says setup is required: `http://127.0.0.1:<MC_WEB_PORT>/setup`
+- Calendar view: `http://127.0.0.1:<MC_WEB_PORT>/tasks?view=calendar`
+
+Stop with `Ctrl+C`.
+
+Notes:
+- `./scripts/dev.sh` will reuse PocketBase if it is already running at `PB_URL`.
+- If the web port is busy, override it: `MC_WEB_PORT=4010 ./scripts/dev.sh`
+- Worker log: `apps/worker/dev.log`
+- PocketBase log (when started by the script): `pb/pocketbase.log`
+- If Next dev gets stuck with a lock file, stop it and remove the lock:
+  - `lsof -iTCP:<MC_WEB_PORT> -sTCP:LISTEN` (find the process)
+  - `kill <pid>`
+  - `rm -f apps/web/.next-dev/dev/lock` (if it exists)
+
 ### 4) Verify Wiring
 Open `http://127.0.0.1:4010/settings` and use the “Getting Started” card:
 - Check OpenClaw status

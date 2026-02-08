@@ -22,6 +22,9 @@ export function AgentDetailClient({ agentId, pbAgent }: { agentId: string; pbAge
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [openclaw, setOpenclaw] = React.useState<OpenClawAgent | null>(null);
+  const [avatarBusy, setAvatarBusy] = React.useState(false);
+  const [avatarError, setAvatarError] = React.useState<string | null>(null);
+  const [avatarVersion, setAvatarVersion] = React.useState(0);
 
   async function refresh() {
     setLoading(true);
@@ -48,6 +51,33 @@ export function AgentDetailClient({ agentId, pbAgent }: { agentId: string; pbAge
 
   const title = pbAgent?.displayName || openclaw?.identityName || agentId;
   const emoji = openclaw?.identityEmoji || '';
+  const initials = String(title || agentId || '?')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
+  const avatarSrc = `/api/agents/avatar/${encodeURIComponent(agentId)}?v=${avatarVersion}`;
+
+  async function uploadAvatar(file: File) {
+    setAvatarBusy(true);
+    setAvatarError(null);
+    try {
+      const form = new FormData();
+      form.set('avatar', file, file.name || 'avatar.png');
+      const res = await mcFetch(`/api/agents/avatar/${encodeURIComponent(agentId)}`, {
+        method: 'POST',
+        body: form,
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || 'Upload failed');
+      setAvatarVersion((v) => v + 1);
+    } catch (err: any) {
+      setAvatarError(err?.message || String(err));
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -74,12 +104,55 @@ export function AgentDetailClient({ agentId, pbAgent }: { agentId: string; pbAge
 
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
             <div className="text-xs uppercase tracking-[0.2em] text-muted">Identity</div>
-            <div className="mt-2 text-lg font-semibold text-[var(--foreground)]">
-              {emoji ? <span className="mr-2">{emoji}</span> : null}
-              {title}
+            <div className="mt-3 flex items-center gap-3">
+              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={avatarSrc}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  onError={(e) => {
+                    // Hide the image if missing so the fallback shows.
+                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-muted">
+                  {initials || 'AG'}
+                </div>
+              </div>
+              <div className="min-w-0">
+                <div className="text-lg font-semibold text-[var(--foreground)]">
+                  {emoji ? <span className="mr-2">{emoji}</span> : null}
+                  {title}
+                </div>
+                <div className="mt-1 text-xs text-muted">
+                  OpenClaw ID: <span className="font-mono text-[var(--foreground)]">{agentId}</span>
+                </div>
+              </div>
             </div>
             <div className="mt-1 text-xs text-muted">
-              OpenClaw ID: <span className="font-mono text-[var(--foreground)]">{agentId}</span>
+              Upload a profile photo so tasks and calendars show who owns work at a glance.
+            </div>
+            {avatarError ? (
+              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">{avatarError}</div>
+            ) : null}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--foreground)] transition hover:bg-[var(--surface)]">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    void uploadAvatar(file);
+                    e.currentTarget.value = '';
+                  }}
+                  disabled={avatarBusy}
+                />
+                {avatarBusy ? 'Uploading…' : 'Upload photo'}
+              </label>
+              <div className="text-xs text-muted">PNG/JPG up to ~8MB.</div>
             </div>
           </div>
 

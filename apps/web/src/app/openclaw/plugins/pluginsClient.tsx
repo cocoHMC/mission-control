@@ -77,7 +77,7 @@ export function PluginsClient() {
     setError(null);
     try {
       const q = new URLSearchParams({ id });
-      const res = await fetch(`/api/openclaw/plugins/info?${q.toString()}`, { cache: 'no-store' });
+      const res = await mcFetch(`/api/openclaw/plugins/info?${q.toString()}`, { cache: 'no-store' });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error || 'Failed to load plugin info');
       setDetails(json?.plugin ?? null);

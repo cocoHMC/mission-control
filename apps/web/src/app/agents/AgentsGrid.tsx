@@ -126,7 +126,7 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
     void refreshOpenClawAgents();
 
     let pollId: ReturnType<typeof setInterval> | null = setInterval(async () => {
-      const res = await fetch('/api/agents?page=1&perPage=200');
+      const res = await mcFetch('/api/agents?page=1&perPage=200');
       if (!res.ok) return;
       const json = await res.json();
       setAgents(json.items ?? []);
@@ -252,7 +252,7 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
     setError(null);
     setSuccess(null);
     try {
-      const res = await fetch('/api/agents/seed', {
+      const res = await mcFetch('/api/agents/seed', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -278,7 +278,7 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
     setError(null);
     setSuccess(null);
     try {
-      const res = await fetch('/api/openclaw/agents/identity', {
+      const res = await mcFetch('/api/openclaw/agents/identity', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -307,7 +307,7 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
     setError(null);
     setSuccess(null);
     try {
-      const res = await fetch('/api/openclaw/agents/model', {
+      const res = await mcFetch('/api/openclaw/agents/model', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ agentId: modelEdit.agentId, model: modelEdit.model }),
@@ -351,7 +351,7 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
       const subMax = Number.parseInt(defaultsDraft.subagentsMaxConcurrent, 10);
       if (Number.isFinite(subMax) && subMax > 0) payload.subagentsMaxConcurrent = subMax;
 
-      const res = await fetch('/api/openclaw/agents/defaults', {
+      const res = await mcFetch('/api/openclaw/agents/defaults', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
@@ -378,7 +378,7 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
       const oc = byOpenClawId.get(id) || null;
       if (oc) return;
       const workspace = `agents/${id}`;
-      const res = await fetch('/api/openclaw/agents/create', {
+      const res = await mcFetch('/api/openclaw/agents/create', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -405,7 +405,7 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
     setSuccess(null);
     if (!window.confirm(`Delete OpenClaw agent "${id}"? This will prune agent state and workspace.`)) return;
     try {
-      const res = await fetch('/api/openclaw/agents/delete', {
+      const res = await mcFetch('/api/openclaw/agents/delete', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ agentId: id, force: true }),

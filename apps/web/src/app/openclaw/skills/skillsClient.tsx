@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CopyButton } from '@/components/ui/copy-button';
+import { mcFetch } from '@/lib/clientApi';
 
 type SkillRow = {
   name: string;
@@ -58,7 +59,7 @@ export function SkillsClient() {
     setError(null);
     try {
       const q = new URLSearchParams({ verbose: '1', ...(onlyEligible ? { eligible: '1' } : {}) });
-      const res = await fetch(`/api/openclaw/skills/list?${q.toString()}`, { cache: 'no-store' });
+      const res = await mcFetch(`/api/openclaw/skills/list?${q.toString()}`, { cache: 'no-store' });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error || 'Failed to load skills');
       const skills = Array.isArray(json?.skills) ? (json.skills as SkillRow[]) : [];
@@ -79,7 +80,7 @@ export function SkillsClient() {
     setError(null);
     try {
       const q = new URLSearchParams({ name: skill });
-      const res = await fetch(`/api/openclaw/skills/info?${q.toString()}`, { cache: 'no-store' });
+      const res = await mcFetch(`/api/openclaw/skills/info?${q.toString()}`, { cache: 'no-store' });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error || 'Failed to load skill info');
       setInfo((json?.skill as SkillInfo) || null);

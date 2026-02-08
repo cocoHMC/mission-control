@@ -8,6 +8,8 @@ export type Task = {
   status: TaskStatus;
   archived?: boolean;
   priority?: string;
+  aiEffort?: string;
+  aiModelTier?: string;
   assigneeIds?: string[];
   labels?: string[];
   requiredNodeId?: string;
@@ -33,6 +35,7 @@ export type Agent = {
   displayName?: string;
   role?: string;
   openclawAgentId?: string;
+  avatar?: string | string[];
   status?: string;
   currentTaskId?: string;
   lastSeenAt?: string;
@@ -64,6 +67,16 @@ export type DocumentRecord = {
   title: string;
   content?: string;
   type?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type TaskFile = {
+  id: string;
+  taskId: string;
+  title?: string;
+  file?: string | string[];
+  shareToken: string;
   createdAt?: string;
   updatedAt?: string;
 };

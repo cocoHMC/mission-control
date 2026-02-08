@@ -1,4 +1,8 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "./big-calendar.css";
+
+@custom-variant dark (&:is(.dark *));
 
 :root {
   --background: #f8fafc;
@@ -23,22 +27,63 @@
   --chat-user-fg: #f8fafc;
   --chat-assistant-bg: #ffffff;
   --chat-assistant-fg: #0f172a;
+  --radius: 14px;
+
+  /* shadcn-style tokens (used by full-calendar UI). */
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-foreground);
+  --secondary: var(--surface);
+  --secondary-foreground: var(--foreground);
+  --muted-bg: var(--surface);
+  --muted-foreground: var(--muted);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --card-foreground: var(--foreground);
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+
+  /* Full-calendar convenience tokens (ported from demo). */
+  --bg: var(--highlight);
+  --bg-secondary: var(--surface);
+  --t-primary: var(--foreground);
+  --t-secondary: var(--foreground);
+  --t-tertiary: var(--muted);
+  --t-quaternary: var(--muted);
+  --t-quinary: var(--muted);
+  --tertiary: color-mix(in oklab, var(--border) 70%, var(--foreground) 30%);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
+  --color-muted: var(--muted-bg);
+  --color-muted-foreground: var(--muted-foreground);
   --color-surface: var(--surface);
   --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-border: var(--border);
-  --color-accent: var(--accent);
-  --color-accent-strong: var(--accent-strong);
-  --color-accent-foreground: var(--accent-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--highlight);
+  --color-accent-foreground: var(--highlight-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-highlight: var(--highlight);
   --color-highlight-foreground: var(--highlight-foreground);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-bg: var(--bg);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-t-primary: var(--t-primary);
+  --color-t-secondary: var(--t-secondary);
+  --color-t-tertiary: var(--t-tertiary);
+  --color-t-quaternary: var(--t-quaternary);
+  --color-t-quinary: var(--t-quinary);
+  --color-tertiary: var(--tertiary);
   --font-sans: var(--font-body);
   --font-display: var(--font-display);
   --font-mono: var(--font-mono);
@@ -68,6 +113,7 @@
     --chat-user-fg: #0b1214;
     --chat-assistant-bg: #112022;
     --chat-assistant-fg: #e6fffb;
+    --radius: 14px;
   }
 }
 
@@ -95,6 +141,7 @@
   --chat-user-fg: #f8fafc;
   --chat-assistant-bg: #ffffff;
   --chat-assistant-fg: #0f172a;
+  --radius: 14px;
 }
 
 :root[data-theme='dark'] {
@@ -120,10 +167,19 @@
   --chat-user-fg: #0b1214;
   --chat-assistant-bg: #112022;
   --chat-assistant-fg: #e6fffb;
+  --radius: 14px;
 }
 
 * {
   box-sizing: border-box;
+  /* Tailwind's preflight sets border-color: currentColor.
+     Our UI expects neutral borders unless explicitly overridden. */
+  border-color: var(--border);
+}
+
+*::before,
+*::after {
+  border-color: var(--border);
 }
 
 html,
@@ -364,6 +420,7 @@ select {
 
 .mc-scroll {
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: rgba(13, 148, 136, 0.35) transparent;
   scrollbar-color: color-mix(in srgb, var(--accent) 35%, transparent) transparent;

@@ -6,12 +6,13 @@ export const dynamic = 'force-dynamic';
 
 export default function OpenClawGatewayPage() {
   return (
-    <AppShell>
-      <Topbar title="OpenClaw Gateway" subtitle="Service status, bind mode, and safe start/stop controls." />
-      <div className="mt-4 sm:mt-8">
-        <GatewayClient />
+    <AppShell padding="dense">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <Topbar title="OpenClaw Gateway" subtitle="Service status, bind mode, and safe start/stop controls." density="compact" />
+        <div className="min-h-0 flex-1">
+          <GatewayClient />
+        </div>
       </div>
     </AppShell>
   );
 }
-
