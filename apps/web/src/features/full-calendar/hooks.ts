@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
 
 export function useDisclosure({
 	defaultIsOpen = false,
@@ -26,45 +32,60 @@ export const useLocalStorage = <T>(
 		initialValueRef.current = initialValue;
 	}, [initialValue]);
 
-	const [storedValue, setStoredValue] = useState<T>(initialValue);
-
-	useEffect(() => {
-		if (typeof window === "undefined") return;
+	const getSnapshot = useCallback((): T => {
+		if (typeof window === "undefined") return initialValueRef.current;
 		try {
 			const item = window.localStorage.getItem(key);
-			setStoredValue(item ? (JSON.parse(item) as T) : initialValueRef.current);
+			return item ? (JSON.parse(item) as T) : initialValueRef.current;
 		} catch (error) {
 			console.warn(`Error reading localStorage key "${key}":`, error);
-			setStoredValue(initialValueRef.current);
+			return initialValueRef.current;
 		}
 	}, [key]);
 
-	useEffect(() => {
-		if (typeof window === "undefined") return;
-		const onStorage = (event: StorageEvent) => {
-			if (event.key !== key) return;
-			try {
-				setStoredValue(
-					event.newValue
-						? (JSON.parse(event.newValue) as T)
-						: initialValueRef.current,
-				);
-			} catch (error) {
-				console.warn(`Error reading localStorage key "${key}":`, error);
-				setStoredValue(initialValueRef.current);
-			}
-		};
-		window.addEventListener("storage", onStorage);
-		return () => window.removeEventListener("storage", onStorage);
-	}, [key]);
+	const subscribe = useCallback(
+		(onStoreChange: () => void) => {
+			if (typeof window === "undefined") return () => {};
+
+			const onStorage = (event: StorageEvent) => {
+				if (event.key !== key) return;
+				onStoreChange();
+			};
+
+			// `storage` events do not fire in the same document that performed the write,
+			// so we dispatch a custom event to notify same-tab subscribers.
+			const onLocalStorage = (event: Event) => {
+				const customEvent = event as CustomEvent<{ key?: string }>;
+				if (customEvent.detail?.key !== key) return;
+				onStoreChange();
+			};
+
+			window.addEventListener("storage", onStorage);
+			window.addEventListener("local-storage", onLocalStorage);
+
+			return () => {
+				window.removeEventListener("storage", onStorage);
+				window.removeEventListener("local-storage", onLocalStorage);
+			};
+		},
+		[key],
+	);
+
+	const storedValue = useSyncExternalStore(
+		subscribe,
+		getSnapshot,
+		() => initialValueRef.current,
+	);
 
 	const setValue = (value: T) => {
 		try {
 			const valueToStore =
 				value instanceof Function ? value(storedValue) : value;
-			setStoredValue(valueToStore);
 			if (typeof window !== "undefined") {
 				window.localStorage.setItem(key, JSON.stringify(valueToStore));
+				window.dispatchEvent(
+					new CustomEvent("local-storage", { detail: { key } }),
+				);
 			}
 		} catch (error) {
 			console.warn(`Error setting localStorage key "${key}":`, error);

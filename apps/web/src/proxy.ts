@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 // Minimal password gate for tailnet/LAN use.
 // Browser will show a basic-auth prompt.
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const user = process.env.MC_ADMIN_USER;
   const pass = process.env.MC_ADMIN_PASSWORD;
 

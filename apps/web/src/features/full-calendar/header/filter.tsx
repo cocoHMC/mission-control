@@ -50,7 +50,6 @@ export default function FilterEvents() {
 		yellow: "bg-yellow-600 dark:bg-yellow-700",
 		purple: "bg-purple-600 dark:bg-purple-700",
 		orange: "bg-orange-600 dark:bg-orange-700",
-		gray: "bg-gray-600 dark:bg-gray-700",
 	};
 
 	const viewOptions: Array<{ value: TCalendarView; label: string }> = [
