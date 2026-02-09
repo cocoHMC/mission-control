@@ -7,6 +7,7 @@ import {
   BarChart3,
   Brain,
   ClipboardCheck,
+  Download,
   LayoutDashboard,
   ListTodo,
   MessageSquare,
@@ -25,6 +26,7 @@ const nav = [
   { href: '/nodes', label: 'Nodes', icon: Server },
   { href: '/docs', label: 'Docs', icon: ClipboardCheck },
   { href: '/openclaw', label: 'OpenClaw', icon: SlidersHorizontal },
+  { href: '/download', label: 'Downloads', icon: Download },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
