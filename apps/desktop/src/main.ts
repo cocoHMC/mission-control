@@ -76,6 +76,11 @@ function parseEnvFile(contents: string) {
   return out;
 }
 
+function isLoopbackHost(hostname: string) {
+  const h = String(hostname || '').trim().toLowerCase();
+  return h === '127.0.0.1' || h === 'localhost' || h === '::1';
+}
+
 async function readFileIfExists(filePath: string) {
   try {
     return await fs.readFile(filePath, 'utf8');
@@ -437,7 +442,17 @@ async function startStack() {
 
     const webPort = Number.parseInt(env.MC_WEB_PORT || env.PORT || '4010', 10) || 4010;
     const pbUrl = env.PB_URL || 'http://127.0.0.1:8090';
-    const pbPort = Number.parseInt(new URL(pbUrl).port || '8090', 10) || 8090;
+    let pbPort = 8090;
+    let pbIsRemote = false;
+    try {
+      const u = new URL(pbUrl);
+      pbPort = Number.parseInt(u.port || '8090', 10) || 8090;
+      pbIsRemote = !isLoopbackHost(u.hostname);
+    } catch {
+      // If PB_URL is malformed, fall back to local defaults and let the web UI surface errors.
+      pbPort = 8090;
+      pbIsRemote = false;
+    }
 
     const pbBin = process.platform === 'win32' ? path.join(root, 'pb', 'pocketbase.exe') : path.join(root, 'pb', 'pocketbase');
     await ensureExecutable(pbBin);
@@ -450,17 +465,21 @@ async function startStack() {
     // v0.1.17 could spawn multiple stacks concurrently, leaving orphan processes behind.
     // Clean those up before trying to bind ports again.
     await killStaleByCommandNeedle(workerNeedle);
-    await killStaleByCommandNeedle(pbBin);
+    if (!pbIsRemote) await killStaleByCommandNeedle(pbBin);
     await killStaleByCommandNeedle(webNeedle);
     // next-server doesn't always include the server.js path in `ps` output, but it does listen on the web port.
     // Kill stale listeners so upgrades don't get stuck in EADDRINUSE loops.
     await killListeningPids(webPort, (cmd) => /next-server/i.test(cmd));
     await new Promise((r) => setTimeout(r, 400));
 
-    const pbUsage = await describePortUsage(pbPort);
-    if (pbUsage) {
-      log.error('[desktop] PocketBase port already in use', { pbPort, pbUsage });
-      throw new Error(`PocketBase port ${pbPort} is already in use. Quit other Mission Control instances (or set PB_URL to a free port).`);
+    if (!pbIsRemote) {
+      const pbUsage = await describePortUsage(pbPort);
+      if (pbUsage) {
+        log.error('[desktop] PocketBase port already in use', { pbPort, pbUsage });
+        throw new Error(
+          `PocketBase port ${pbPort} is already in use. Quit other Mission Control instances (or set PB_URL to a free port).`
+        );
+      }
     }
     const webUsage = await describePortUsage(webPort);
     if (webUsage) {
@@ -468,31 +487,37 @@ async function startStack() {
       throw new Error(`Web port ${webPort} is already in use. Quit other Mission Control instances (or set MC_WEB_PORT to a free port).`);
     }
 
-    const pbDataDir = path.join(dataDir, 'pb', 'pb_data');
-    const pbMigrationsDir = path.join(root, 'pb', 'pb_migrations');
-    const pbLog = path.join(dataDir, 'pb', 'pocketbase.log');
-    await fs.mkdir(path.dirname(pbLog), { recursive: true });
+    if (!pbIsRemote) {
+      const pbDataDir = path.join(dataDir, 'pb', 'pb_data');
+      const pbMigrationsDir = path.join(root, 'pb', 'pb_migrations');
+      const pbLog = path.join(dataDir, 'pb', 'pocketbase.log');
+      await fs.mkdir(path.dirname(pbLog), { recursive: true });
 
-    log.info('[desktop] starting pocketbase', { pbPort, pbDataDir });
-    pbProc = spawn(pbBin, ['serve', '--dir', pbDataDir, '--migrationsDir', pbMigrationsDir, '--http', `127.0.0.1:${pbPort}`], {
-      cwd: root,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const pbOut = await fs.open(pbLog, 'a').catch(() => null);
-    pbProc.stdout?.on('data', (d) => {
-      const s = String(d);
-      log.info('[pb]', s.trimEnd());
-      void pbOut?.appendFile(s).catch(() => {});
-    });
-    pbProc.stderr?.on('data', (d) => {
-      const s = String(d);
-      log.error('[pb]', s.trimEnd());
-      void pbOut?.appendFile(s).catch(() => {});
-    });
+      log.info('[desktop] starting pocketbase', { pbPort, pbDataDir });
+      pbProc = spawn(pbBin, ['serve', '--dir', pbDataDir, '--migrationsDir', pbMigrationsDir, '--http', `127.0.0.1:${pbPort}`], {
+        cwd: root,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      const pbOut = await fs.open(pbLog, 'a').catch(() => null);
+      pbProc.stdout?.on('data', (d) => {
+        const s = String(d);
+        log.info('[pb]', s.trimEnd());
+        void pbOut?.appendFile(s).catch(() => {});
+      });
+      pbProc.stderr?.on('data', (d) => {
+        const s = String(d);
+        log.error('[pb]', s.trimEnd());
+        void pbOut?.appendFile(s).catch(() => {});
+      });
 
-    // PocketBase can take a while to start on first launch or with large DBs.
-    // Wait longer than the web server to avoid false failures.
-    await waitForOkOrExit(`http://127.0.0.1:${pbPort}/api/health`, pbProc, 120_000, { name: 'PocketBase' });
+      // PocketBase can take a while to start on first launch or with large DBs.
+      // Wait longer than the web server to avoid false failures.
+      await waitForOkOrExit(`http://127.0.0.1:${pbPort}/api/health`, pbProc, 120_000, { name: 'PocketBase' });
+    } else {
+      log.info('[desktop] using remote pocketbase', { pbUrl });
+      const base = pbUrl.endsWith('/') ? pbUrl.slice(0, -1) : pbUrl;
+      await waitForOk(`${base}/api/health`, 120_000);
+    }
 
   const envForChildren: NodeJS.ProcessEnv = {
     ...process.env,
@@ -508,8 +533,8 @@ async function startStack() {
   };
 
   // Best-effort self-heal: if an earlier setup attempt failed, PB may be partially bootstrapped.
-  // Before starting the worker, try to ensure schema + service user exist.
-  if (!needsSetup(env)) {
+  // For remote PB, do not auto-mutate schema on desktop startup.
+  if (!pbIsRemote && !needsSetup(env)) {
     const scriptsDir = path.join(root, 'scripts');
     try {
       await runNodeOnce(path.join(scriptsDir, 'pb_bootstrap.mjs'), [], { cwd: root, env: envForChildren, name: 'pb_bootstrap' });
