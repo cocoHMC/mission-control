@@ -1,4 +1,5 @@
-type AuthState = { token: string; at: number };
+type AuthMode = 'superuser' | 'service_user';
+type AuthState = { token: string; at: number; mode: AuthMode };
 
 let cached: AuthState | null = null;
 
@@ -6,26 +7,47 @@ export function pbUrl() {
   return process.env.PB_URL || 'http://127.0.0.1:8090';
 }
 
-async function authToken(): Promise<string> {
-  const now = Date.now();
-  if (cached && now - cached.at < 10 * 60_000) return cached.token; // 10m cache
-
-  const identity = process.env.PB_SERVICE_EMAIL;
-  const password = process.env.PB_SERVICE_PASSWORD;
-  if (!identity || !password) {
-    throw new Error('Missing PB_SERVICE_EMAIL/PB_SERVICE_PASSWORD in apps/web/.env.local');
+function resolveAuthMode(): { mode: AuthMode; identity: string; password: string; path: string } {
+  // Server-side routes need broad read/write access; use PocketBase superuser when configured.
+  const adminEmail = String(process.env.PB_ADMIN_EMAIL || '').trim();
+  const adminPass = String(process.env.PB_ADMIN_PASSWORD || '').trim();
+  if (adminEmail && adminPass) {
+    return {
+      mode: 'superuser',
+      identity: adminEmail,
+      password: adminPass,
+      path: '/api/collections/_superusers/auth-with-password',
+    };
   }
 
-  const res = await fetch(new URL('/api/collections/service_users/auth-with-password', pbUrl()), {
+  const identity = String(process.env.PB_SERVICE_EMAIL || '').trim();
+  const password = String(process.env.PB_SERVICE_PASSWORD || '').trim();
+  if (!identity || !password) {
+    throw new Error('Missing PB_ADMIN_EMAIL/PB_ADMIN_PASSWORD (preferred) or PB_SERVICE_EMAIL/PB_SERVICE_PASSWORD.');
+  }
+  return {
+    mode: 'service_user',
+    identity,
+    password,
+    path: '/api/collections/service_users/auth-with-password',
+  };
+}
+
+async function authToken(): Promise<string> {
+  const now = Date.now();
+  const cfg = resolveAuthMode();
+  if (cached && cached.mode === cfg.mode && now - cached.at < 10 * 60_000) return cached.token; // 10m cache
+
+  const res = await fetch(new URL(cfg.path, pbUrl()), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ identity, password }),
+    body: JSON.stringify({ identity: cfg.identity, password: cfg.password }),
     cache: 'no-store',
   });
   const json = await res.json();
   if (!res.ok) throw new Error(`PocketBase auth failed: ${res.status} ${JSON.stringify(json)}`);
 
-  cached = { token: json.token, at: now };
+  cached = { token: json.token, at: now, mode: cfg.mode };
   return json.token;
 }
 
