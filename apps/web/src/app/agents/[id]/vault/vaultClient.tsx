@@ -45,7 +45,7 @@ function errorFromResponse(res: Response, json: any, fallback: string) {
   if (res.status === 401) return 'Authentication required (admin).';
   if (res.status === 403) return 'Forbidden.';
   if (res.status === 404) return 'Not found.';
-  if (res.status === 409) return 'Setup required.';
+  if (res.status === 409) return 'Vault setup required.';
   return `${fallback} (${res.status})`;
 }
 

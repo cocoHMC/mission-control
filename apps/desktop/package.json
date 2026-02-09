@@ -46,6 +46,13 @@
         "to": ".env.example"
       },
       {
+        "from": "../../openclaw-plugins",
+        "to": "openclaw-plugins",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "../../scripts",
         "to": "scripts",
         "filter": [
