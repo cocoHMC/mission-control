@@ -39,6 +39,16 @@ function normalizeJsonInput(raw: string) {
   }
 }
 
+function errorFromResponse(res: Response, json: any, fallback: string) {
+  const msg = json?.error || json?.message;
+  if (msg) return String(msg);
+  if (res.status === 401) return 'Authentication required (admin).';
+  if (res.status === 403) return 'Forbidden.';
+  if (res.status === 404) return 'Not found.';
+  if (res.status === 409) return 'Setup required.';
+  return `${fallback} (${res.status})`;
+}
+
 export function VaultClient({ agentId }: { agentId: string }) {
   const [tab, setTab] = React.useState<TabId>('credentials');
   const [loading, setLoading] = React.useState(false);
@@ -93,9 +103,9 @@ export function VaultClient({ agentId }: { agentId: string }) {
       const tokensJson = await tokensRes.json().catch(() => null);
       const auditJson = await auditRes.json().catch(() => null);
 
-      if (!itemsRes.ok) throw new Error(itemsJson?.error || 'Failed to load credentials');
-      if (!tokensRes.ok) throw new Error(tokensJson?.error || 'Failed to load tokens');
-      if (!auditRes.ok) throw new Error(auditJson?.error || 'Failed to load audit log');
+      if (!itemsRes.ok) throw new Error(errorFromResponse(itemsRes, itemsJson, 'Failed to load credentials'));
+      if (!tokensRes.ok) throw new Error(errorFromResponse(tokensRes, tokensJson, 'Failed to load tokens'));
+      if (!auditRes.ok) throw new Error(errorFromResponse(auditRes, auditJson, 'Failed to load audit log'));
 
       setItems(Array.isArray(itemsJson?.items) ? (itemsJson.items as VaultItem[]) : []);
       setTokens(Array.isArray(tokensJson?.items) ? (tokensJson.items as VaultAgentToken[]) : []);
@@ -152,9 +162,10 @@ export function VaultClient({ agentId }: { agentId: string }) {
         }),
       });
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || 'Create failed');
+      if (!res.ok) throw new Error(errorFromResponse(res, json, 'Create failed'));
 
-      setSuccess('Credential created.');
+      const createdHandle = String(json?.item?.handle || '').trim() || String(newCred.handle || '').trim();
+      setSuccess(createdHandle ? `Credential created: ${createdHandle} (use {{vault:${createdHandle}}})` : 'Credential created.');
       setNewCred((prev) => ({ ...prev, handle: '', service: '', username: '', secret: '', notes: '', tagsRaw: '' }));
       await refreshAll();
     } catch (err: any) {
@@ -401,7 +412,7 @@ export function VaultClient({ agentId }: { agentId: string }) {
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <div className="text-xs uppercase tracking-[0.2em] text-muted">Handle</div>
+                  <div className="text-xs uppercase tracking-[0.2em] text-muted">Handle (optional)</div>
                   <Input
                     value={newCred.handle}
                     onChange={(e) => setNewCred((p) => ({ ...p, handle: e.target.value }))}
@@ -410,7 +421,8 @@ export function VaultClient({ agentId }: { agentId: string }) {
                     spellCheck={false}
                   />
                   <div className="text-[11px] text-muted">
-                    Used in placeholders: <span className="font-mono">{'{{vault:github_pat}}'}</span>
+                    Stable id used in placeholders (recommended). If blank, we auto-generate one. Example:{' '}
+                    <span className="font-mono">{'{{vault:github_pat}}'}</span>
                   </div>
                 </div>
                 <div className="space-y-1">
