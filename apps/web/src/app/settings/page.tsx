@@ -7,6 +7,7 @@ import { SetupChecklist } from '@/app/settings/SetupChecklist';
 import { TailscaleStatusCard } from '@/app/settings/TailscaleStatus';
 import { DesktopUpdates } from '@/app/settings/DesktopUpdates';
 import { OpenClawIntegration } from '@/app/settings/OpenClawIntegration';
+import { VaultOpenClawConnect } from '@/app/settings/VaultOpenClawConnect';
 
 export default function SettingsPage() {
   const leadName = process.env.MC_LEAD_AGENT_NAME || process.env.MC_LEAD_AGENT_ID || 'Lead';
@@ -34,6 +35,7 @@ export default function SettingsPage() {
         />
         <TailscaleStatusCard webPort={webPort} />
         <OpenClawIntegration />
+        <VaultOpenClawConnect leadAgentId={leadId} />
         <Card>
           <CardHeader>
             <CardTitle>Theme</CardTitle>
