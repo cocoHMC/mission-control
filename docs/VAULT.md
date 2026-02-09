@@ -44,7 +44,7 @@ UI:
 
 1. Go to `Agents` -> select an agent -> `Manage credentials`.
 2. Create a credential with:
-   - **Handle**: stable id (example `github_pat`)
+   - **Handle**: stable id (example `github_pat`). Optional: if omitted, Mission Control will auto-generate one.
    - **Type**: API key, user/pass, refresh token, or generic secret
    - **Exposure**:
      - `inject-only` (recommended)
@@ -123,4 +123,3 @@ Examples:
 - Prefer `inject-only` credentials.
 - Rotate secrets regularly (use the rotate action, don’t edit handles).
 - Treat Vault access tokens like passwords; rotate if leaked.
-
