@@ -108,67 +108,77 @@ async function setConfig(pathKey: string, value: string) {
 export async function POST(req: NextRequest) {
   const guard = requireAdminAuth(req);
   if (guard) return guard;
-  if (!isVaultConfigured()) return NextResponse.json({ ok: false, error: 'Vault setup required' }, { status: 409 });
-
-  let body: Body;
   try {
-    body = (await req.json()) as Body;
-  } catch {
-    body = {};
+    if (!isVaultConfigured()) return NextResponse.json({ ok: false, error: 'Vault setup required' }, { status: 409 });
+
+    let body: Body;
+    try {
+      body = (await req.json()) as Body;
+    } catch {
+      body = {};
+    }
+
+    const pluginId = 'mission-control-vault';
+    const agentId =
+      safeString(body.agentId) ||
+      safeString(process.env.MC_LEAD_AGENT_ID) ||
+      safeString(process.env.MC_LEAD_AGENT) ||
+      'main';
+
+    const urlFromReq = safeString(req.nextUrl.origin);
+    const missionControlUrl = normalizeUrl(safeString(body.missionControlUrl) || urlFromReq);
+    if (!missionControlUrl) return NextResponse.json({ ok: false, error: 'Missing missionControlUrl' }, { status: 400 });
+
+    const install = await installAndEnable(pluginId);
+    if (!install.ok) return NextResponse.json({ ok: false, error: install.error }, { status: 502 });
+
+    const agent = await ensurePbAgent(agentId);
+    const pbAgentId = safeString(agent?.id);
+    if (!pbAgentId) return NextResponse.json({ ok: false, error: 'Agent not found' }, { status: 404 });
+
+    const label = safeString(body.label) || 'OpenClaw plugin';
+    const { token, tokenPrefix } = generateVaultAccessToken();
+    const tokenHash = hashVaultAccessToken(token);
+
+    await pbFetch<any>('/api/collections/vault_agent_tokens/records', {
+      method: 'POST',
+      body: {
+        agent: pbAgentId,
+        label,
+        tokenHash,
+        tokenPrefix,
+        disabled: false,
+        lastUsedAt: '',
+      },
+    });
+
+    // Configure plugin.
+    const base = `plugins.entries.${pluginId}.config`;
+    const cfg1 = await setConfig(`${base}.missionControlUrl`, missionControlUrl);
+    if (!cfg1.ok) return NextResponse.json({ ok: false, error: cfg1.error }, { status: 502 });
+    const cfg2 = await setConfig(`${base}.vaultToken`, token);
+    if (!cfg2.ok) return NextResponse.json({ ok: false, error: cfg2.error }, { status: 502 });
+    const cfg3 = await setConfig(`${base}.placeholderPrefix`, 'vault');
+    if (!cfg3.ok) return NextResponse.json({ ok: false, error: cfg3.error }, { status: 502 });
+
+    return NextResponse.json(
+      {
+        ok: true,
+        pluginId,
+        pluginDir: install.pluginDir,
+        missionControlUrl,
+        agentId,
+        tokenPrefix,
+        token,
+        restartHint: 'If changes do not apply immediately, restart OpenClaw: openclaw gateway restart',
+      },
+      { headers: { 'cache-control': 'no-store' } }
+    );
+  } catch (err: any) {
+    // Next's default behavior can emit an empty 500 body in production. Always return JSON.
+    return NextResponse.json(
+      { ok: false, error: err?.message ? String(err.message) : String(err) },
+      { status: 500, headers: { 'cache-control': 'no-store' } }
+    );
   }
-
-  const pluginId = 'mission-control-vault';
-  const agentId =
-    safeString(body.agentId) ||
-    safeString(process.env.MC_LEAD_AGENT_ID) ||
-    safeString(process.env.MC_LEAD_AGENT) ||
-    'main';
-
-  const urlFromReq = safeString(req.nextUrl.origin);
-  const missionControlUrl = normalizeUrl(safeString(body.missionControlUrl) || urlFromReq);
-  if (!missionControlUrl) return NextResponse.json({ ok: false, error: 'Missing missionControlUrl' }, { status: 400 });
-
-  const install = await installAndEnable(pluginId);
-  if (!install.ok) return NextResponse.json({ ok: false, error: install.error }, { status: 502 });
-
-  const agent = await ensurePbAgent(agentId);
-  const pbAgentId = safeString(agent?.id);
-  if (!pbAgentId) return NextResponse.json({ ok: false, error: 'Agent not found' }, { status: 404 });
-
-  const label = safeString(body.label) || 'OpenClaw plugin';
-  const { token, tokenPrefix } = generateVaultAccessToken();
-  const tokenHash = hashVaultAccessToken(token);
-
-  await pbFetch<any>('/api/collections/vault_agent_tokens/records', {
-    method: 'POST',
-    body: {
-      agent: pbAgentId,
-      label,
-      tokenHash,
-      tokenPrefix,
-      disabled: false,
-      lastUsedAt: '',
-    },
-  });
-
-  // Configure plugin.
-  const base = `plugins.entries.${pluginId}.config`;
-  const cfg1 = await setConfig(`${base}.missionControlUrl`, missionControlUrl);
-  if (!cfg1.ok) return NextResponse.json({ ok: false, error: cfg1.error }, { status: 502 });
-  const cfg2 = await setConfig(`${base}.vaultToken`, token);
-  if (!cfg2.ok) return NextResponse.json({ ok: false, error: cfg2.error }, { status: 502 });
-  const cfg3 = await setConfig(`${base}.placeholderPrefix`, 'vault');
-  if (!cfg3.ok) return NextResponse.json({ ok: false, error: cfg3.error }, { status: 502 });
-
-  return NextResponse.json({
-    ok: true,
-    pluginId,
-    pluginDir: install.pluginDir,
-    missionControlUrl,
-    agentId,
-    tokenPrefix,
-    token,
-    restartHint: 'If changes do not apply immediately, restart OpenClaw: openclaw gateway restart',
-  }, { headers: { 'cache-control': 'no-store' } });
 }
-
