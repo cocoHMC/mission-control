@@ -6,6 +6,7 @@ import {
   BarChart3,
   Brain,
   ClipboardCheck,
+  Download,
   LayoutDashboard,
   ListTodo,
   MessageSquare,
@@ -40,6 +41,7 @@ const sections: Array<{
     label: 'System',
     items: [
       { href: '/openclaw', label: 'OpenClaw', icon: SlidersHorizontal },
+      { href: '/download', label: 'Downloads', icon: Download },
       { href: '/settings', label: 'Settings', icon: Settings },
     ],
   },
