@@ -81,7 +81,20 @@ type HistoryRow = {
   content?: unknown;
   text?: string;
   message?: string;
+  clientId?: string;
+  optimistic?: boolean;
 };
+
+function newClientId() {
+  try {
+    // Best-effort unique id for optimistic rows.
+    return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  } catch {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+}
 
 function agentIdFromSessionKey(sessionKey: string) {
   if (!sessionKey.startsWith('agent:')) return null;
@@ -849,6 +862,7 @@ export function SessionsThreadClient({
 
   const threadRef = React.useRef<HTMLDivElement | null>(null);
   const messageEndRef = React.useRef<HTMLDivElement | null>(null);
+  const composerRef = React.useRef<HTMLTextAreaElement | null>(null);
 
   const safeSessionKey = React.useMemo(() => sessionKey.replace(/ /g, '+'), [sessionKey]);
   const agentId = React.useMemo(() => agentIdFromSessionKey(safeSessionKey) || '', [safeSessionKey]);
@@ -1472,10 +1486,26 @@ export function SessionsThreadClient({
   }, [history.length, safeSessionKey]);
 
   async function sendMessage() {
-    const text = message.trim();
+    if (sending) return;
+    const raw = message;
+    const text = raw.trim();
     if (!safeSessionKey || !text) return;
+
+    const optimisticId = newClientId();
+    const optimisticRow: HistoryRow = {
+      clientId: optimisticId,
+      optimistic: true,
+      role: 'user',
+      timestamp: new Date().toISOString(),
+      text,
+    };
+
     setSending(true);
     setError(null);
+    // Clear immediately so the text doesn't "stick" in the composer while the network call is inflight.
+    setMessage('');
+    setHistory((prev) => [...(prev || []), optimisticRow]);
+    requestAnimationFrame(() => composerRef.current?.focus());
     try {
       const res = await mcFetch('/api/openclaw/sessions/send', {
         method: 'POST',
@@ -1484,13 +1514,17 @@ export function SessionsThreadClient({
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error || 'Send failed');
-      setMessage('');
-      setTimeout(() => void refreshHistory(), 900);
-      setTimeout(() => void refreshHistory(), 2_500);
+      void refreshHistory({ silent: true });
+      setTimeout(() => void refreshHistory({ silent: true }), 900);
+      setTimeout(() => void refreshHistory({ silent: true }), 2_500);
       setTimeout(() => void refreshSessionInfo(), 1_200);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg || 'Send failed');
+      // If we truly failed, remove the optimistic row and restore the draft if the user hasn't typed something new.
+      setHistory((prev) => (prev || []).filter((row) => row?.clientId !== optimisticId));
+      setMessage((current) => (current && current.trim() ? current : raw));
+      requestAnimationFrame(() => composerRef.current?.focus());
     } finally {
       setSending(false);
     }
@@ -1636,9 +1670,11 @@ export function SessionsThreadClient({
               style={{ width: typeof tokensPctClamped === 'number' ? `${tokensPctClamped}%` : '0%' }}
             />
           </div>
-          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted">
-            <span className="font-mono text-[var(--foreground)]">{tokensUsed ?? '—'}</span>
-            <span className="font-mono text-[var(--foreground)]">{tokensMax ?? '—'}</span>
+          <div className="mt-2 truncate text-xs text-muted">
+            Used/Max:{' '}
+            <span className="font-mono text-[var(--foreground)]">
+              {tokensUsed ?? '—'} / {tokensMax ?? '—'}
+            </span>
           </div>
           {sessionInfo?.model ? (
             <div className="mt-2 truncate text-xs text-muted">
@@ -2460,7 +2496,7 @@ export function SessionsThreadClient({
               ? 'border-transparent bg-[var(--chat-user-bg)] text-[var(--chat-user-fg)]'
               : 'border-[var(--border)] bg-[var(--chat-assistant-bg)] text-[var(--chat-assistant-fg)]';
             return (
-              <div key={`${(row as any)?.timestamp || ''}-${idx}`} className={cn('flex', wrapper)}>
+              <div key={(row as any)?.clientId || `${(row as any)?.timestamp || ''}-${idx}`} className={cn('flex', wrapper)}>
                 <div className={cn('w-full max-w-[min(720px,92%)] rounded-2xl border px-4 py-3 shadow-sm', bubble)}>
                   {ts ? (
                     <div className={cn('mb-2 text-xs', isUser ? 'text-[var(--chat-user-fg)]/70' : 'text-muted')}>
@@ -2496,28 +2532,33 @@ export function SessionsThreadClient({
       </div>
 
       <div className="border-t border-[var(--border)] bg-[var(--card)] p-3">
-        <div className="relative">
+        <div className="flex items-end gap-2">
           <Textarea
+            ref={composerRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                e.preventDefault();
-                void sendMessage();
-              }
+              if (e.key !== 'Enter') return;
+              if (e.shiftKey) return; // newline
+              e.preventDefault();
+              void sendMessage();
             }}
             placeholder="Write a message…"
-            className="min-h-[72px] pr-14"
+            className="min-h-[72px] flex-1 resize-none"
           />
           <button
             type="button"
             onClick={() => void sendMessage()}
             disabled={sending || !message.trim() || !safeSessionKey}
-            className="absolute bottom-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-foreground)] shadow-sm transition hover:bg-[var(--accent-strong)] disabled:opacity-50"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-foreground)] shadow-sm transition hover:bg-[var(--accent-strong)] disabled:opacity-50"
             aria-label="Send message"
           >
-            <Send className="h-4 w-4" />
+            {sending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>
+        </div>
+        <div className="mt-2 flex items-center justify-between px-1 text-[11px] text-muted">
+          <div>Enter to send. Shift+Enter for a newline.</div>
+          {sending ? <div className="tabular-nums">Sending…</div> : null}
         </div>
       </div>
     </div>
