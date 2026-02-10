@@ -11,6 +11,8 @@ type UpdateState =
 
 contextBridge.exposeInMainWorld('MissionControlDesktop', {
   getVersion: () => ipcRenderer.invoke('mc:getVersion') as Promise<string>,
+  getRuntimeInfo: () =>
+    ipcRenderer.invoke('mc:getRuntimeInfo') as Promise<{ platform: string; arch: string }>,
   getUpdateState: () => ipcRenderer.invoke('mc:getUpdateState') as Promise<UpdateState>,
   getUpdateAuth: () => ipcRenderer.invoke('mc:getUpdateAuth') as Promise<{ githubTokenConfigured: boolean }>,
   setGithubToken: (token: string) =>
