@@ -32,13 +32,40 @@ export const useLocalStorage = <T>(
 		initialValueRef.current = initialValue;
 	}, [initialValue]);
 
+	// `useSyncExternalStore` requires that `getSnapshot()` returns the *same*
+	// value (by `Object.is`) if the underlying store hasn't changed. Parsing
+	// JSON on every call creates a fresh object each time and can cause
+	// infinite re-render loops ("Maximum update depth exceeded").
+	const snapshotCacheRef = useRef<{ raw: string | null; value: T } | null>(
+		null,
+	);
+
 	const getSnapshot = useCallback((): T => {
 		if (typeof window === "undefined") return initialValueRef.current;
+		let raw: string | null = null;
 		try {
-			const item = window.localStorage.getItem(key);
-			return item ? (JSON.parse(item) as T) : initialValueRef.current;
+			raw = window.localStorage.getItem(key);
+			const cached = snapshotCacheRef.current;
+			if (cached && cached.raw === raw) return cached.value;
+
+			let value: T;
+			if (!raw) {
+				value = initialValueRef.current;
+			} else {
+				try {
+					value = JSON.parse(raw) as T;
+				} catch (error) {
+					console.warn(`Error parsing localStorage key "${key}":`, error);
+					value = initialValueRef.current;
+				}
+			}
+
+			snapshotCacheRef.current = { raw, value };
+			return value;
 		} catch (error) {
 			console.warn(`Error reading localStorage key "${key}":`, error);
+			// Cache the fallback too so we don't oscillate.
+			snapshotCacheRef.current = { raw, value: initialValueRef.current };
 			return initialValueRef.current;
 		}
 	}, [key]);

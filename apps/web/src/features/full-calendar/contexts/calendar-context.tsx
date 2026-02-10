@@ -71,13 +71,20 @@ export function CalendarProvider({
   onOpenEvent?: (event: IEvent) => void;
   onOpenCreateEvent?: (opts: { startDate: Date; endDate: Date }) => void;
 }) {
-  const [settings, setSettings] = useLocalStorage<CalendarSettings>(
-    "calendar-settings",
-    {
+  // Keep the default settings object referentially stable; the localStorage hook
+  // depends on stable snapshots to avoid render loops.
+  const defaultSettings = useMemo(
+    () => ({
       ...DEFAULT_SETTINGS,
       badgeVariant: badge,
       view: view,
-    },
+    }),
+    [badge, view],
+  );
+
+  const [settings, setSettings] = useLocalStorage<CalendarSettings>(
+    "calendar-settings",
+    defaultSettings,
   );
 
   const [selectedDate, setSelectedDate] = useState(new Date());
