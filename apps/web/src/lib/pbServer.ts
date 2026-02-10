@@ -3,6 +3,14 @@ type AuthState = { token: string; at: number; mode: AuthMode };
 
 let cached: AuthState | null = null;
 
+export type PbHttpError = Error & {
+  status?: number;
+  json?: unknown;
+  path?: string;
+  method?: string;
+  source?: 'pocketbase';
+};
+
 export function pbUrl() {
   return process.env.PB_URL || 'http://127.0.0.1:8090';
 }
@@ -23,7 +31,12 @@ function resolveAuthMode(): { mode: AuthMode; identity: string; password: string
   const identity = String(process.env.PB_SERVICE_EMAIL || '').trim();
   const password = String(process.env.PB_SERVICE_PASSWORD || '').trim();
   if (!identity || !password) {
-    throw new Error('Missing PB_ADMIN_EMAIL/PB_ADMIN_PASSWORD (preferred) or PB_SERVICE_EMAIL/PB_SERVICE_PASSWORD.');
+    const err: PbHttpError = new Error(
+      'Missing PB_ADMIN_EMAIL/PB_ADMIN_PASSWORD (preferred) or PB_SERVICE_EMAIL/PB_SERVICE_PASSWORD.'
+    );
+    err.status = 500;
+    err.source = 'pocketbase';
+    throw err;
   }
   return {
     mode: 'service_user',
@@ -45,7 +58,15 @@ async function authToken(): Promise<string> {
     cache: 'no-store',
   });
   const json = await res.json();
-  if (!res.ok) throw new Error(`PocketBase auth failed: ${res.status} ${JSON.stringify(json)}`);
+  if (!res.ok) {
+    const err: PbHttpError = new Error(`PocketBase auth failed: ${res.status} ${JSON.stringify(json)}`);
+    err.status = res.status;
+    err.json = json;
+    err.path = cfg.path;
+    err.method = 'POST';
+    err.source = 'pocketbase';
+    throw err;
+  }
 
   cached = { token: json.token, at: now, mode: cfg.mode };
   return json.token;
@@ -86,6 +107,16 @@ export async function pbFetch<T = unknown>(path: string, init: { method?: string
     ({ res, json } = await doFetch(token));
   }
 
-  if (!res.ok) throw new Error(`PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+  if (!res.ok) {
+    const err: PbHttpError = new Error(
+      `PocketBase ${init.method ?? 'GET'} ${path} failed: ${res.status} ${JSON.stringify(json)}`
+    );
+    err.status = res.status;
+    err.json = json;
+    err.path = path;
+    err.method = init.method ?? 'GET';
+    err.source = 'pocketbase';
+    throw err;
+  }
   return json as T;
 }

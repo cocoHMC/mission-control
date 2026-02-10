@@ -4,10 +4,12 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { CopyButton } from '@/components/ui/copy-button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { fromDateTimeLocalValue, toDateTimeLocalValue } from '@/lib/utils';
 import { mcFetch } from '@/lib/clientApi';
+import { buildVaultHintMarkdown, upsertVaultHintMarkdown } from '@/lib/vaultHint';
 
 type Agent = { id: string; displayName?: string; openclawAgentId?: string };
 type NodeRecord = { id: string; displayName?: string; nodeId?: string };
@@ -54,6 +56,7 @@ export function TaskForm({
   initialDueAt?: string;
 }) {
   const router = useRouter();
+  const leadAgentId = process.env.NEXT_PUBLIC_MC_LEAD_AGENT_ID || 'main';
   const [pending, setPending] = React.useState(false);
   const [title, setTitle] = React.useState('');
   const [description, setDescription] = React.useState('');
@@ -74,6 +77,16 @@ export function TaskForm({
   const [openclawNodes, setOpenclawNodes] = React.useState<OpenClawNode[]>([]);
   const [modelCatalog, setModelCatalog] = React.useState<OpenClawModelRow[] | null>(null);
   const [modelCaps, setModelCaps] = React.useState<ModelCapabilitiesByKey>({});
+
+  const [vaultAgent, setVaultAgent] = React.useState<string>('');
+  const [vaultHandle, setVaultHandle] = React.useState<string>('');
+  const [vaultItems, setVaultItems] = React.useState<
+    Array<{ id: string; handle: string; type?: string; service?: string; disabled?: boolean; exposureMode?: string }>
+  >([]);
+  const [vaultQuery, setVaultQuery] = React.useState('');
+  const [vaultLoading, setVaultLoading] = React.useState(false);
+  const [vaultLoadError, setVaultLoadError] = React.useState<string | null>(null);
+  const [includeVaultHintInDescription, setIncludeVaultHintInDescription] = React.useState(true);
 
   React.useEffect(() => {
     // Best-effort live node list from OpenClaw (no PocketBase sync required).
@@ -182,13 +195,22 @@ export function TaskForm({
       .split(',')
       .map((label) => label.trim())
       .filter(Boolean);
+
+    const selected = vaultHandle.trim();
+    const selectedItem = selected ? vaultItems.find((it) => it.handle === selected) : null;
+    const hint = selected && includeVaultHintInDescription
+      ? buildVaultHintMarkdown({ handle: selected, includeUsernameRef: selectedItem?.type === 'username_password' })
+      : '';
+    const descriptionWithHint = hint ? upsertVaultHintMarkdown(description, hint) : description;
+
     const res = await mcFetch('/api/tasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         title,
-        description,
+        description: descriptionWithHint,
         context,
+        vaultItem: vaultHandle.trim() || '',
         priority,
         aiEffort: 'auto',
         aiThinking,
@@ -266,6 +288,77 @@ export function TaskForm({
       return next;
     });
   }
+
+  const effectiveVaultAgent = React.useMemo(() => {
+    const explicit = String(vaultAgent || '').trim();
+    if (explicit) return explicit;
+    if (assignees.length) return String(assignees[0] || '').trim();
+    return leadAgentId;
+  }, [assignees, leadAgentId, vaultAgent]);
+
+  React.useEffect(() => {
+    // If the selected credential agent falls out of the assignee set, reset back to Auto.
+    const a = String(vaultAgent || '').trim();
+    if (!a) return;
+    if (!assignees.length) return;
+    if (assignees.includes(a)) return;
+    setVaultAgent('');
+  }, [assignees, vaultAgent]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const agent = String(effectiveVaultAgent || '').trim();
+    if (!agent) {
+      setVaultItems([]);
+      setVaultLoadError(null);
+      return;
+    }
+    setVaultLoading(true);
+    setVaultLoadError(null);
+    mcFetch(`/api/vault/agents/${encodeURIComponent(agent)}/items`, { cache: 'no-store' })
+      .then((r) => r.json().catch(() => null))
+      .then((json) => {
+        if (cancelled) return;
+        if (!json || json.ok === false) {
+          setVaultItems([]);
+          setVaultLoadError(String(json?.error || 'Failed to load credentials'));
+          return;
+        }
+        const items = Array.isArray(json?.items) ? (json.items as any[]) : [];
+        const rows = items
+          .map((it) => {
+            const id = String(it?.id || '').trim();
+            const handle = String(it?.handle || '').trim();
+            if (!id || !handle) return null;
+            return {
+              id,
+              handle,
+              type: typeof it?.type === 'string' ? it.type : '',
+              service: typeof it?.service === 'string' ? it.service : '',
+              disabled: Boolean(it?.disabled),
+              exposureMode: typeof it?.exposureMode === 'string' ? it.exposureMode : '',
+            };
+          })
+          .filter(Boolean) as Array<{ id: string; handle: string; type?: string; service?: string; disabled?: boolean; exposureMode?: string }>;
+        rows.sort(
+          (a, b) =>
+            String(a.service || '').localeCompare(String(b.service || '')) || String(a.handle || '').localeCompare(String(b.handle || ''))
+        );
+        setVaultItems(rows);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setVaultItems([]);
+        setVaultLoadError(err?.message || String(err));
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setVaultLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveVaultAgent]);
 
   return (
     <form onSubmit={onSubmit} className="space-y-6">
@@ -458,6 +551,124 @@ export function TaskForm({
           </div>
           <div className="mt-2 text-xs text-muted">
             Agents are OpenClaw personas (brains). Add more on the <Link href="/agents" className="underline underline-offset-2">Agents</Link> page.
+          </div>
+        </div>
+        <div className="sm:col-span-2">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Credential (Vault)</div>
+                <div className="mt-1 text-xs text-muted">
+                  Pick a stored handle to guide the agent. The model sees only <span className="font-mono">{'{{vault:HANDLE}}'}</span>.
+                </div>
+              </div>
+              <div className="text-xs text-muted">
+                Using agent <span className="font-mono text-[var(--foreground)]">@{effectiveVaultAgent}</span>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs uppercase tracking-[0.2em] text-muted">Agent for credential</label>
+                <select
+                  className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+                  value={vaultAgent}
+                  onChange={(e) => setVaultAgent(e.target.value)}
+                >
+                  <option value="">Auto (first assignee / lead)</option>
+                  {assignees.map((a) => (
+                    <option key={a} value={a}>
+                      @{a}
+                    </option>
+                  ))}
+                  {!assignees.length ? <option value={leadAgentId}>@{leadAgentId}</option> : null}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-[0.2em] text-muted">Search</label>
+                <Input
+                  value={vaultQuery}
+                  onChange={(e) => setVaultQuery(e.target.value)}
+                  placeholder="github, stripe, aws, …"
+                  className="mt-2"
+                  spellCheck={false}
+                />
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Input
+                value={vaultHandle}
+                onChange={(e) => setVaultHandle(e.target.value)}
+                placeholder="(optional) handle, e.g. github_pat"
+                autoCapitalize="none"
+                spellCheck={false}
+              />
+              <Button type="button" variant="secondary" onClick={() => setVaultHandle('')} disabled={!vaultHandle.trim()}>
+                Clear
+              </Button>
+              {vaultHandle.trim() ? <CopyButton value={`{{vault:${vaultHandle.trim()}}}`} label="Copy placeholder" /> : null}
+            </div>
+
+            <label className="mt-3 flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-3 text-sm">
+              <input
+                type="checkbox"
+                checked={includeVaultHintInDescription}
+                onChange={(e) => setIncludeVaultHintInDescription(e.target.checked)}
+                disabled={!vaultHandle.trim()}
+              />
+              <span>
+                Add a credential hint block to Description (recommended)
+              </span>
+            </label>
+
+            {vaultLoadError ? (
+              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">{vaultLoadError}</div>
+            ) : null}
+
+            <div className="mt-3 max-h-[220px] overflow-auto rounded-xl border border-[var(--border)] bg-[var(--card)]">
+              {vaultLoading ? <div className="px-3 py-3 text-sm text-muted">Loading…</div> : null}
+              {!vaultLoading &&
+                (vaultItems || [])
+                  .filter((it) => {
+                    const q = vaultQuery.trim().toLowerCase();
+                    if (!q) return true;
+                    const hay = `${it.handle} ${it.service || ''} ${it.type || ''}`.toLowerCase();
+                    return hay.includes(q);
+                  })
+                  .slice(0, 80)
+                  .map((it) => {
+                    const disabled = Boolean(it.disabled);
+                    return (
+                      <button
+                        key={it.id}
+                        type="button"
+                        className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition ${
+                          disabled ? 'bg-amber-50 text-amber-900' : 'hover:bg-[color:var(--foreground)]/5'
+                        }`}
+                        onClick={() => {
+                          setVaultHandle(it.handle);
+                          setIncludeVaultHintInDescription(true);
+                        }}
+                        disabled={disabled}
+                        title={disabled ? 'Disabled credential' : 'Select credential'}
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-mono text-[11px] text-[var(--foreground)]">{it.handle}</div>
+                          <div className="mt-1 truncate text-xs text-muted">
+                            {it.service || '—'}{it.type ? ` · ${it.type}` : ''}{it.exposureMode ? ` · ${it.exposureMode}` : ''}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-xs text-muted">{disabled ? 'disabled' : 'select'}</div>
+                      </button>
+                    );
+                  })}
+              {!vaultLoading && !vaultItems.length ? <div className="px-3 py-3 text-sm text-muted">No credentials yet.</div> : null}
+            </div>
+
+            <div className="mt-2 text-[11px] text-muted">
+              Tip: store API keys as <span className="font-mono">inject-only</span> and pass placeholders to tools. Avoid revealing secrets in the UI.
+            </div>
           </div>
         </div>
         <div>

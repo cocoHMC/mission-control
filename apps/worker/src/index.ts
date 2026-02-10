@@ -398,11 +398,16 @@ async function sendToAgent(agentId: string, message: string, taskId?: string | n
 
 async function createActivity(token: string, type: string, summary: string, taskId?: string, actorAgentId?: string) {
   const actor = normalizeAgentId(actorAgentId) ?? '';
-  await pbFetch('/api/collections/activities/records', {
-    method: 'POST',
-    token,
-    body: { type, summary, taskId: taskId ?? '', actorAgentId: actor ?? '', createdAt: nowIso() },
-  });
+  try {
+    await pbFetch('/api/collections/activities/records', {
+      method: 'POST',
+      token,
+      body: { type, summary, taskId: taskId ?? '', actorAgentId: actor ?? '', createdAt: nowIso() },
+    });
+  } catch (err: any) {
+    // Worker should never crash on activity logging failures (schema drift, transient PB issues, etc.).
+    console.error('[worker] createActivity failed', { type, taskId: taskId ?? '', err: err?.message || err });
+  }
 }
 
 async function ensureTaskSubscription(token: string, taskId: string, agentId: string, reason: string) {
@@ -632,6 +637,132 @@ function buildAssignedNotificationContent(record: any, description: string, cont
   return parts.length ? `Assigned: ${title} — ${parts.join(' ')}` : `Assigned: ${title}`;
 }
 
+function truncateText(value: string, max = 3600) {
+  const s = String(value || '');
+  if (s.length <= max) return s;
+  return `${s.slice(0, Math.max(0, max - 1))}…`;
+}
+
+function messagePayloadText(payload: any) {
+  if (!payload || typeof payload !== 'object') return '';
+  if (typeof payload.text === 'string' && payload.text.trim()) return payload.text.trim();
+  if (typeof payload.message === 'string' && payload.message.trim()) return payload.message.trim();
+  if (typeof payload.content === 'string' && payload.content.trim()) return payload.content.trim();
+  const content = (payload as any).content;
+  if (!Array.isArray(content)) return '';
+  const parts = content
+    .map((part: any) => {
+      if (!part || typeof part !== 'object') return '';
+      if (part.type === 'text' && typeof part.text === 'string') return part.text;
+      return '';
+    })
+    .filter(Boolean);
+  return parts.join('\n').trim();
+}
+
+function sessionKeyForTask(agentId: string, taskId: string) {
+  const safeAgent = String(agentId || '').trim();
+  const safeTask = String(taskId || '').trim();
+  if (!safeAgent || !safeTask) return '';
+  return `agent:${safeAgent}:mc:${safeTask}`;
+}
+
+async function fetchLatestAgentTurnSummary(agentId: string, taskId: string) {
+  const sessionKey = sessionKeyForTask(agentId, taskId);
+  if (!sessionKey) return { sessionKey: '', summary: '' };
+
+  let out: any = null;
+  try {
+    out = await toolsInvoke('sessions_history', { sessionKey, limit: 80, includeTools: false });
+  } catch {
+    return { sessionKey, summary: '' };
+  }
+
+  const parsed = out?.parsedText ?? out;
+  const messages = Array.isArray(parsed?.messages) ? parsed.messages : [];
+  if (!messages.length) return { sessionKey, summary: '' };
+
+  // Prefer the last assistant/agent message; fall back to last non-user.
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const m = messages[i];
+    const role = typeof m?.role === 'string' ? m.role : '';
+    if (role === 'user') continue;
+    if (role && !['assistant', 'agent', 'tool'].includes(role)) continue;
+    const text = messagePayloadText(m);
+    if (text) return { sessionKey, summary: truncateText(text) };
+  }
+
+  return { sessionKey, summary: '' };
+}
+
+async function hasRecentSnapshotMessage(token: string, taskId: string, status: string, agentId: string) {
+  try {
+    const q = new URLSearchParams({
+      page: '1',
+      perPage: '3',
+      sort: '-createdAt',
+      filter: `taskId = "${pbFilterString(taskId)}"`,
+    });
+    const list = await pbFetch(`/api/collections/messages/records?${q.toString()}`, { token });
+    const items = (list?.items ?? []) as any[];
+    for (const m of items) {
+      const content = String(m?.content || '');
+      const from = String(m?.fromAgentId || '');
+      if (from !== agentId) continue;
+      if (content.startsWith('[Task Snapshot]') && content.includes(`Status: ${status}`)) return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+async function maybePostStatusSnapshotComment(token: string, prev: any, record: any) {
+  if (!prev || prev.status === record.status) return;
+  const status = String(record.status || '').trim();
+  if (!['blocked', 'review', 'done'].includes(status)) return;
+
+  const owner =
+    normalizeAgentId(record.leaseOwnerAgentId || '') ||
+    normalizeAgentId(Array.isArray(record.assigneeIds) ? record.assigneeIds[0] : '') ||
+    normalizeAgentId(prev?.leaseOwnerAgentId || '') ||
+    '';
+  if (!owner) return;
+
+  if (await hasRecentSnapshotMessage(token, String(record.id || ''), status, owner)) return;
+
+  const now = nowIso();
+  const { sessionKey, summary } = await fetchLatestAgentTurnSummary(owner, String(record.id || ''));
+  const lines: string[] = [
+    '[Task Snapshot]',
+    `Task: ${String(record.title || record.id || '').trim() || record.id}`,
+    `Status: ${status}`,
+    `When: ${now}`,
+    `Agent: ${owner}`,
+  ];
+  if (sessionKey) lines.push(`Session: ${sessionKey}`);
+  lines.push('');
+  lines.push('Agent report:');
+  lines.push(summary ? truncateText(summary, 3600) : '(No recent agent summary found. Open the session chat for details.)');
+
+  try {
+    await pbFetch('/api/collections/messages/records', {
+      method: 'POST',
+      token,
+      body: {
+        taskId: record.id,
+        fromAgentId: owner,
+        content: lines.join('\n'),
+        mentions: [],
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+  } catch (err: any) {
+    console.error('[worker] snapshot comment failed', record.id, err?.message || err);
+  }
+}
+
 async function handleTaskEvent(token: string, record: any, action: string) {
   const prev = taskCache.get(record.id);
   taskCache.set(record.id, record);
@@ -652,6 +783,9 @@ async function handleTaskEvent(token: string, record: any, action: string) {
       { title: 'Task updated', body: `${record.title} → ${record.status}`, url: `/tasks/${record.id}` },
       `task:status:${record.id}:${record.status}`
     );
+    // Option A: mirror a compact "how/why" snapshot into the task thread as an agent comment
+    // so humans don't have to open the OpenClaw session chat for the end state.
+    await maybePostStatusSnapshotComment(token, prev, record);
   }
 
   // Auto-done policy: tasks only stay in review when explicitly required.

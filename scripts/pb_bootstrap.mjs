@@ -274,6 +274,8 @@ async function main() {
         { type: 'text', name: 'title', required: true },
         { type: 'editor', name: 'description' },
         { type: 'editor', name: 'context' },
+        // Optional Vault credential handle (hint). Never store plaintext secrets here.
+        { type: 'text', name: 'vaultItem' },
         { type: 'select', name: 'status', required: true, options: { maxSelect: 1, values: ['inbox', 'assigned', 'in_progress', 'review', 'done', 'blocked'] } },
         { type: 'select', name: 'priority', options: { maxSelect: 1, values: ['p0', 'p1', 'p2', 'p3'] } },
         // Task-level cost controls (OpenClaw inline directives).
