@@ -85,9 +85,9 @@ type HistoryRow = {
   optimistic?: boolean;
 };
 
-function newClientId() {
+function clientId() {
   try {
-    // Best-effort unique id for optimistic rows.
+    // Best-effort stable unique id for optimistic rows.
     return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -1491,7 +1491,7 @@ export function SessionsThreadClient({
     const text = raw.trim();
     if (!safeSessionKey || !text) return;
 
-    const optimisticId = newClientId();
+    const optimisticId = clientId();
     const optimisticRow: HistoryRow = {
       clientId: optimisticId,
       optimistic: true,
@@ -1502,8 +1502,7 @@ export function SessionsThreadClient({
 
     setSending(true);
     setError(null);
-    // Clear immediately so the text doesn't "stick" in the composer while the network call is inflight.
-    setMessage('');
+    setMessage(''); // Clear immediately so the composer never "sticks" after send.
     setHistory((prev) => [...(prev || []), optimisticRow]);
     requestAnimationFrame(() => composerRef.current?.focus());
     try {
@@ -1514,6 +1513,7 @@ export function SessionsThreadClient({
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error || 'Send failed');
+      // Refresh a few times; OpenClaw ingestion can lag slightly.
       void refreshHistory({ silent: true });
       setTimeout(() => void refreshHistory({ silent: true }), 900);
       setTimeout(() => void refreshHistory({ silent: true }), 2_500);
@@ -1521,7 +1521,7 @@ export function SessionsThreadClient({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg || 'Send failed');
-      // If we truly failed, remove the optimistic row and restore the draft if the user hasn't typed something new.
+      // Remove the optimistic row and restore the draft if the user hasn't typed something new.
       setHistory((prev) => (prev || []).filter((row) => row?.clientId !== optimisticId));
       setMessage((current) => (current && current.trim() ? current : raw));
       requestAnimationFrame(() => composerRef.current?.focus());
@@ -2539,7 +2539,7 @@ export function SessionsThreadClient({
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={(e) => {
               if (e.key !== 'Enter') return;
-              if (e.shiftKey) return; // newline
+              if (e.shiftKey) return;
               e.preventDefault();
               void sendMessage();
             }}
