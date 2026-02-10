@@ -15,6 +15,7 @@ COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
 COPY --from=deps /repo/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=deps /repo/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=deps /repo/package.json ./package.json
+COPY scripts/rm_dir.mjs ./scripts/rm_dir.mjs
 COPY apps/web ./apps/web
 RUN pnpm -C apps/web build
 
