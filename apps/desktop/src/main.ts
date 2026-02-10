@@ -494,6 +494,17 @@ async function startStack() {
       await fs.mkdir(path.dirname(pbLog), { recursive: true });
 
       log.info('[desktop] starting pocketbase', { pbPort, pbDataDir });
+      const pbRecent: string[] = [];
+      const pushPbLine = (chunk: string) => {
+        const lines = String(chunk || '')
+          .split(/\r?\n/)
+          .map((l) => l.trimEnd())
+          .filter(Boolean);
+        for (const line of lines) {
+          pbRecent.push(line);
+          if (pbRecent.length > 80) pbRecent.shift();
+        }
+      };
       pbProc = spawn(pbBin, ['serve', '--dir', pbDataDir, '--migrationsDir', pbMigrationsDir, '--http', `127.0.0.1:${pbPort}`], {
         cwd: root,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -501,18 +512,25 @@ async function startStack() {
       const pbOut = await fs.open(pbLog, 'a').catch(() => null);
       pbProc.stdout?.on('data', (d) => {
         const s = String(d);
+        pushPbLine(s);
         log.info('[pb]', s.trimEnd());
         void pbOut?.appendFile(s).catch(() => {});
       });
       pbProc.stderr?.on('data', (d) => {
         const s = String(d);
+        pushPbLine(s);
         log.error('[pb]', s.trimEnd());
         void pbOut?.appendFile(s).catch(() => {});
       });
 
       // PocketBase can take a while to start on first launch or with large DBs.
       // Wait longer than the web server to avoid false failures.
-      await waitForOkOrExit(`http://127.0.0.1:${pbPort}/api/health`, pbProc, 120_000, { name: 'PocketBase' });
+      try {
+        await waitForOkOrExit(`http://127.0.0.1:${pbPort}/api/health`, pbProc, 120_000, { name: 'PocketBase' });
+      } catch (err: any) {
+        const tail = pbRecent.length ? `\n\nPocketBase output (last ${pbRecent.length} lines):\n${pbRecent.join('\n')}` : '';
+        throw new Error(`PocketBase failed to start.\n\n${err?.message || String(err)}${tail}`);
+      }
     } else {
       log.info('[desktop] using remote pocketbase', { pbUrl });
       const base = pbUrl.endsWith('/') ? pbUrl.slice(0, -1) : pbUrl;
