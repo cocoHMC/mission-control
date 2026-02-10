@@ -726,6 +726,7 @@ function setupAutoUpdater() {
   autoUpdater.on('error', (err) => setUpdateState({ status: 'error', message: err?.message || String(err) }));
 
   ipcMain.handle('mc:getVersion', () => app.getVersion());
+  ipcMain.handle('mc:getRuntimeInfo', () => ({ platform: process.platform, arch: process.arch }));
   ipcMain.handle('mc:getUpdateState', () => updateState);
   ipcMain.handle('mc:getUpdateAuth', () => ({ githubTokenConfigured: updaterTokenConfigured }));
   ipcMain.handle('mc:setGithubToken', async (_evt, payload: { token: string }) => {

@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 
 type ReleaseAsset = { name?: string; browser_download_url?: string; size?: number; content_type?: string };
 type GhRelease = { tag_name?: string; name?: string; published_at?: string; html_url?: string; assets?: ReleaseAsset[] };
+type RuntimeInfo = { platform: string; arch: string };
 
 function safeString(v: unknown) {
   return typeof v === 'string' ? v.trim() : '';
@@ -27,20 +28,22 @@ function formatBytes(bytes: number | undefined | null) {
   return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-function detectPlatform() {
+function detectBasePlatform() {
   const ua = safeString(typeof navigator !== 'undefined' ? navigator.userAgent : '');
   const platform = safeString(typeof navigator !== 'undefined' ? (navigator as any).platform : '');
   const isMac = /Macintosh|Mac OS X/i.test(ua) || /Mac/i.test(platform);
   const isWin = /Windows/i.test(ua) || /Win/i.test(platform);
   const isLinux = /Linux/i.test(ua) && !/Android/i.test(ua);
 
-  // Best-effort arch.
-  const isArm =
-    /arm|aarch64/i.test(ua) ||
-    /AppleWebKit/i.test(ua) && /Mac/i.test(ua) && /Apple Silicon/i.test(ua);
-  const isX64 = /x86_64|Win64|x64|amd64/i.test(ua);
+  return { isMac, isWin, isLinux, ua };
+}
 
-  return { isMac, isWin, isLinux, isArm, isX64, ua };
+function normalizeArch(input: unknown): 'arm64' | 'x64' | 'unknown' {
+  const s = safeString(input).toLowerCase();
+  if (!s) return 'unknown';
+  if (s === 'arm64' || s === 'aarch64' || s === 'arm') return 'arm64';
+  if (s === 'x64' || s === 'x86_64' || s === 'amd64') return 'x64';
+  return 'unknown';
 }
 
 function pick(assets: ReleaseAsset[], pred: (name: string) => boolean) {
@@ -55,8 +58,59 @@ export function DownloadClient() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [rel, setRel] = React.useState<GhRelease | null>(null);
+  const [arch, setArch] = React.useState<'arm64' | 'x64' | 'unknown'>('unknown');
 
-  const platform = React.useMemo(() => detectPlatform(), []);
+  const platform = React.useMemo(() => detectBasePlatform(), []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      // 1) Electron desktop app: authoritative.
+      const mc = (globalThis as any)?.MissionControlDesktop as
+        | { getRuntimeInfo?: () => Promise<RuntimeInfo> }
+        | undefined;
+      if (mc?.getRuntimeInfo) {
+        try {
+          const info = await mc.getRuntimeInfo();
+          if (cancelled) return;
+          setArch(normalizeArch(info?.arch));
+          return;
+        } catch {
+          // fall through
+        }
+      }
+
+      // 2) Browser UA-CH (best effort; may not provide arch on macOS).
+      const uaData = (globalThis as any)?.navigator?.userAgentData;
+      if (uaData?.getHighEntropyValues) {
+        try {
+          const v = await uaData.getHighEntropyValues(['architecture']);
+          const a = normalizeArch(v?.architecture);
+          if (cancelled) return;
+          if (a !== 'unknown') setArch(a);
+          return;
+        } catch {
+          // fall through
+        }
+      }
+
+      // 3) Heuristic fallback:
+      // On Apple Silicon, many browsers report "Intel" in UA for compatibility, so we avoid guessing.
+      // We'll only set a positive signal when the UA explicitly mentions arm.
+      try {
+        const ua = safeString(typeof navigator !== 'undefined' ? navigator.userAgent : '');
+        const a = /arm|aarch64/i.test(ua) ? 'arm64' : 'unknown';
+        if (!cancelled) setArch(a);
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -67,6 +121,7 @@ export function DownloadClient() {
         // Public endpoint; if the repo is private, this will fail and we show fallback instructions.
         const res = await fetch('https://api.github.com/repos/cocoHMC/mission-control/releases/latest', {
           method: 'GET',
+          cache: 'no-store',
           headers: { accept: 'application/vnd.github+json' },
         });
         const json = (await res.json().catch(() => null)) as GhRelease | null;
@@ -94,7 +149,11 @@ export function DownloadClient() {
   const linuxDeb = pick(assets, (n) => n.includes('-linux-amd64.deb'));
 
   const recommended = (() => {
-    if (platform.isMac) return platform.isArm ? macArmDmg : macX64Dmg;
+    if (platform.isMac) {
+      if (arch === 'arm64') return macArmDmg;
+      if (arch === 'x64') return macX64Dmg;
+      return null;
+    }
     if (platform.isWin) return winSetup;
     if (platform.isLinux) return linuxAppImage;
     return null;
@@ -173,7 +232,7 @@ export function DownloadClient() {
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <AssetButton label="macOS Apple Silicon (M1/M2/M3)" asset={macArmDmg} recommended={recommended === macArmDmg} />
+        <AssetButton label="macOS Apple Silicon (M1/M2/M3/M4)" asset={macArmDmg} recommended={recommended === macArmDmg} />
         <AssetButton label="macOS Intel" asset={macX64Dmg} recommended={recommended === macX64Dmg} />
         <AssetButton label="Windows 10/11 (x64)" asset={winSetup} recommended={recommended === winSetup} />
         <AssetButton label="Linux (x86_64) AppImage" asset={linuxAppImage} recommended={recommended === linuxAppImage} />
@@ -188,6 +247,7 @@ export function DownloadClient() {
             <CardTitle>Detected Device</CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-muted">
+            <div>Arch: <span className="font-mono">{arch}</span></div>
             <div>UA: <span className="font-mono">{platform.ua || 'unknown'}</span></div>
           </CardContent>
         </Card>
