@@ -81,7 +81,20 @@ type HistoryRow = {
   content?: unknown;
   text?: string;
   message?: string;
+  clientId?: string;
+  optimistic?: boolean;
 };
+
+function clientId() {
+  try {
+    // Best-effort stable unique id for optimistic rows.
+    return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  } catch {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+}
 
 function agentIdFromSessionKey(sessionKey: string) {
   if (!sessionKey.startsWith('agent:')) return null;
@@ -849,6 +862,7 @@ export function SessionsThreadClient({
 
   const threadRef = React.useRef<HTMLDivElement | null>(null);
   const messageEndRef = React.useRef<HTMLDivElement | null>(null);
+  const composerRef = React.useRef<HTMLTextAreaElement | null>(null);
 
   const safeSessionKey = React.useMemo(() => sessionKey.replace(/ /g, '+'), [sessionKey]);
   const agentId = React.useMemo(() => agentIdFromSessionKey(safeSessionKey) || '', [safeSessionKey]);
@@ -1472,10 +1486,25 @@ export function SessionsThreadClient({
   }, [history.length, safeSessionKey]);
 
   async function sendMessage() {
-    const text = message.trim();
+    if (sending) return;
+    const raw = message;
+    const text = raw.trim();
     if (!safeSessionKey || !text) return;
+
+    const optimisticId = clientId();
+    const optimisticRow: HistoryRow = {
+      clientId: optimisticId,
+      optimistic: true,
+      role: 'user',
+      timestamp: new Date().toISOString(),
+      text,
+    };
+
     setSending(true);
     setError(null);
+    setMessage(''); // Clear immediately so the composer never "sticks" after send.
+    setHistory((prev) => [...(prev || []), optimisticRow]);
+    requestAnimationFrame(() => composerRef.current?.focus());
     try {
       const res = await mcFetch('/api/openclaw/sessions/send', {
         method: 'POST',
@@ -1484,13 +1513,18 @@ export function SessionsThreadClient({
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error || 'Send failed');
-      setMessage('');
-      setTimeout(() => void refreshHistory(), 900);
-      setTimeout(() => void refreshHistory(), 2_500);
+      // Refresh a few times; OpenClaw ingestion can lag slightly.
+      void refreshHistory({ silent: true });
+      setTimeout(() => void refreshHistory({ silent: true }), 900);
+      setTimeout(() => void refreshHistory({ silent: true }), 2_500);
       setTimeout(() => void refreshSessionInfo(), 1_200);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg || 'Send failed');
+      // Remove the optimistic row and restore the draft if the user hasn't typed something new.
+      setHistory((prev) => (prev || []).filter((row) => row?.clientId !== optimisticId));
+      setMessage((current) => (current && current.trim() ? current : raw));
+      requestAnimationFrame(() => composerRef.current?.focus());
     } finally {
       setSending(false);
     }
@@ -2460,7 +2494,7 @@ export function SessionsThreadClient({
               ? 'border-transparent bg-[var(--chat-user-bg)] text-[var(--chat-user-fg)]'
               : 'border-[var(--border)] bg-[var(--chat-assistant-bg)] text-[var(--chat-assistant-fg)]';
             return (
-              <div key={`${(row as any)?.timestamp || ''}-${idx}`} className={cn('flex', wrapper)}>
+              <div key={(row as any)?.clientId || `${(row as any)?.timestamp || ''}-${idx}`} className={cn('flex', wrapper)}>
                 <div className={cn('w-full max-w-[min(720px,92%)] rounded-2xl border px-4 py-3 shadow-sm', bubble)}>
                   {ts ? (
                     <div className={cn('mb-2 text-xs', isUser ? 'text-[var(--chat-user-fg)]/70' : 'text-muted')}>
@@ -2498,10 +2532,17 @@ export function SessionsThreadClient({
       <div className="border-t border-[var(--border)] bg-[var(--card)] p-3">
         <div className="relative">
           <Textarea
+            ref={composerRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+              if (e.key !== 'Enter') return;
+              // Chat-style composer:
+              // - Enter sends
+              // - Shift+Enter inserts a newline
+              // - Cmd/Ctrl+Enter also sends (common alternative)
+              if (e.shiftKey) return;
+              if (e.metaKey || e.ctrlKey || !e.shiftKey) {
                 e.preventDefault();
                 void sendMessage();
               }
@@ -2509,6 +2550,10 @@ export function SessionsThreadClient({
             placeholder="Write a message…"
             className="min-h-[72px] pr-14"
           />
+          <div className="mt-2 flex items-center justify-between px-1 text-xs text-muted">
+            <div>Enter to send. Shift+Enter for a newline.</div>
+            {sending ? <div className="inline-flex items-center gap-1">Sending…</div> : null}
+          </div>
           <button
             type="button"
             onClick={() => void sendMessage()}
@@ -2516,7 +2561,7 @@ export function SessionsThreadClient({
             className="absolute bottom-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-foreground)] shadow-sm transition hover:bg-[var(--accent-strong)] disabled:opacity-50"
             aria-label="Send message"
           >
-            <Send className="h-4 w-4" />
+            {sending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>
         </div>
       </div>
