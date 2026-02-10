@@ -12,6 +12,17 @@ function bad(value: unknown) {
   return typeof value !== 'string' || !value.trim();
 }
 
+function normalizeSort(raw: string) {
+  // PocketBase in this project does not reliably support sorting by system fields like
+  // `created`/`updated`, so prefer explicit Vault fields.
+  const v = String(raw || '').trim();
+  if (!v) return '';
+  if (v === '-updated' || v === '-created') return '-lastRotatedAt';
+  // Allow only known safe sorts to avoid PB filter/sort errors on older schemas.
+  const allowed = new Set(['-lastRotatedAt', '-lastUsedAt', 'lastRotatedAt', 'lastUsedAt', 'handle', '-handle', 'service', '-service']);
+  return allowed.has(v) ? v : '';
+}
+
 function sanitizeHandleBase(value: string) {
   const raw = String(value || '').trim().toLowerCase();
   if (!raw) return '';
@@ -81,14 +92,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ agen
     const url = new URL(req.url);
     const page = url.searchParams.get('page') || '1';
     const perPage = url.searchParams.get('perPage') || '200';
-    const sort = url.searchParams.get('sort') || '-updated';
+    const sort = normalizeSort(url.searchParams.get('sort') || '') || '-lastRotatedAt';
 
-    const q = new URLSearchParams({
-      page,
-      perPage,
-      sort,
-      filter: `agent = "${agentId}"`,
-    });
+    const q = new URLSearchParams({ page, perPage, filter: `agent = "${agentId}"` });
+    if (sort) q.set('sort', sort);
 
     const list = await pbFetch<{ items?: any[]; page: number; perPage: number; totalItems: number; totalPages: number }>(
       `/api/collections/vault_items/records?${q.toString()}`
