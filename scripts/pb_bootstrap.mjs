@@ -278,7 +278,10 @@ async function main() {
         { type: 'select', name: 'priority', options: { maxSelect: 1, values: ['p0', 'p1', 'p2', 'p3'] } },
         // Task-level cost controls (OpenClaw inline directives).
         { type: 'select', name: 'aiEffort', options: { maxSelect: 1, values: ['auto', 'efficient', 'balanced', 'heavy'] } },
+        { type: 'select', name: 'aiThinking', options: { maxSelect: 1, values: ['auto', 'low', 'medium', 'high', 'xhigh'] } },
         { type: 'select', name: 'aiModelTier', options: { maxSelect: 1, values: ['auto', 'cheap', 'balanced', 'heavy', 'vision', 'code'] } },
+        // Optional explicit model override (provider/model or alias). If set, this should take precedence over aiModelTier.
+        { type: 'text', name: 'aiModel' },
         { type: 'json', name: 'assigneeIds' },
         { type: 'text', name: 'requiredNodeId' },
         { type: 'json', name: 'labels' },

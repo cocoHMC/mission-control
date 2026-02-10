@@ -23,6 +23,34 @@ function normalizeSelect(value: unknown, fallback: string) {
   return s ? s : fallback;
 }
 
+type OpenClawModelRow = { key: string; name?: string };
+type ModelCapabilitiesByKey = Record<string, { reasoningSupported?: boolean | null; thinkingLevels?: string[] }>;
+
+function inferTierFromModelKey(key: string): string {
+  const k = key.toLowerCase();
+  if (k.includes('vision')) return 'vision';
+  if (k.includes('codex') || k.includes('/code') || k.includes('code-')) return 'code';
+  if (k.includes('mini') || k.includes('lite') || k.includes('small')) return 'cheap';
+  if (k.includes('max') || k.includes('pro') || k.includes('ultra') || k.includes('opus')) return 'heavy';
+  return 'balanced';
+}
+
+function providerFromModelKey(key: string): string {
+  const idx = key.indexOf('/');
+  return idx > 0 ? key.slice(0, idx) : 'unknown';
+}
+
+function thinkingFromLegacyEffort(effort: unknown) {
+  const v = String(effort || '')
+    .trim()
+    .toLowerCase();
+  if (!v || v === 'auto' || v === 'default') return 'auto';
+  if (v === 'efficient') return 'low';
+  if (v === 'balanced') return 'medium';
+  if (v === 'heavy') return 'high';
+  return 'auto';
+}
+
 function sameStringArray(a: string[], b: string[]) {
   if (a === b) return true;
   if (a.length !== b.length) return false;
@@ -77,8 +105,13 @@ export function TaskDetail({
   const [assignees, setAssignees] = React.useState<string[]>(task.assigneeIds ?? []);
   const [labelsInput, setLabelsInput] = React.useState((task.labels ?? []).join(', '));
   const [requiredNodeId, setRequiredNodeId] = React.useState(task.requiredNodeId ?? '');
-  const [aiEffort, setAiEffort] = React.useState(normalizeSelect(task.aiEffort, 'auto'));
+  const [aiThinking, setAiThinking] = React.useState(() => {
+    const v = normalizeSelect(task.aiThinking, 'auto');
+    return v !== 'auto' ? v : thinkingFromLegacyEffort(task.aiEffort);
+  });
   const [aiModelTier, setAiModelTier] = React.useState(normalizeSelect(task.aiModelTier, 'auto'));
+  const [aiModel, setAiModel] = React.useState(String(task.aiModel ?? ''));
+  const [aiProvider, setAiProvider] = React.useState('auto');
   const [blockReason, setBlockReason] = React.useState('');
   const [archived, setArchived] = React.useState(Boolean(task.archived));
   const [requiresReview, setRequiresReview] = React.useState(Boolean(task.requiresReview));
@@ -90,6 +123,9 @@ export function TaskDetail({
   const [uploadFile, setUploadFile] = React.useState<File | null>(null);
   const [uploading, setUploading] = React.useState(false);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
+
+  const [modelCatalog, setModelCatalog] = React.useState<OpenClawModelRow[] | null>(null);
+  const [modelCaps, setModelCaps] = React.useState<ModelCapabilitiesByKey>({});
 
   const openclawAssigneeIds = React.useMemo(() => {
     const ids: string[] = [];
@@ -136,11 +172,15 @@ export function TaskDetail({
     const nextRequiredNodeId = String(task.requiredNodeId ?? '');
     setRequiredNodeId((prev) => (prev === nextRequiredNodeId ? prev : nextRequiredNodeId));
 
-    const nextEffort = normalizeSelect(task.aiEffort, 'auto');
-    setAiEffort((prev) => (prev === nextEffort ? prev : nextEffort));
+    const rawThinking = normalizeSelect(task.aiThinking, 'auto');
+    const nextThinking = rawThinking !== 'auto' ? rawThinking : thinkingFromLegacyEffort(task.aiEffort);
+    setAiThinking((prev) => (prev === nextThinking ? prev : nextThinking));
 
     const nextTier = normalizeSelect(task.aiModelTier, 'auto');
     setAiModelTier((prev) => (prev === nextTier ? prev : nextTier));
+
+    const nextModel = String(task.aiModel ?? '');
+    setAiModel((prev) => (prev === nextModel ? prev : nextModel));
 
     const nextArchived = Boolean(task.archived);
     setArchived((prev) => (prev === nextArchived ? prev : nextArchived));
@@ -164,8 +204,10 @@ export function TaskDetail({
     task.assigneeIds,
     task.labels,
     task.requiredNodeId,
+    task.aiThinking,
     task.aiEffort,
     task.aiModelTier,
+    task.aiModel,
     task.archived,
     task.requiresReview,
     task.startAt,
@@ -174,9 +216,79 @@ export function TaskDetail({
   ]);
 
   React.useEffect(() => {
+    // Best-effort: suggestions for explicit model overrides.
+    let cancelled = false;
+    mcFetch('/api/openclaw/models/list', { cache: 'no-store' })
+      .then((r) => r.json().catch(() => null))
+      .then((json) => {
+        if (cancelled) return;
+        if (!json?.ok) return;
+        setModelCaps((json?.capabilitiesByKey as ModelCapabilitiesByKey) || {});
+        const models = Array.isArray(json?.models) ? (json.models as any[]) : [];
+        const rows = models
+          .map((m) => {
+            const key = typeof m?.key === 'string' ? m.key.trim() : '';
+            const name = typeof m?.name === 'string' ? m.name.trim() : '';
+            if (!key) return null;
+            return { key, name: name || undefined };
+          })
+          .filter(Boolean) as OpenClawModelRow[];
+        rows.sort((a, b) => a.key.localeCompare(b.key));
+        setModelCatalog(rows);
+      })
+      .catch(() => {
+        // ignore
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const reasoningSupported = React.useMemo(() => {
+    const key = String(aiModel || '').trim();
+    if (!key) return null;
+    const cap = modelCaps[key];
+    if (!cap) return null;
+    return typeof cap.reasoningSupported === 'boolean' ? cap.reasoningSupported : null;
+  }, [aiModel, modelCaps]);
+
+  React.useEffect(() => {
+    if (reasoningSupported === false) {
+      setAiThinking('auto');
+    }
+  }, [reasoningSupported]);
+
+  React.useEffect(() => {
     const next = Array.isArray(subtasks) ? subtasks : [];
     setSubtaskItems((prev) => (sameSubtasks(prev, next) ? prev : next));
   }, [task.id, subtasks]);
+
+  React.useEffect(() => {
+    // Keep provider selector in sync with current model when possible.
+    const model = String(aiModel || '').trim();
+    if (!model) {
+      setAiProvider('auto');
+      return;
+    }
+    setAiProvider(providerFromModelKey(model));
+  }, [aiModel]);
+
+  const providers = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const m of modelCatalog || []) {
+      const p = providerFromModelKey(m.key);
+      map.set(p, (map.get(p) || 0) + 1);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([provider]) => provider);
+  }, [modelCatalog]);
+
+  const modelsForProvider = React.useMemo(() => {
+    const p = String(aiProvider || '').trim();
+    if (!p || p === 'auto') return [];
+    return (modelCatalog || []).filter((m) => providerFromModelKey(m.key) === p);
+  }, [modelCatalog, aiProvider]);
 
   async function updateTask(payload: Record<string, unknown>) {
     await mcFetch(`/api/tasks/${task.id}`, {
@@ -781,20 +893,23 @@ export function TaskDetail({
             <div className="text-xs uppercase tracking-[0.2em] text-muted">AI controls</div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="text-xs uppercase tracking-[0.2em] text-muted">Effort</label>
+                <label className="text-xs uppercase tracking-[0.2em] text-muted">Reasoning</label>
                 <select
-                  value={aiEffort}
+                  value={aiThinking}
                   onChange={async (e) => {
                     const value = e.target.value;
-                    setAiEffort(value);
-                    await updateTask({ aiEffort: value });
+                    setAiThinking(value);
+                    // Clear legacy knob so the UI matches behavior.
+                    await updateTask({ aiThinking: value, aiEffort: 'auto' });
                   }}
                   className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+                  disabled={reasoningSupported === false}
                 >
                   <option value="auto">Auto (agent default)</option>
-                  <option value="efficient">Efficient</option>
-                  <option value="balanced">Balanced</option>
-                  <option value="heavy">Heavy</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="xhigh">Extra high</option>
                 </select>
               </div>
               <div>
@@ -816,9 +931,78 @@ export function TaskDetail({
                   <option value="vision">Vision</option>
                 </select>
               </div>
+              <div className="sm:col-span-2">
+                <div className="text-xs uppercase tracking-[0.2em] text-muted">Model</div>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="text-xs uppercase tracking-[0.2em] text-muted">Provider</label>
+                    <select
+                      className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+                      value={aiProvider}
+                      onChange={async (event) => {
+                        const next = event.target.value;
+                        setAiProvider(next);
+                        if (next === 'auto') {
+                          setAiModel('');
+                          await updateTask({ aiModel: '' });
+                          return;
+                        }
+                        // Clear explicit model until user picks one.
+                        setAiModel('');
+                        await updateTask({ aiModel: '' });
+                      }}
+                    >
+                      <option value="auto">Auto (agent default)</option>
+                      {providers.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-[0.2em] text-muted">Model</label>
+                    <select
+                      className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+                      value={aiModel}
+                      onChange={async (event) => {
+                        const next = event.target.value;
+                        setAiModel(next);
+                        await updateTask({ aiModel: next });
+                        if (next && (aiModelTier === 'auto' || !aiModelTier)) {
+                          const inferred = inferTierFromModelKey(next);
+                          setAiModelTier(inferred);
+                          await updateTask({ aiModelTier: inferred });
+                        }
+                      }}
+                      disabled={aiProvider === 'auto'}
+                    >
+                      <option value="">{aiProvider === 'auto' ? '(select provider first)' : 'Auto (no override)'}</option>
+                      {modelsForProvider.map((m) => (
+                        <option key={m.key} value={m.key}>
+                          {m.key}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-muted">
+                  Picks an exact model that OpenClaw currently knows about. If set, this takes precedence over Model tier.
+                </div>
+              </div>
             </div>
             <div className="mt-2 text-xs text-muted">
-              Mission Control can prefix OpenClaw messages with inline directives (ex: <span className="font-mono">/t low</span>, <span className="font-mono">/model cheap</span>) to control cost per task.
+              {reasoningSupported === false ? (
+                <>
+                  This model doesn&apos;t support reasoning controls. Mission Control will keep reasoning on Auto and only
+                  apply model selection.
+                </>
+              ) : (
+                <>
+                  Mission Control can prefix OpenClaw messages with inline directives (ex:{' '}
+                  <span className="font-mono">/t low</span>, <span className="font-mono">/model cheap</span>) to control cost per task.
+                </>
+              )}
             </div>
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">

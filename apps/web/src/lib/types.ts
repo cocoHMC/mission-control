@@ -9,7 +9,10 @@ export type Task = {
   archived?: boolean;
   priority?: string;
   aiEffort?: string;
+  aiThinking?: string;
   aiModelTier?: string;
+  // Optional explicit OpenClaw model key/alias override for this task.
+  aiModel?: string;
   assigneeIds?: string[];
   labels?: string[];
   requiredNodeId?: string;

@@ -23,6 +23,23 @@ type OpenClawNodesStatus = {
   nodes?: OpenClawNode[];
 };
 
+type OpenClawModelRow = { key: string; name?: string };
+type ModelCapabilitiesByKey = Record<string, { reasoningSupported?: boolean | null; thinkingLevels?: string[] }>;
+
+function inferTierFromModelKey(key: string): string {
+  const k = key.toLowerCase();
+  if (k.includes('vision')) return 'vision';
+  if (k.includes('codex') || k.includes('/code') || k.includes('code-')) return 'code';
+  if (k.includes('mini') || k.includes('lite') || k.includes('small')) return 'cheap';
+  if (k.includes('max') || k.includes('pro') || k.includes('ultra') || k.includes('opus')) return 'heavy';
+  return 'balanced';
+}
+
+function providerFromModelKey(key: string): string {
+  const idx = key.indexOf('/');
+  return idx > 0 ? key.slice(0, idx) : 'unknown';
+}
+
 export function TaskForm({
   agents,
   nodes,
@@ -42,8 +59,10 @@ export function TaskForm({
   const [description, setDescription] = React.useState('');
   const [context, setContext] = React.useState('');
   const [priority, setPriority] = React.useState('p2');
-  const [aiEffort, setAiEffort] = React.useState('auto');
+  const [aiThinking, setAiThinking] = React.useState('auto');
   const [aiModelTier, setAiModelTier] = React.useState('auto');
+  const [aiModel, setAiModel] = React.useState('');
+  const [aiProvider, setAiProvider] = React.useState('auto');
   const [assignees, setAssignees] = React.useState<string[]>([]);
   const [labels, setLabels] = React.useState('');
   const [requiredNodeId, setRequiredNodeId] = React.useState('');
@@ -53,6 +72,8 @@ export function TaskForm({
   const [subtasks, setSubtasks] = React.useState<{ id: string; title: string }[]>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = React.useState('');
   const [openclawNodes, setOpenclawNodes] = React.useState<OpenClawNode[]>([]);
+  const [modelCatalog, setModelCatalog] = React.useState<OpenClawModelRow[] | null>(null);
+  const [modelCaps, setModelCaps] = React.useState<ModelCapabilitiesByKey>({});
 
   React.useEffect(() => {
     // Best-effort live node list from OpenClaw (no PocketBase sync required).
@@ -74,6 +95,50 @@ export function TaskForm({
       cancelled = true;
     };
   }, []);
+
+  React.useEffect(() => {
+    // Best-effort: populate suggestions for explicit model overrides.
+    let cancelled = false;
+    mcFetch('/api/openclaw/models/list', { cache: 'no-store' })
+      .then((r) => r.json().catch(() => null))
+      .then((json) => {
+        if (cancelled) return;
+        if (!json?.ok) return;
+        setModelCaps((json?.capabilitiesByKey as ModelCapabilitiesByKey) || {});
+        const models = Array.isArray(json?.models) ? (json.models as any[]) : [];
+        const rows = models
+          .map((m) => {
+            const key = typeof m?.key === 'string' ? m.key.trim() : '';
+            const name = typeof m?.name === 'string' ? m.name.trim() : '';
+            if (!key) return null;
+            return { key, name: name || undefined };
+          })
+          .filter(Boolean) as OpenClawModelRow[];
+        rows.sort((a, b) => a.key.localeCompare(b.key));
+        setModelCatalog(rows);
+      })
+      .catch(() => {
+        // ignore
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const reasoningSupported = React.useMemo(() => {
+    const key = String(aiModel || '').trim();
+    if (!key) return null;
+    const cap = modelCaps[key];
+    if (!cap) return null;
+    return typeof cap.reasoningSupported === 'boolean' ? cap.reasoningSupported : null;
+  }, [aiModel, modelCaps]);
+
+  React.useEffect(() => {
+    // If the selected model doesn't support reasoning controls, force Auto.
+    if (reasoningSupported === false) {
+      setAiThinking('auto');
+    }
+  }, [reasoningSupported]);
 
   function makeLocalId() {
     try {
@@ -125,8 +190,10 @@ export function TaskForm({
         description,
         context,
         priority,
-        aiEffort,
+        aiEffort: 'auto',
+        aiThinking,
         aiModelTier,
+        aiModel,
         assigneeIds: assignees,
         status: assignees.length ? 'assigned' : 'inbox',
         labels: labelList,
@@ -173,6 +240,23 @@ export function TaskForm({
     router.push('/tasks');
     router.refresh();
   }
+
+  const providers = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const m of modelCatalog || []) {
+      const p = providerFromModelKey(m.key);
+      map.set(p, (map.get(p) || 0) + 1);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([provider]) => provider);
+  }, [modelCatalog]);
+
+  const modelsForProvider = React.useMemo(() => {
+    const p = String(aiProvider || '').trim();
+    if (!p || p === 'auto') return [];
+    return (modelCatalog || []).filter((m) => providerFromModelKey(m.key) === p);
+  }, [modelCatalog, aiProvider]);
 
   function toggleAssignee(id: string, fallbackId: string) {
     setAssignees((prev) => {
@@ -222,23 +306,89 @@ export function TaskForm({
           </select>
         </div>
         <div>
-          <label className="text-sm font-medium">AI effort</label>
+          <label className="text-sm font-medium">Reasoning</label>
           <select
             className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
-            value={aiEffort}
-            onChange={(event) => setAiEffort(event.target.value)}
+            value={aiThinking}
+            onChange={(event) => setAiThinking(event.target.value)}
+            disabled={reasoningSupported === false}
           >
             <option value="auto">Auto (agent default)</option>
-            <option value="efficient">Efficient (low tokens)</option>
-            <option value="balanced">Balanced</option>
-            <option value="heavy">Heavy (thorough)</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="xhigh">Extra high</option>
           </select>
           <div className="mt-2 text-xs text-muted">
-            Used to prefix OpenClaw directives for this task (cheap vs heavy thinking).
+            {reasoningSupported === false ? (
+              <>
+                Reasoning controls aren&apos;t supported by the selected model, so this will stay on Auto.
+              </>
+            ) : (
+              <>
+                Sets the per-task <span className="font-mono">/t</span> directive (how hard it thinks).
+              </>
+            )}
+          </div>
+        </div>
+        <div className="sm:col-span-2">
+          <div className="text-sm font-medium">Model</div>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="text-xs uppercase tracking-[0.2em] text-muted">Provider</label>
+              <select
+                className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+                value={aiProvider}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setAiProvider(next);
+                  if (next === 'auto') {
+                    setAiModel('');
+                    setAiModelTier('auto');
+                    return;
+                  }
+                  // If switching providers, clear the model selection until user picks.
+                  setAiModel('');
+                }}
+              >
+                <option value="auto">Auto (agent default)</option>
+                {providers.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-[0.2em] text-muted">Model</label>
+              <select
+                className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+                value={aiModel}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setAiModel(next);
+                  if (!next) return;
+                  // Keep a sensible fallback tier for humans (even though explicit model wins).
+                  if (aiModelTier === 'auto' || !aiModelTier) setAiModelTier(inferTierFromModelKey(next));
+                }}
+                disabled={aiProvider === 'auto'}
+              >
+                <option value="">{aiProvider === 'auto' ? '(select provider first)' : 'Auto (no override)'}</option>
+                {modelsForProvider.map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {m.key}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="mt-2 text-xs text-muted">
+            Picks an exact OpenClaw model from what’s currently connected (via <span className="font-mono">openclaw models list</span>).
+            If unset, Mission Control falls back to Model tier.
           </div>
         </div>
         <div>
-          <label className="text-sm font-medium">Model tier</label>
+          <label className="text-sm font-medium">Model tier (fallback)</label>
           <select
             className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
             value={aiModelTier}
@@ -252,7 +402,7 @@ export function TaskForm({
             <option value="vision">Vision</option>
           </select>
           <div className="mt-2 text-xs text-muted">
-            Optional inline <span className="font-mono">/model</span> override for agent messages on this task.
+            Used only when no exact model is selected (sends <span className="font-mono">/model cheap|balanced|...</span>).
           </div>
         </div>
         <div>

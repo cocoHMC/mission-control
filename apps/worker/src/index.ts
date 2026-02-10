@@ -324,6 +324,29 @@ function normalizeModelTier(value: unknown) {
   return '';
 }
 
+function normalizeExplicitModel(value: unknown) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const firstLine = raw.split('\n')[0]?.trim() || '';
+  const lower = firstLine.toLowerCase();
+  if (!firstLine || lower === 'auto' || lower === 'default') return '';
+  // Avoid directive injection via whitespace/newlines. OpenClaw model keys/aliases should not contain spaces.
+  const safe = firstLine.replace(/\s+/g, ' ').trim();
+  return safe;
+}
+
+function normalizeThinkingLevel(value: unknown) {
+  const v = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (!v || v === 'auto' || v === 'default') return '';
+  if (v === 'low') return 'low';
+  if (v === 'medium' || v === 'mid') return 'medium';
+  if (v === 'high') return 'high';
+  if (v === 'xhigh' || v === 'extra_high' || v === 'extra-high' || v === 'extrahigh') return 'xhigh';
+  return '';
+}
+
 function normalizeThinkingEffort(value: unknown) {
   const v = String(value || '')
     .trim()
@@ -342,11 +365,13 @@ function openclawInlineDirectivesFor(agentId: string, taskId?: string | null) {
   const task = taskCache.get(safeTask) || null;
   const agent = agentByOpenclawId.get(agentId) || null;
 
-  const thinking = normalizeThinkingEffort(task?.aiEffort);
+  const thinking = normalizeThinkingLevel(task?.aiThinking) || normalizeThinkingEffort(task?.aiEffort);
+  const explicitModel = normalizeExplicitModel(task?.aiModel);
   const modelTier = normalizeModelTier(task?.aiModelTier) || normalizeModelTier(agent?.modelTier);
 
   const directives: string[] = [];
-  if (modelTier) directives.push(`/model ${modelTier}`);
+  if (explicitModel) directives.push(`/model ${explicitModel}`);
+  else if (modelTier) directives.push(`/model ${modelTier}`);
   if (thinking) directives.push(`/t ${thinking}`);
   return directives;
 }
