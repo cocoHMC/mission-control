@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
   const pbServicePassword =
     body.pbServicePassword && body.pbServicePassword.trim() ? body.pbServicePassword : body.mcAdminPassword;
   const openclawUrl = normalizeUrl(body.openclawGatewayUrl || 'http://127.0.0.1:18789');
+  const vaultMasterKeyB64 = crypto.randomBytes(32).toString('base64');
 
   const replacements = new Map<string, string>();
   replacements.set('MC_ADMIN_USER', body.mcAdminUser.trim());
@@ -116,7 +117,7 @@ export async function POST(req: NextRequest) {
   replacements.set('PB_SERVICE_EMAIL', pbServiceEmail);
   replacements.set('PB_SERVICE_PASSWORD', pbServicePassword);
   // Vault master key (AES-256-GCM; 32 bytes base64). Losing this key means losing access to stored secrets.
-  replacements.set('MC_VAULT_MASTER_KEY_B64', crypto.randomBytes(32).toString('base64'));
+  replacements.set('MC_VAULT_MASTER_KEY_B64', vaultMasterKeyB64);
   replacements.set('OPENCLAW_GATEWAY_URL', openclawUrl);
   replacements.set('OPENCLAW_GATEWAY_TOKEN', body.connectOpenClaw ? (body.openclawGatewayToken || '') : '');
   replacements.set('OPENCLAW_GATEWAY_DISABLED', body.connectOpenClaw ? 'false' : 'true');
@@ -200,6 +201,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     envPath,
+    vaultMasterKeyB64,
     restartRequired: true,
     restartMode,
     next:

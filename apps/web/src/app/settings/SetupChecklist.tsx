@@ -63,7 +63,12 @@ export function SetupChecklist({
   return (
     <Card className="lg:col-span-2">
       <CardHeader>
-        <CardTitle>Getting Started</CardTitle>
+        <CardTitle className="flex flex-wrap items-center justify-between gap-2">
+          <span>Getting Started</span>
+          <Link href="/setup">
+            <Button size="sm" variant="secondary">Re-run Setup Wizard</Button>
+          </Link>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5 text-sm">
         <div className="grid gap-3 lg:grid-cols-2">

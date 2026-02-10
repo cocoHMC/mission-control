@@ -60,6 +60,11 @@ export function VaultClient({ agentId }: { agentId: string }) {
   const [tokens, setTokens] = React.useState<VaultAgentToken[]>([]);
   const [audit, setAudit] = React.useState<VaultAudit[]>([]);
 
+  const [itemsQuery, setItemsQuery] = React.useState('');
+  const [itemsType, setItemsType] = React.useState<VaultItemType | 'all'>('all');
+  const [itemsExposure, setItemsExposure] = React.useState<VaultExposureMode | 'all'>('all');
+  const [itemsState, setItemsState] = React.useState<'all' | 'enabled' | 'disabled'>('enabled');
+
   const [revealed, setRevealed] = React.useState<Record<string, { value: string; username?: string; expiresAt: number }>>({});
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [rotatingId, setRotatingId] = React.useState<string | null>(null);
@@ -331,6 +336,71 @@ export function VaultClient({ agentId }: { agentId: string }) {
     }
   }
 
+  async function repairVault() {
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await mcFetch(`/api/vault/repair`, { method: 'POST' });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(errorFromResponse(res, json, 'Repair failed'));
+      setSuccess('Vault repair succeeded. Refreshing…');
+      await refreshAll();
+    } catch (err: any) {
+      setError(err?.message || String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const filteredItems = React.useMemo(() => {
+    const q = itemsQuery.trim().toLowerCase();
+    const matchesQuery = (it: VaultItem) => {
+      if (!q) return true;
+      const hay = [
+        it.handle,
+        it.service || '',
+        it.type || '',
+        it.exposureMode || '',
+        it.notes || '',
+        typeof it.tags === 'string' ? it.tags : '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    };
+    return (items || [])
+      .filter((it) => {
+        if (!it) return false;
+        if (itemsType !== 'all' && it.type !== itemsType) return false;
+        const mode = (it.exposureMode as VaultExposureMode) || 'inject_only';
+        if (itemsExposure !== 'all' && mode !== itemsExposure) return false;
+        const disabled = Boolean(it.disabled);
+        if (itemsState === 'enabled' && disabled) return false;
+        if (itemsState === 'disabled' && !disabled) return false;
+        if (!matchesQuery(it)) return false;
+        return true;
+      })
+      .sort((a, b) => String(a.service || '').localeCompare(String(b.service || '')) || String(a.handle || '').localeCompare(String(b.handle || '')));
+  }, [items, itemsExposure, itemsQuery, itemsState, itemsType]);
+
+  const groupedItems = React.useMemo(() => {
+    const out = new Map<string, VaultItem[]>();
+    for (const it of filteredItems) {
+      const key = String(it.service || '').trim() || 'Uncategorized';
+      const list = out.get(key) || [];
+      list.push(it);
+      out.set(key, list);
+    }
+    return Array.from(out.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filteredItems]);
+
+  const canSuggestRepair = React.useMemo(() => {
+    const e = String(error || '').toLowerCase();
+    if (!e) return false;
+    return e.includes('vault_items') || e.includes('vault_agent_tokens') || e.includes('pocketbase') || e.includes('missing pb_');
+  }, [error]);
+
   return (
     <div className="space-y-4">
       <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -378,7 +448,20 @@ export function VaultClient({ agentId }: { agentId: string }) {
       </div>
 
       {error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">{error}</div>
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+          <div className="font-semibold">Error</div>
+          <div className="mt-1 whitespace-pre-wrap">{error}</div>
+          {canSuggestRepair ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="secondary" onClick={() => void repairVault()} disabled={busy || loading}>
+                {busy ? 'Repairing…' : 'Repair Vault schema'}
+              </Button>
+              <div className="text-[11px] text-red-700/80">
+                Runs the PocketBase bootstrap scripts to create missing Vault collections.
+              </div>
+            </div>
+          ) : null}
+        </div>
       ) : null}
       {success ? (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{success}</div>
@@ -494,126 +577,190 @@ export function VaultClient({ agentId }: { agentId: string }) {
             <CardHeader>
               <CardTitle className="flex items-center justify-between gap-3">
                 <span>Credentials</span>
-                <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">{items.length} total</Badge>
+                <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">{filteredItems.length} total</Badge>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted">
-              {!items.length ? <div className="text-sm text-muted">No credentials yet.</div> : null}
+              <div className="grid gap-3 lg:grid-cols-[1fr,auto,auto,auto]">
+                <div className="space-y-1 lg:col-span-1">
+                  <div className="text-xs uppercase tracking-[0.2em] text-muted">Search</div>
+                  <Input
+                    value={itemsQuery}
+                    onChange={(e) => setItemsQuery(e.target.value)}
+                    placeholder="handle, service, notes…"
+                    spellCheck={false}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs uppercase tracking-[0.2em] text-muted">Type</div>
+                  <select
+                    className="flex h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                    value={itemsType}
+                    onChange={(e) => setItemsType(e.target.value as any)}
+                  >
+                    <option value="all">All</option>
+                    {CREDENTIAL_TYPES.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs uppercase tracking-[0.2em] text-muted">Exposure</div>
+                  <select
+                    className="flex h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                    value={itemsExposure}
+                    onChange={(e) => setItemsExposure(e.target.value as any)}
+                  >
+                    <option value="all">All</option>
+                    <option value="inject_only">inject-only</option>
+                    <option value="revealable">revealable</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs uppercase tracking-[0.2em] text-muted">State</div>
+                  <select
+                    className="flex h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                    value={itemsState}
+                    onChange={(e) => setItemsState(e.target.value as any)}
+                  >
+                    <option value="enabled">Enabled</option>
+                    <option value="disabled">Disabled</option>
+                    <option value="all">All</option>
+                  </select>
+                </div>
+              </div>
 
-              <div className="space-y-3">
-                {items.map((it) => {
-                  const active = editingId === it.id;
-                  const rotating = rotatingId === it.id;
-                  const reveal = revealed[it.id] || null;
-                  const disabled = Boolean(it.disabled);
+              {!filteredItems.length ? <div className="text-sm text-muted">No credentials match your filters.</div> : null}
 
-                  return (
-                    <div
-                      key={it.id}
-                      className={cx(
-                        'rounded-2xl border bg-[var(--surface)] p-4',
-                        disabled ? 'border-amber-200' : 'border-[var(--border)]'
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate font-mono text-[11px] text-[var(--foreground)]/90">{it.handle}</div>
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <Badge className="border-none bg-[var(--highlight)] text-[var(--foreground)]">
-                              {titleCase(it.type)}
-                            </Badge>
-                            <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">
-                              {it.exposureMode === 'revealable' ? 'revealable' : 'inject-only'}
-                            </Badge>
-                            {disabled ? (
-                              <Badge className="border-none bg-amber-200 text-amber-900">disabled</Badge>
-                            ) : (
-                              <Badge className="border-none bg-emerald-100 text-emerald-900">enabled</Badge>
-                            )}
-                          </div>
-                          <div className="mt-2 text-xs text-muted">
-                            Service: <span className="font-mono text-[var(--foreground)]">{it.service || '—'}</span>
-                          </div>
-                          <div className="mt-1 text-xs text-muted">
-                            Last used: <span className="font-mono text-[var(--foreground)]">{formatShortDate(it.lastUsedAt)}</span>
-                            {' · '}
-                            Rotated:{' '}
-                            <span className="font-mono text-[var(--foreground)]">{formatShortDate(it.lastRotatedAt)}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col items-end gap-2">
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => setEditingId(active ? null : it.id)}
-                              disabled={busy}
-                            >
-                              {active ? 'Close' : 'Edit'}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => setRotatingId(rotating ? null : it.id)}
-                              disabled={busy}
-                            >
-                              Rotate
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => void revealSecret(it)}
-                              disabled={busy || it.exposureMode !== 'revealable'}
-                            >
-                              Reveal
-                            </Button>
-                            <Button size="sm" variant="destructive" onClick={() => void deleteItem(it)} disabled={busy}>
-                              Delete
-                            </Button>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant={disabled ? 'default' : 'secondary'}
-                            onClick={() => void saveItemEdits(it, { disabled: !disabled })}
-                            disabled={busy}
-                          >
-                            {disabled ? 'Enable' : 'Disable'}
-                          </Button>
-                        </div>
+              <div className="space-y-4">
+                {groupedItems.map(([service, serviceItems]) => (
+                  <div key={service} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+                    <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-[var(--foreground)]">{service}</div>
+                        <div className="mt-1 text-[11px] text-muted">Click a handle to copy the placeholder.</div>
                       </div>
-
-                      {reveal ? (
-                        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
-                          <div className="font-semibold">Plaintext (auto-clears)</div>
-                          {reveal.username ? (
-                            <div className="mt-2">
-                              Username: <span className="font-mono">{reveal.username}</span>{' '}
-                              <CopyButton value={reveal.username} label="Copy username" className="ml-2 inline-flex" />
-                            </div>
-                          ) : null}
-                          <div className="mt-2 break-all font-mono">{reveal.value}</div>
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <CopyButton value={reveal.value} label="Copy secret" />
-                            <Badge className="border-none bg-red-200 text-red-900">
-                              clears in {Math.max(0, Math.ceil((reveal.expiresAt - Date.now()) / 1000))}s
-                            </Badge>
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {active ? <ItemEditor item={it} onSave={(patch) => void saveItemEdits(it, patch)} busy={busy} /> : null}
-                      {rotating ? (
-                        <RotateEditor
-                          item={it}
-                          busy={busy}
-                          onRotate={(payload) => void rotateSecret(it, payload)}
-                          onClose={() => setRotatingId(null)}
-                        />
-                      ) : null}
+                      <Badge className="border-none bg-[var(--highlight)] text-[var(--foreground)]">{serviceItems.length}</Badge>
                     </div>
-                  );
-                })}
+
+                    <div className="divide-y divide-[var(--border)]">
+                      {serviceItems.map((it) => {
+                        const active = editingId === it.id;
+                        const rotating = rotatingId === it.id;
+                        const reveal = revealed[it.id] || null;
+                        const disabled = Boolean(it.disabled);
+
+                        const placeholder = `{{vault:${it.handle}}}`;
+                        const userPlaceholder = `{{vault:${it.handle}.username}}`;
+
+                        return (
+                          <div
+                            key={it.id}
+                            className={cx(
+                              'px-4 py-3 transition',
+                              disabled ? 'bg-amber-50/50' : 'hover:bg-[color:var(--foreground)]/5'
+                            )}
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    className="truncate font-mono text-[11px] text-[var(--foreground)] underline underline-offset-2"
+                                    onClick={() => navigator.clipboard?.writeText(placeholder).catch(() => {})}
+                                    title="Copy placeholder"
+                                  >
+                                    {it.handle}
+                                  </button>
+                                  <CopyButton value={placeholder} label="Copy {{vault:handle}}" />
+                                  {it.type === 'username_password' ? (
+                                    <CopyButton value={userPlaceholder} label="Copy username ref" />
+                                  ) : null}
+                                </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <Badge className="border-none bg-[var(--highlight)] text-[var(--foreground)]">{titleCase(it.type)}</Badge>
+                                  <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">
+                                    {it.exposureMode === 'revealable' ? 'revealable' : 'inject-only'}
+                                  </Badge>
+                                  {disabled ? (
+                                    <Badge className="border-none bg-amber-200 text-amber-900">disabled</Badge>
+                                  ) : (
+                                    <Badge className="border-none bg-emerald-100 text-emerald-900">enabled</Badge>
+                                  )}
+                                  <div className="text-[11px] text-muted">
+                                    Used <span className="font-mono text-[var(--foreground)]">{formatShortDate(it.lastUsedAt)}</span>
+                                    {' · '}
+                                    Rotated <span className="font-mono text-[var(--foreground)]">{formatShortDate(it.lastRotatedAt)}</span>
+                                  </div>
+                                </div>
+                                {it.notes ? (
+                                  <div className="mt-2 max-w-3xl text-xs text-muted">
+                                    {String(it.notes).slice(0, 240)}
+                                    {String(it.notes).length > 240 ? '…' : ''}
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                <Button size="sm" variant="secondary" onClick={() => setEditingId(active ? null : it.id)} disabled={busy}>
+                                  {active ? 'Close' : 'Edit'}
+                                </Button>
+                                <Button size="sm" variant="secondary" onClick={() => setRotatingId(rotating ? null : it.id)} disabled={busy}>
+                                  Rotate
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => void revealSecret(it)}
+                                  disabled={busy || it.exposureMode !== 'revealable'}
+                                >
+                                  Reveal
+                                </Button>
+                                <Button size="sm" variant={disabled ? 'default' : 'secondary'} onClick={() => void saveItemEdits(it, { disabled: !disabled })} disabled={busy}>
+                                  {disabled ? 'Enable' : 'Disable'}
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={() => void deleteItem(it)} disabled={busy}>
+                                  Delete
+                                </Button>
+                              </div>
+                            </div>
+
+                            {reveal ? (
+                              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+                                <div className="font-semibold">Plaintext (auto-clears)</div>
+                                {reveal.username ? (
+                                  <div className="mt-2">
+                                    Username: <span className="font-mono">{reveal.username}</span>{' '}
+                                    <CopyButton value={reveal.username} label="Copy username" className="ml-2 inline-flex" />
+                                  </div>
+                                ) : null}
+                                <div className="mt-2 break-all font-mono">{reveal.value}</div>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <CopyButton value={reveal.value} label="Copy secret" />
+                                  <Badge className="border-none bg-red-200 text-red-900">
+                                    clears in {Math.max(0, Math.ceil((reveal.expiresAt - Date.now()) / 1000))}s
+                                  </Badge>
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {active ? <ItemEditor item={it} onSave={(patch) => void saveItemEdits(it, patch)} busy={busy} /> : null}
+                            {rotating ? (
+                              <RotateEditor
+                                item={it}
+                                busy={busy}
+                                onRotate={(payload) => void rotateSecret(it, payload)}
+                                onClose={() => setRotatingId(null)}
+                              />
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>

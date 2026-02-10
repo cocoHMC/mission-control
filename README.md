@@ -40,6 +40,22 @@ This keeps everyday tasks moving while still allowing “human sign-off” tasks
 - **Worker (Node TS)**: notifications, lease enforcement, standups, node snapshots — **no LLM**
 - **OpenClaw**: only wakes when needed (assignment/mention/nudge/escalation). Everything else stays in the UI.
 
+## Vault (Credentials)
+Mission Control includes a built-in Vault for agent credentials.
+
+How it works (simple mental model):
+- **Humans store secrets. Agents use handles.**
+- You store a credential once (encrypted at rest).
+- Agents and task templates use placeholders like `{{vault:github_pat}}` (a handle, not the secret).
+- A trusted runtime layer (Mission Control + the OpenClaw Vault plugin) resolves handles **right before tool execution** and redacts secrets from tool output best-effort.
+
+Risks you should understand:
+- Tools ultimately receive the **real secret** after placeholder resolution. If a tool echoes/logs it, it can leak.
+- If you mark a credential **revealable** and reveal it in the UI, it can leak via screen share/recording.
+- If you lose `MC_VAULT_MASTER_KEY_B64`, you cannot decrypt existing Vault secrets (no recovery). Back it up securely.
+
+More details: `docs/VAULT.md`.
+
 ## Quickstart (Recommended)
 Run Mission Control on the **same machine as the OpenClaw Gateway**. It’s the smoothest path because Mission Control can:
 - run `openclaw` CLI status checks

@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
     title: body.title,
     description: body.description ?? '',
     context: body.context ?? '',
+    vaultItem: body.vaultItem ?? '',
     status: body.status ?? 'inbox',
     priority: body.priority ?? 'p2',
     aiEffort: body.aiEffort ?? 'auto',

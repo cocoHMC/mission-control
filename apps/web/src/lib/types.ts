@@ -5,6 +5,9 @@ export type Task = {
   title: string;
   description?: string;
   context?: string;
+  // Optional Vault credential handle (or hint) associated with the task.
+  // This must never contain plaintext secrets.
+  vaultItem?: string;
   status: TaskStatus;
   archived?: boolean;
   priority?: string;
