@@ -109,8 +109,9 @@
     --bg-glow-2: rgba(16, 185, 129, 0.18);
     --glass-1: rgba(17, 32, 34, 0.86);
     --glass-2: rgba(15, 26, 28, 0.6);
-    --chat-user-bg: #5eead4;
-    --chat-user-fg: #0b1214;
+    /* User chat bubble: keep a darker teal so white text remains high-contrast in dark mode. */
+    --chat-user-bg: #0f766e;
+    --chat-user-fg: #f8fafc;
     --chat-assistant-bg: #112022;
     --chat-assistant-fg: #e6fffb;
     --radius: 14px;
@@ -163,8 +164,9 @@
   --bg-glow-2: rgba(16, 185, 129, 0.18);
   --glass-1: rgba(17, 32, 34, 0.86);
   --glass-2: rgba(15, 26, 28, 0.6);
-  --chat-user-bg: #5eead4;
-  --chat-user-fg: #0b1214;
+  /* User chat bubble: keep a darker teal so white text remains high-contrast in dark mode. */
+  --chat-user-bg: #0f766e;
+  --chat-user-fg: #f8fafc;
   --chat-assistant-bg: #112022;
   --chat-assistant-fg: #e6fffb;
   --radius: 14px;
