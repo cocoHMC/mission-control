@@ -66,10 +66,10 @@ jobs:
           name: desktop-macos
           if-no-files-found: error
           path: |
-            apps/desktop/dist/*.dmg
-            apps/desktop/dist/*.zip
-            apps/desktop/dist/*.yml
-            apps/desktop/dist/*.blockmap
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.yml
+            apps/desktop/release/*.blockmap
 
   linux:
     name: Linux (Ubuntu)
@@ -116,9 +116,10 @@ jobs:
           name: desktop-linux
           if-no-files-found: error
           path: |
-            apps/desktop/dist/*.AppImage
-            apps/desktop/dist/*.deb
-            apps/desktop/dist/*.yml
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.yml
+            apps/desktop/release/*.blockmap
 
   windows:
     name: Windows
@@ -203,9 +204,9 @@ jobs:
           name: desktop-windows
           if-no-files-found: error
           path: |
-            apps/desktop/dist/*.exe
-            apps/desktop/dist/*.blockmap
-            apps/desktop/dist/*.yml
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/*.yml
 
   publish:
     name: Publish Release (All Platforms)
