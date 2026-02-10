@@ -19,8 +19,9 @@ type ConnectResponse =
       pluginDir: string;
       missionControlUrl: string;
       agentId: string;
-      tokenPrefix: string;
-      token: string;
+      alreadyConfigured?: boolean;
+      tokenPrefix?: string | null;
+      token?: string | null;
       restartHint?: string;
     }
   | { ok: false; error: string };
@@ -99,12 +100,16 @@ export function VaultOpenClawConnect({ leadAgentId }: { leadAgentId: string }) {
       const res = await mcFetch('/api/openclaw/plugins/mission-control-vault/connect', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ agentId: leadAgentId, missionControlUrl: origin || undefined }),
+        body: JSON.stringify({ agentId: leadAgentId, missionControlUrl: origin || undefined, rotateToken: false }),
       });
       const json = (await res.json().catch(() => null)) as ConnectResponse | null;
       if (!res.ok || !json || !(json as any).ok) throw new Error(safeError(json, `Connect failed (${res.status})`));
       setConnectRes(json);
-      setSuccess('Connected. OpenClaw can now resolve {{vault:HANDLE}} placeholders.');
+      setSuccess(
+        (json as any)?.alreadyConfigured
+          ? 'Already connected. Repaired plugin wiring.'
+          : 'Connected. OpenClaw can now resolve {{vault:HANDLE}} placeholders.'
+      );
       await refresh();
     } catch (err: any) {
       setError(err?.message || String(err));
@@ -168,17 +173,25 @@ export function VaultOpenClawConnect({ leadAgentId }: { leadAgentId: string }) {
               <div>
                 Lead agent: <span className="font-mono">{connectRes.agentId}</span>
               </div>
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
-                <div className="font-semibold">Vault token (stored in OpenClaw config)</div>
-                <div className="mt-1 text-[11px]">Token is shown once. Keep it private.</div>
-                <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-white px-3 py-2">
-                  <span className="min-w-0 truncate font-mono text-[11px]">{connectRes.token}</span>
-                  <CopyButton value={connectRes.token} />
+              {connectRes.token ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                  <div className="font-semibold">Vault token (stored in OpenClaw config)</div>
+                  <div className="mt-1 text-[11px]">Token is shown once. Keep it private.</div>
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-white px-3 py-2">
+                    <span className="min-w-0 truncate font-mono text-[11px]">{connectRes.token}</span>
+                    <CopyButton value={connectRes.token} />
+                  </div>
+                  {connectRes.tokenPrefix ? (
+                    <div className="mt-2 text-[11px]">
+                      Prefix: <span className="font-mono">{connectRes.tokenPrefix}</span>
+                    </div>
+                  ) : null}
                 </div>
-                <div className="mt-2 text-[11px]">
-                  Prefix: <span className="font-mono">{connectRes.tokenPrefix}</span>
+              ) : (
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-[11px] text-muted">
+                  Vault token already configured (not shown again). To rotate, use Vault tokens for this agent.
                 </div>
-              </div>
+              )}
               {connectRes.restartHint ? <div className="text-[11px] text-muted">{connectRes.restartHint}</div> : null}
             </div>
           </details>
