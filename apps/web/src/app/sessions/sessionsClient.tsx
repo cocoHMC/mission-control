@@ -1670,9 +1670,11 @@ export function SessionsThreadClient({
               style={{ width: typeof tokensPctClamped === 'number' ? `${tokensPctClamped}%` : '0%' }}
             />
           </div>
-          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted">
-            <span className="font-mono text-[var(--foreground)]">{tokensUsed ?? '—'}</span>
-            <span className="font-mono text-[var(--foreground)]">{tokensMax ?? '—'}</span>
+          <div className="mt-2 truncate text-xs text-muted">
+            Used/Max:{' '}
+            <span className="font-mono text-[var(--foreground)]">
+              {tokensUsed ?? '—'} / {tokensMax ?? '—'}
+            </span>
           </div>
           {sessionInfo?.model ? (
             <div className="mt-2 truncate text-xs text-muted">
@@ -2530,39 +2532,33 @@ export function SessionsThreadClient({
       </div>
 
       <div className="border-t border-[var(--border)] bg-[var(--card)] p-3">
-        <div className="relative">
+        <div className="flex items-end gap-2">
           <Textarea
             ref={composerRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={(e) => {
               if (e.key !== 'Enter') return;
-              // Chat-style composer:
-              // - Enter sends
-              // - Shift+Enter inserts a newline
-              // - Cmd/Ctrl+Enter also sends (common alternative)
               if (e.shiftKey) return;
-              if (e.metaKey || e.ctrlKey || !e.shiftKey) {
-                e.preventDefault();
-                void sendMessage();
-              }
+              e.preventDefault();
+              void sendMessage();
             }}
             placeholder="Write a message…"
-            className="min-h-[72px] pr-14"
+            className="min-h-[72px] flex-1 resize-none"
           />
-          <div className="mt-2 flex items-center justify-between px-1 text-xs text-muted">
-            <div>Enter to send. Shift+Enter for a newline.</div>
-            {sending ? <div className="inline-flex items-center gap-1">Sending…</div> : null}
-          </div>
           <button
             type="button"
             onClick={() => void sendMessage()}
             disabled={sending || !message.trim() || !safeSessionKey}
-            className="absolute bottom-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-foreground)] shadow-sm transition hover:bg-[var(--accent-strong)] disabled:opacity-50"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-foreground)] shadow-sm transition hover:bg-[var(--accent-strong)] disabled:opacity-50"
             aria-label="Send message"
           >
             {sending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>
+        </div>
+        <div className="mt-2 flex items-center justify-between px-1 text-[11px] text-muted">
+          <div>Enter to send. Shift+Enter for a newline.</div>
+          {sending ? <div className="tabular-nums">Sending…</div> : null}
         </div>
       </div>
     </div>
