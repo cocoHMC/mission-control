@@ -57,10 +57,19 @@ jobs:
       - name: Build Web + Worker + Desktop
         run: pnpm -r build
 
-      - name: Build + Publish Desktop (DMG + ZIP)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm -C apps/desktop exec electron-builder --mac dmg zip --arm64 --x64 --publish always
+      - name: Build Desktop (DMG + ZIP)
+        run: pnpm -C apps/desktop exec electron-builder --mac dmg zip --arm64 --x64 --publish never
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos
+          if-no-files-found: error
+          path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.yml
+            apps/desktop/dist/*.blockmap
 
   linux:
     name: Linux (Ubuntu)
@@ -98,10 +107,18 @@ jobs:
       - name: Build Web + Worker + Desktop
         run: pnpm -r build
 
-      - name: Build + Publish Desktop (AppImage + DEB)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm -C apps/desktop exec electron-builder --linux AppImage deb --x64 --publish always
+      - name: Build Desktop (AppImage + DEB)
+        run: pnpm -C apps/desktop exec electron-builder --linux AppImage deb --x64 --publish never
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux
+          if-no-files-found: error
+          path: |
+            apps/desktop/dist/*.AppImage
+            apps/desktop/dist/*.deb
+            apps/desktop/dist/*.yml
 
   windows:
     name: Windows
@@ -174,13 +191,24 @@ jobs:
       - name: Build Web + Worker + Desktop
         run: pnpm -r build
 
-      - name: Build + Publish Desktop (NSIS)
+      - name: Build Desktop (NSIS)
         env:
+          # electron-builder uses this to generate update metadata, even when not publishing.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm -C apps/desktop exec electron-builder --win nsis --x64 --publish always
+        run: pnpm -C apps/desktop exec electron-builder --win nsis --x64 --publish never
 
-  notes:
-    name: Update Release Notes
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          if-no-files-found: error
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.yml
+
+  publish:
+    name: Publish Release (All Platforms)
     runs-on: ubuntu-latest
     needs:
       - mac
@@ -192,7 +220,46 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Write Notes
+      - name: Download macOS Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-macos
+          path: release-assets
+
+      - name: Download Linux Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-linux
+          path: release-assets
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-windows
+          path: release-assets
+
+      - name: Ensure Release Exists + Upload Assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+
+          # Create the GitHub Release if it doesn't exist yet.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --notes ""
+          fi
+
+          shopt -s globstar nullglob
+          files=(release-assets/**/*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No release assets found under release-assets/"
+            exit 1
+          fi
+
+          gh release upload "$TAG" "${files[@]}" --clobber
+
+      - name: Write Release Notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
