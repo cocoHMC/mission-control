@@ -58,7 +58,24 @@ jobs:
         run: pnpm -r build
 
       - name: Build Desktop (DMG + ZIP)
-        run: pnpm -C apps/desktop exec electron-builder --mac dmg zip --arm64 --x64 --publish never
+        shell: bash
+        run: |
+          set -euo pipefail
+          # electron-builder downloads (electron zips, dmg-builder bundles, etc.) can intermittently 5xx in CI.
+          # Retry to avoid failing a release on transient upstream outages.
+          attempts=3
+          for i in $(seq 1 "$attempts"); do
+            echo "electron-builder attempt $i/$attempts"
+            if pnpm -C apps/desktop exec electron-builder --mac dmg zip --arm64 --x64 --publish never; then
+              exit 0
+            fi
+            status=$?
+            if [ "$i" -lt "$attempts" ]; then
+              sleep $((20 * i))
+            else
+              exit "$status"
+            fi
+          done
 
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
@@ -108,7 +125,22 @@ jobs:
         run: pnpm -r build
 
       - name: Build Desktop (AppImage + DEB)
-        run: pnpm -C apps/desktop exec electron-builder --linux AppImage deb --x64 --publish never
+        shell: bash
+        run: |
+          set -euo pipefail
+          attempts=3
+          for i in $(seq 1 "$attempts"); do
+            echo "electron-builder attempt $i/$attempts"
+            if pnpm -C apps/desktop exec electron-builder --linux AppImage deb --x64 --publish never; then
+              exit 0
+            fi
+            status=$?
+            if [ "$i" -lt "$attempts" ]; then
+              sleep $((20 * i))
+            else
+              exit "$status"
+            fi
+          done
 
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
@@ -196,7 +228,20 @@ jobs:
         env:
           # electron-builder uses this to generate update metadata, even when not publishing.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm -C apps/desktop exec electron-builder --win nsis --x64 --publish never
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $attempts = 3
+          for ($i = 1; $i -le $attempts; $i++) {
+            Write-Host "electron-builder attempt $i/$attempts"
+            pnpm -C apps/desktop exec electron-builder --win nsis --x64 --publish never
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($i -lt $attempts) {
+              Start-Sleep -Seconds (20 * $i)
+            } else {
+              throw "electron-builder failed with exit code $LASTEXITCODE"
+            }
+          }
 
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
