@@ -13,6 +13,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Electron's postinstall download is flaky in CI (transient 5xx). Our release
+  # workflows already skip it and let electron-builder fetch binaries as needed.
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
 jobs:
   lint-build:
     runs-on: ubuntu-latest
@@ -39,4 +44,3 @@ jobs:
 
       - name: Build
         run: pnpm -r build
-
