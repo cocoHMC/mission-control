@@ -7,6 +7,14 @@ import { generateVaultAccessToken, hashVaultAccessToken } from '@/lib/vaultToken
 
 export const runtime = 'nodejs';
 
+function normalizeSort(raw: string) {
+  const v = String(raw || '').trim();
+  if (!v) return '';
+  if (v === '-updated' || v === '-created') return '-lastUsedAt';
+  const allowed = new Set(['-lastUsedAt', 'lastUsedAt', 'tokenPrefix', '-tokenPrefix', 'label', '-label']);
+  return allowed.has(v) ? v : '';
+}
+
 async function ensurePbAgent(openclawId: string) {
   const q = new URLSearchParams({
     page: '1',
@@ -33,7 +41,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ agen
     const agentId = String(agent?.id || '').trim();
     if (!agentId) return NextResponse.json({ ok: false, error: 'Agent not found' }, { status: 404 });
 
-    const q = new URLSearchParams({ page: '1', perPage: '200', sort: '-updated', filter: `agent = "${agentId}"` });
+    const url = new URL(req.url);
+    const page = url.searchParams.get('page') || '1';
+    const perPage = url.searchParams.get('perPage') || '200';
+    const sort = normalizeSort(url.searchParams.get('sort') || '') || '-lastUsedAt';
+
+    const q = new URLSearchParams({ page, perPage, filter: `agent = "${agentId}"` });
+    if (sort) q.set('sort', sort);
     const list = await pbFetch<{ items?: any[]; page: number; perPage: number; totalItems: number; totalPages: number }>(
       `/api/collections/vault_agent_tokens/records?${q.toString()}`
     );
