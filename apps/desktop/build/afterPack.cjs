@@ -78,6 +78,22 @@ async function materializeDir({ src, dest, label }) {
   await fs.cp(src, dest, { recursive: true });
 }
 
+async function ensurePackagedMigrations({ repoRoot, resourcesRoot }) {
+  const srcDir = path.join(repoRoot, 'pb', 'pb_migrations');
+  const destDir = path.join(resourcesRoot, 'pb', 'pb_migrations');
+  if (!(await exists(srcDir))) throw new Error(`[afterPack] Missing pb_migrations at ${srcDir}`);
+  if (!(await exists(destDir))) throw new Error(`[afterPack] Missing packaged pb_migrations at ${destDir}`);
+
+  const names = (await fs.readdir(srcDir)).filter((n) => n && n.endsWith('.js')).sort();
+  if (!names.length) throw new Error(`[afterPack] No migration files found in ${srcDir}`);
+
+  // Guardrail: if extraResources gets misconfigured, packaging can "work" but upgrades will fail later.
+  const newest = names[names.length - 1];
+  if (!(await exists(path.join(destDir, newest)))) {
+    throw new Error(`[afterPack] Packaged pb_migrations missing newest migration ${newest}. Check desktop extraResources.`);
+  }
+}
+
 exports.default = async function afterPack(context) {
   const platform = context.electronPlatformName;
   const pbOs = pbOsFromElectronPlatform(platform);
@@ -119,6 +135,8 @@ exports.default = async function afterPack(context) {
       // ignore
     }
   }
+
+  await ensurePackagedMigrations({ repoRoot, resourcesRoot });
 
   // Fix Next.js standalone absolute symlinks by materializing `public` + `.next/static`
   // into the packaged resources. This prevents cross-platform build issues and ensures

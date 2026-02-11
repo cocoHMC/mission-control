@@ -44,3 +44,6 @@ jobs:
 
       - name: Build
         run: pnpm -r build
+
+      - name: PocketBase Migration Smoke Test
+        run: bash scripts/ci_pb_migration_smoke.sh
