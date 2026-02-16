@@ -111,6 +111,9 @@ export function VaultClient({ agentId }: { agentId: string }) {
       if (!itemsRes.ok) throw new Error(errorFromResponse(itemsRes, itemsJson, 'Failed to load credentials'));
       if (!tokensRes.ok) throw new Error(errorFromResponse(tokensRes, tokensJson, 'Failed to load tokens'));
       if (!auditRes.ok) throw new Error(errorFromResponse(auditRes, auditJson, 'Failed to load audit log'));
+      if (itemsJson?.ok === false) throw new Error(String(itemsJson?.error || 'Vault setup required.'));
+      if (tokensJson?.ok === false) throw new Error(String(tokensJson?.error || 'Vault setup required.'));
+      if (auditJson?.ok === false) throw new Error(String(auditJson?.error || 'Vault setup required.'));
 
       setItems(Array.isArray(itemsJson?.items) ? (itemsJson.items as VaultItem[]) : []);
       setTokens(Array.isArray(tokensJson?.items) ? (tokensJson.items as VaultAgentToken[]) : []);

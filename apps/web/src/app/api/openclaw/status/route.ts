@@ -9,6 +9,11 @@ function isTruthy(value: string | undefined) {
   return ['1', 'true', 'yes', 'y', 'on'].includes(v);
 }
 
+function requestId(prefix = 'mc-openclaw-status') {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${Date.now().toString(36)}-${rand}`;
+}
+
 async function fetchWithTimeout(url: URL, opts: { method?: string; headers?: Record<string, string>; body?: any; timeoutMs?: number }) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 2_500);
@@ -51,9 +56,16 @@ export async function GET(req: NextRequest) {
     }
 
     if (token) {
+      const invokeReqId = requestId();
       const invoke = await fetchWithTimeout(new URL('/tools/invoke', base), {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token}`,
+          'x-mission-control': '1',
+          'x-mission-control-source': 'status',
+          'x-openclaw-request-id': invokeReqId,
+        },
         body: { tool: 'sessions_list', args: {} },
         timeoutMs: 5_000,
       });

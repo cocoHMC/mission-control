@@ -25,7 +25,12 @@ export async function GET(req: NextRequest) {
   try {
     const guard = requireAdminAuth(req);
     if (guard) return guard;
-    if (!isVaultConfigured()) return NextResponse.json({ ok: false, error: 'Vault setup required' }, { status: 409 });
+    if (!isVaultConfigured()) {
+      return NextResponse.json(
+        { ok: false, error: 'Vault setup required', configured: false, items: [], page: 1, perPage: 0, totalItems: 0, totalPages: 0 },
+        { headers: { 'cache-control': 'no-store' } }
+      );
+    }
 
     const url = new URL(req.url);
     const openclawAgentId = String(url.searchParams.get('agentId') || '').trim();

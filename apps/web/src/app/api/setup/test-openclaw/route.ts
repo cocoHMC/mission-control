@@ -20,6 +20,11 @@ function normalizeUrl(value: string) {
   }
 }
 
+function requestId(prefix = 'mc-setup') {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${Date.now().toString(36)}-${rand}`;
+}
+
 async function fetchWithTimeout(url: URL, init: RequestInit & { timeoutMs?: number } = {}) {
   const ctrl = new AbortController();
   const timeoutMs = init.timeoutMs ?? 5_000;
@@ -77,7 +82,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 2) Token check using a deterministic tool that doesn't wake the LLM.
+  // 2) Token check using deterministic tools.
+  // - sessions_list validates read access
+  // - sessions_send (dryRun) validates delivery permissions without dispatching real work
+  const invokeReqId = requestId();
   let invokeRes: Response;
   let invokeJson: any = null;
   try {
@@ -86,6 +94,9 @@ export async function POST(req: NextRequest) {
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${token}`,
+        'x-mission-control': '1',
+        'x-mission-control-source': 'setup',
+        'x-openclaw-request-id': invokeReqId,
       },
       body: JSON.stringify({ tool: 'sessions_list', args: {} }),
       timeoutMs: 5_000,
@@ -130,5 +141,57 @@ export async function POST(req: NextRequest) {
     // ignore
   }
 
-  return NextResponse.json({ ok: true, sessionCount });
+  const probeAgent = String(process.env.MC_LEAD_AGENT_ID || process.env.MC_LEAD_AGENT || 'main').trim() || 'main';
+  const probeSessionKey = `agent:${probeAgent}:main`;
+  const sendReqId = requestId();
+  let sendProbeRes: Response;
+  let sendProbeJson: any = null;
+  try {
+    sendProbeRes = await fetchWithTimeout(new URL('/tools/invoke', base), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+        'x-mission-control': '1',
+        'x-mission-control-source': 'setup',
+        'x-openclaw-request-id': sendReqId,
+      },
+      body: JSON.stringify({
+        tool: 'sessions_send',
+        commandId: `${sendReqId}-setup-probe`,
+        args: { sessionKey: probeSessionKey, message: '[Mission Control] setup delivery probe', timeoutSeconds: 0 },
+        dryRun: true,
+      }),
+      timeoutMs: 5_000,
+    });
+    const text = await sendProbeRes.text().catch(() => '');
+    try {
+      sendProbeJson = text ? JSON.parse(text) : null;
+    } catch {
+      sendProbeJson = text;
+    }
+  } catch {
+    return NextResponse.json({ ok: false, error: 'tools/invoke sessions_send (dryRun) request failed.' }, { status: 502 });
+  }
+
+  if (!sendProbeRes.ok) {
+    const msg =
+      typeof sendProbeJson === 'object' && sendProbeJson?.error?.message
+        ? String(sendProbeJson.error.message)
+        : typeof sendProbeJson === 'string'
+          ? sendProbeJson
+          : `tools/invoke sessions_send failed (${sendProbeRes.status})`;
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          sendProbeRes.status === 401
+            ? 'Unauthorized token. Copy the Tools Invoke token from OpenClaw → Overview.'
+            : msg,
+      },
+      { status: 502 }
+    );
+  }
+
+  return NextResponse.json({ ok: true, sessionCount, deliveryProbe: { sessionKey: probeSessionKey, mode: 'dryRun' } });
 }

@@ -44,12 +44,14 @@ try {
 
   const card = page.getByRole('button', { name: title }).first();
   await card.waitFor({ timeout: 20_000 });
+  const handle = card.locator('button[aria-label="Drag task"]').first();
+  await handle.waitFor({ timeout: 20_000 });
 
   const assignedHeader = page.getByText('Assigned', { exact: true }).first();
   await assignedHeader.waitFor({ timeout: 20_000 });
 
   // Drag the card to the Assigned column.
-  const cardBox = nonNullBox(await card.boundingBox(), 'task card');
+  const cardBox = nonNullBox(await handle.boundingBox(), 'drag handle');
   const headerRowBox = nonNullBox(await assignedHeader.locator('..').boundingBox(), 'assigned header row');
 
   const startX = cardBox.x + cardBox.width / 2;
@@ -76,7 +78,8 @@ try {
   await patchWait;
 
   // Verify it now renders under Assigned.
-  const assignedColumn = assignedHeader.locator('..').locator('..');
+  // Walk up to the column container: label -> label wrapper -> header row -> column.
+  const assignedColumn = assignedHeader.locator('..').locator('..').locator('..');
   await assignedColumn.getByRole('button', { name: title }).first().waitFor({ timeout: 10_000 });
 
   await screenshot(page, 'dnd_after_drop');
@@ -86,4 +89,3 @@ try {
 }
 
 console.log('dnd smoke ok; screenshots in', outDir);
-

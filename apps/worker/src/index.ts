@@ -2,6 +2,7 @@ import { z } from 'zod';
 import PocketBase from 'pocketbase';
 import { EventSource } from 'eventsource';
 import { exec } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import webpush from 'web-push';
 
@@ -49,8 +50,13 @@ const Env = z.object({
   MC_NOTIFICATION_TTL_MS: z.coerce.number().int().default(30_000),
   MC_DELIVER_DEBOUNCE_MS: z.coerce.number().int().positive().default(750),
   MC_DELIVER_INTERVAL_MS: z.coerce.number().int().positive().default(20_000),
+  MC_DELIVERY_MAX_ATTEMPTS: z.coerce.number().int().positive().default(4),
+  MC_DELIVERY_FAILURE_TTL_MS: z.coerce.number().int().positive().default(24 * 60 * 60_000),
   MC_CIRCUIT_MAX_SENDS_PER_MINUTE: z.coerce.number().int().positive().default(12),
   MC_CIRCUIT_COOLDOWN_MS: z.coerce.number().int().positive().default(900_000),
+  MC_ESCALATION_PRESENCE_ENABLED: EnvBool,
+  MC_ESCALATION_ACTIVE_MINUTES: z.coerce.number().int().positive().default(45),
+  MC_ACTIVE_AGENT_CACHE_MS: z.coerce.number().int().positive().default(60_000),
 
   LEASE_MINUTES: z.coerce.number().int().positive().default(45),
 
@@ -85,8 +91,13 @@ const env = Env.parse({
   MC_NOTIFICATION_TTL_MS: process.env.MC_NOTIFICATION_TTL_MS,
   MC_DELIVER_DEBOUNCE_MS: process.env.MC_DELIVER_DEBOUNCE_MS,
   MC_DELIVER_INTERVAL_MS: process.env.MC_DELIVER_INTERVAL_MS,
+  MC_DELIVERY_MAX_ATTEMPTS: process.env.MC_DELIVERY_MAX_ATTEMPTS,
+  MC_DELIVERY_FAILURE_TTL_MS: process.env.MC_DELIVERY_FAILURE_TTL_MS,
   MC_CIRCUIT_MAX_SENDS_PER_MINUTE: process.env.MC_CIRCUIT_MAX_SENDS_PER_MINUTE,
   MC_CIRCUIT_COOLDOWN_MS: process.env.MC_CIRCUIT_COOLDOWN_MS,
+  MC_ESCALATION_PRESENCE_ENABLED: process.env.MC_ESCALATION_PRESENCE_ENABLED,
+  MC_ESCALATION_ACTIVE_MINUTES: process.env.MC_ESCALATION_ACTIVE_MINUTES,
+  MC_ACTIVE_AGENT_CACHE_MS: process.env.MC_ACTIVE_AGENT_CACHE_MS,
   LEASE_MINUTES: process.env.LEASE_MINUTES,
   MC_STANDUP_HOUR: process.env.MC_STANDUP_HOUR,
   MC_STANDUP_MINUTE: process.env.MC_STANDUP_MINUTE,
@@ -127,6 +138,10 @@ let deliverTimer: ReturnType<typeof setTimeout> | null = null;
 let circuitUntilMs = 0;
 const sendTimestamps: number[] = [];
 const sentNotificationIds = new Map<string, number>();
+const deliveryFailureByNotification = new Map<string, { count: number; lastAt: number; lastError: string }>();
+const dlqHandledNotifications = new Map<string, number>();
+const activeAgentsCache = new Set<string>();
+let activeAgentsCacheExpiresAt = 0;
 let lastStandupDate = '';
 
 const webPushEnabled = Boolean(
@@ -138,6 +153,149 @@ if (webPushEnabled) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function requestId(prefix = 'mc-worker') {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${Date.now().toString(36)}-${rand}`;
+}
+
+function commandIdForNotificationBatch(agentId: string, taskId: string, noteIds: string[]) {
+  const seed = `${agentId}|${taskId}|${noteIds.slice().sort().join(',')}`;
+  const digest = createHash('sha1').update(seed).digest('hex').slice(0, 16);
+  const taskPart = taskId ? taskId.slice(0, 12) : 'global';
+  return `mcw-${taskPart}-${digest}`;
+}
+
+function truncateForLog(value: string, max = 220) {
+  const s = String(value || '');
+  if (s.length <= max) return s;
+  return `${s.slice(0, Math.max(0, max - 1))}…`;
+}
+
+function pruneMapByTtl<T extends { lastAt?: number }>(map: Map<string, T>, ttlMs: number) {
+  const now = Date.now();
+  for (const [k, v] of map) {
+    const at = typeof v?.lastAt === 'number' ? v.lastAt : 0;
+    if (!at || now - at > ttlMs) map.delete(k);
+  }
+}
+
+function pruneTimestampMapByTtl(map: Map<string, number>, ttlMs: number) {
+  const now = Date.now();
+  for (const [k, at] of map) {
+    if (!at || now - at > ttlMs) map.delete(k);
+  }
+}
+
+function registerDeliveryFailure(notificationId: string, reason: string) {
+  pruneMapByTtl(deliveryFailureByNotification, env.MC_DELIVERY_FAILURE_TTL_MS);
+  const now = Date.now();
+  const prev = deliveryFailureByNotification.get(notificationId);
+  const next = {
+    count: (prev?.count ?? 0) + 1,
+    lastAt: now,
+    lastError: truncateForLog(reason, 320),
+  };
+  deliveryFailureByNotification.set(notificationId, next);
+  return next;
+}
+
+function clearDeliveryFailure(notificationId: string) {
+  deliveryFailureByNotification.delete(notificationId);
+  dlqHandledNotifications.delete(notificationId);
+}
+
+function markDlqHandled(notificationId: string) {
+  pruneTimestampMapByTtl(dlqHandledNotifications, env.MC_DELIVERY_FAILURE_TTL_MS);
+  dlqHandledNotifications.set(notificationId, Date.now());
+}
+
+function isDlqHandled(notificationId: string) {
+  const at = dlqHandledNotifications.get(notificationId);
+  if (!at) return false;
+  if (Date.now() - at > env.MC_DELIVERY_FAILURE_TTL_MS) {
+    dlqHandledNotifications.delete(notificationId);
+    return false;
+  }
+  return true;
+}
+
+function parseToolInvokeTextJson(payload: any) {
+  const text = payload?.result?.content?.find((c: any) => c?.type === 'text')?.text;
+  if (typeof text !== 'string' || !text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function sessionKeyAgentId(sessionKey: string) {
+  const raw = String(sessionKey || '').trim();
+  if (!raw.startsWith('agent:')) return '';
+  const parts = raw.split(':');
+  return parts[1] ? parts[1].trim() : '';
+}
+
+async function refreshActiveAgentsFromOpenClaw() {
+  if (!env.MC_ESCALATION_PRESENCE_ENABLED) return;
+  if (env.OPENCLAW_GATEWAY_DISABLED || !env.OPENCLAW_GATEWAY_TOKEN) return;
+  const now = Date.now();
+  if (now < activeAgentsCacheExpiresAt) return;
+  try {
+    const out = await toolsInvoke('sessions_list', {
+      limit: 200,
+      messageLimit: 0,
+      activeMinutes: env.MC_ESCALATION_ACTIVE_MINUTES,
+    });
+    const parsed = parseToolInvokeTextJson(out);
+    const sessions = Array.isArray(parsed?.sessions) ? parsed.sessions : [];
+    activeAgentsCache.clear();
+    for (const s of sessions) {
+      const agent = sessionKeyAgentId(String(s?.key || ''));
+      const normalized = normalizeAgentId(agent);
+      if (normalized) activeAgentsCache.add(normalized);
+    }
+    activeAgentsCacheExpiresAt = now + env.MC_ACTIVE_AGENT_CACHE_MS;
+  } catch {
+    // Best-effort presence probe.
+    activeAgentsCacheExpiresAt = now + Math.min(15_000, env.MC_ACTIVE_AGENT_CACHE_MS);
+  }
+}
+
+async function chooseEscalationAgent(candidates: string[], fallback: string) {
+  const unique = Array.from(new Set(candidates.map((c) => String(c || '').trim()).filter(Boolean)));
+  if (!unique.length) return fallback;
+  if (!env.MC_ESCALATION_PRESENCE_ENABLED) return unique[0] || fallback;
+  await refreshActiveAgentsFromOpenClaw();
+  for (const id of unique) {
+    if (activeAgentsCache.has(id)) return id;
+  }
+  return unique[0] || fallback;
+}
+
+async function moveNotificationToDlq(token: string, n: any, reason: string, attempt: number) {
+  const id = String(n?.id || '').trim();
+  if (!id || isDlqHandled(id)) return;
+  markDlqHandled(id);
+
+  const taskId = String(n?.taskId || '').trim();
+  const to = normalizeAgentId(String(n?.toAgentId || '')) || String(n?.toAgentId || '').trim();
+  const summary = `Notification DLQ for ${to || 'agent'} (${attempt}/${env.MC_DELIVERY_MAX_ATTEMPTS})`;
+  const detail = `Delivery dropped after ${attempt} attempts. Reason: ${truncateForLog(reason, 240)}`;
+  try {
+    await pbFetch(`/api/collections/notifications/records/${id}`, {
+      method: 'PATCH',
+      token,
+      body: { delivered: true, deliveredAt: nowIso() },
+    });
+  } catch (err: any) {
+    console.error('[worker] delivery dlq patch failed', id, err?.message || err);
+  }
+
+  await createActivity(token, 'delivery_dlq', `${summary} — ${detail}`, taskId);
+  clearDeliveryFailure(id);
 }
 
 function pbDateForFilter(date: Date) {
@@ -211,8 +369,17 @@ async function authServiceUser() {
   return auth.token;
 }
 
-async function pbFetch(path: string, opts: { method?: string; token?: string; body?: any } = {}) {
-  const token = opts.token ?? pb.authStore.token;
+async function pbFetch(path: string, opts: { method?: string; token?: string; body?: any; _attempt?: number } = {}) {
+  // Always prefer the current authStore token (auto-refreshed when needed).
+  // Passing around a startup token leads to stale-auth failures over long runs.
+  let token = pb.authStore.token;
+  if (!pb.authStore.isValid || !token) {
+    try {
+      token = await authServiceUser();
+    } catch {
+      token = opts.token ?? '';
+    }
+  }
   const res = await fetch(new URL(path, env.PB_URL), {
     method: opts.method ?? 'GET',
     headers: {
@@ -229,6 +396,18 @@ async function pbFetch(path: string, opts: { method?: string; token?: string; bo
     json = text;
   }
   if (!res.ok) {
+    const msg = typeof json === 'object' && json ? String((json as any).message || '') : '';
+    const maybeAuthFailure = res.status === 401 || res.status === 403 || (res.status === 400 && msg === 'Failed to create record.');
+    if ((opts._attempt ?? 0) < 1 && maybeAuthFailure) {
+      try {
+        // PocketBase can return generic 400s for auth failures on record creates.
+        // Re-auth once and retry before surfacing an error.
+        await authServiceUser();
+        return pbFetch(path, { ...opts, token: undefined, _attempt: (opts._attempt ?? 0) + 1 });
+      } catch {
+        // fall through to original error
+      }
+    }
     throw new Error(`PocketBase ${opts.method ?? 'GET'} ${path} ${res.status}: ${typeof json === 'string' ? json : JSON.stringify(json)}`);
   }
   return json;
@@ -239,13 +418,14 @@ async function ensureAuth() {
   return authServiceUser();
 }
 
-async function toolsInvoke(tool: string, args: unknown) {
+async function toolsInvoke(tool: string, args: unknown, opts: { commandId?: string } = {}) {
   if (env.OPENCLAW_GATEWAY_DISABLED || !env.OPENCLAW_GATEWAY_TOKEN) {
     throw new Error('OPENCLAW_GATEWAY_DISABLED');
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), env.OPENCLAW_TOOLS_TIMEOUT_MS);
+  const reqId = requestId();
 
   let res: Response;
   try {
@@ -254,13 +434,16 @@ async function toolsInvoke(tool: string, args: unknown) {
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${env.OPENCLAW_GATEWAY_TOKEN}`,
+        'x-mission-control': '1',
+        'x-mission-control-source': 'worker',
+        'x-openclaw-request-id': reqId,
       },
-      body: JSON.stringify({ tool, args }),
+      body: JSON.stringify({ tool, args, ...(opts.commandId ? { commandId: opts.commandId } : {}) }),
       signal: controller.signal,
     });
   } catch (err: any) {
     if (err?.name === 'AbortError') {
-      throw new Error(`tools/invoke ${tool} timed out after ${env.OPENCLAW_TOOLS_TIMEOUT_MS}ms`);
+      throw new Error(`tools/invoke ${tool} timed out after ${env.OPENCLAW_TOOLS_TIMEOUT_MS}ms [requestId=${reqId}]`);
     }
     throw err;
   } finally {
@@ -276,7 +459,7 @@ async function toolsInvoke(tool: string, args: unknown) {
   }
 
   if (!res.ok) {
-    throw new Error(`tools/invoke ${tool} ${res.status}: ${typeof json === 'string' ? json : JSON.stringify(json)}`);
+    throw new Error(`tools/invoke ${tool} ${res.status}: ${typeof json === 'string' ? json : JSON.stringify(json)} [requestId=${reqId}]`);
   }
 
   return json;
@@ -376,7 +559,7 @@ function openclawInlineDirectivesFor(agentId: string, taskId?: string | null) {
   return directives;
 }
 
-async function sendToAgent(agentId: string, message: string, taskId?: string | null) {
+async function sendToAgent(agentId: string, message: string, taskId?: string | null, commandId?: string) {
   const resolved = normalizeAgentId(agentId);
   if (!resolved) throw new Error('UNKNOWN_AGENT');
 
@@ -393,7 +576,7 @@ async function sendToAgent(agentId: string, message: string, taskId?: string | n
   // Use timeoutSeconds=0 so tools/invoke returns immediately ("accepted") instead of
   // waiting for the agent to finish a full turn. Waiting caused worker timeouts,
   // retries, and notification storms (token burn).
-  await toolsInvoke('sessions_send', { sessionKey, message: prefixed, timeoutSeconds: 0 });
+  await toolsInvoke('sessions_send', { sessionKey, message: prefixed, timeoutSeconds: 0 }, { commandId });
 }
 
 async function createActivity(token: string, type: string, summary: string, taskId?: string, actorAgentId?: string) {
@@ -439,11 +622,22 @@ async function createNotification(token: string, toAgentId: string, content: str
   const key = notificationKey(normalized, taskId, kind);
   if (!shouldNotify(key)) return null;
 
-  return pbFetch('/api/collections/notifications/records', {
-    method: 'POST',
-    token,
-    body: { toAgentId: normalized, taskId: taskId ?? '', content, delivered: false },
-  });
+  try {
+    return await pbFetch('/api/collections/notifications/records', {
+      method: 'POST',
+      token,
+      body: { toAgentId: normalized, taskId: taskId ?? '', content, delivered: false },
+    });
+  } catch (err: any) {
+    // Notification write failures should never crash the worker loop.
+    console.error('[worker] createNotification failed', {
+      toAgentId: normalized,
+      taskId: taskId ?? '',
+      kind,
+      err: err?.message || err,
+    });
+    return null;
+  }
 }
 
 function pbFilterString(value: string) {
@@ -575,9 +769,11 @@ async function deliverPendingNotifications(token: string) {
       if (notes.length > 10) lines.push(`- … +${notes.length - 10} more`);
       const header = taskId ? `${env.MC_NOTIFICATION_PREFIX} ${notes.length} update(s) (task ${taskId})` : `${env.MC_NOTIFICATION_PREFIX} ${notes.length} update(s)`;
       const msg = `${header}\n${lines.join('\n')}`;
+      const noteIds = notes.map((n) => String(n?.id || '')).filter(Boolean);
+      const commandId = commandIdForNotificationBatch(agentId, taskId, noteIds);
 
       try {
-        await sendToAgent(agentId, msg, taskId || null);
+        await sendToAgent(agentId, msg, taskId || null, commandId);
       } catch (err: any) {
         if (err?.message === 'OPENCLAW_GATEWAY_DISABLED') {
           console.log('[worker] OpenClaw delivery disabled, holding notifications');
@@ -587,7 +783,16 @@ async function deliverPendingNotifications(token: string) {
           // Circuit breaker trips inside sendToAgent.
           return;
         }
-        console.error('[worker] deliver failed', agentId, err?.message || err);
+        const reason = String(err?.message || err);
+        for (const n of notes) {
+          const id = String(n?.id || '').trim();
+          if (!id) continue;
+          const failure = registerDeliveryFailure(id, reason);
+          if (failure.count >= env.MC_DELIVERY_MAX_ATTEMPTS) {
+            await moveNotificationToDlq(token, n, reason, failure.count);
+          }
+        }
+        console.error('[worker] deliver failed', agentId, reason);
         continue;
       }
 
@@ -595,6 +800,7 @@ async function deliverPendingNotifications(token: string) {
       // "sent" cache to avoid repeatedly spamming the same notification.
       for (const n of notes) {
         sentNotificationIds.set(n.id, Date.now());
+        clearDeliveryFailure(String(n.id || '').trim());
         try {
           await pbFetch(`/api/collections/notifications/records/${n.id}`, {
             method: 'PATCH',
@@ -660,6 +866,25 @@ function messagePayloadText(payload: any) {
   return parts.join('\n').trim();
 }
 
+function extractToolInvokeMessages(payload: any) {
+  if (!payload || typeof payload !== 'object') return [] as any[];
+  if (Array.isArray(payload.messages)) return payload.messages;
+
+  const detailsMessages = payload?.result?.details?.messages;
+  if (Array.isArray(detailsMessages)) return detailsMessages;
+
+  const content = payload?.result?.content;
+  if (!Array.isArray(content)) return [] as any[];
+  const text = content.find((c: any) => c?.type === 'text')?.text;
+  if (typeof text !== 'string' || !text.trim()) return [] as any[];
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed?.messages) ? parsed.messages : [];
+  } catch {
+    return [] as any[];
+  }
+}
+
 function sessionKeyForTask(agentId: string, taskId: string) {
   const safeAgent = String(agentId || '').trim();
   const safeTask = String(taskId || '').trim();
@@ -678,8 +903,7 @@ async function fetchLatestAgentTurnSummary(agentId: string, taskId: string) {
     return { sessionKey, summary: '' };
   }
 
-  const parsed = out?.parsedText ?? out;
-  const messages = Array.isArray(parsed?.messages) ? parsed.messages : [];
+  const messages = extractToolInvokeMessages(out);
   if (!messages.length) return { sessionKey, summary: '' };
 
   // Prefer the last assistant/agent message; fall back to last non-user.
@@ -1017,7 +1241,14 @@ async function enforceLeases(token: string) {
 
     const attempt = (t.attemptCount ?? 0) + 1;
     const max = t.maxAutoNudges ?? 3;
-    const escalation = normalizeAgentId(t.escalationAgentId) ?? leadAgentId;
+    const preferredEscalation = normalizeAgentId(t.escalationAgentId) ?? leadAgentId;
+    const escalationCandidates = [
+      preferredEscalation,
+      ...normalizeAgentIds(Array.isArray(t.assigneeIds) ? t.assigneeIds : []),
+      owner,
+      leadAgentId,
+    ];
+    const escalation = await chooseEscalationAgent(escalationCandidates, preferredEscalation);
 
     // If we've already escalated once (attemptCount was bumped past max), don't keep spamming.
     // This was causing runaway escalation loops when a task got stuck with a huge attemptCount.
@@ -1288,23 +1519,48 @@ async function snapshotNodes(token: string) {
 
 async function subscribeWithRetry(token: string) {
   const subscribe = async () => {
-    await pb.collection('tasks').subscribe('*', async (e) => handleTaskEvent(token, e.record, e.action));
+    await pb.collection('tasks').subscribe('*', async (e) => {
+      try {
+        await handleTaskEvent(token, e.record, e.action);
+      } catch (err: any) {
+        console.error('[worker] tasks handler failed', err?.message || err);
+      }
+    });
     await pb.collection('messages').subscribe('*', async (e) => {
-      if (e.action === 'create') await handleMessageEvent(token, e.record);
+      if (e.action !== 'create') return;
+      try {
+        await handleMessageEvent(token, e.record);
+      } catch (err: any) {
+        console.error('[worker] messages handler failed', err?.message || err);
+      }
     });
     await pb.collection('documents').subscribe('*', async (e) => {
       if (e.action === 'create' || e.action === 'update') {
-        await handleDocumentEvent(token, e.record, e.action);
+        try {
+          await handleDocumentEvent(token, e.record, e.action);
+        } catch (err: any) {
+          console.error('[worker] documents handler failed', err?.message || err);
+        }
       }
     });
     try {
       await pb.collection('task_files').subscribe('*', async (e) => {
-        await handleTaskFileEvent(token, e.record, e.action);
+        try {
+          await handleTaskFileEvent(token, e.record, e.action);
+        } catch (err: any) {
+          console.error('[worker] task_files handler failed', err?.message || err);
+        }
       });
     } catch {
       // Optional collection (may not exist on older schemas).
     }
-    await pb.collection('subtasks').subscribe('*', async (e) => handleSubtaskEvent(token, e.record, e.action));
+    await pb.collection('subtasks').subscribe('*', async (e) => {
+      try {
+        await handleSubtaskEvent(token, e.record, e.action);
+      } catch (err: any) {
+        console.error('[worker] subtasks handler failed', err?.message || err);
+      }
+    });
     await pb.collection('notifications').subscribe('*', async () => scheduleDeliver(token));
   };
 

@@ -74,10 +74,12 @@ try {
   // Drag to Assigned in tab A (status update), and verify tab B follows.
   const cardInA = pageA.getByRole('button', { name: title }).first();
   await cardInA.waitFor({ timeout: 20_000 });
+  const handleInA = cardInA.locator('button[aria-label="Drag task"]').first();
+  await handleInA.waitFor({ timeout: 20_000 });
   const assignedHeaderA = pageA.getByText('Assigned', { exact: true }).first();
   await assignedHeaderA.waitFor({ timeout: 20_000 });
 
-  const cardBox = nonNullBox(await cardInA.boundingBox(), 'task card');
+  const cardBox = nonNullBox(await handleInA.boundingBox(), 'drag handle');
   const headerRowBox = nonNullBox(await assignedHeaderA.locator('..').boundingBox(), 'assigned header row');
 
   const startX = cardBox.x + cardBox.width / 2;
@@ -93,7 +95,7 @@ try {
   // Verify tab B re-renders the card under Assigned.
   const assignedHeaderB = pageB.getByText('Assigned', { exact: true }).first();
   await assignedHeaderB.waitFor({ timeout: 20_000 });
-  const assignedColumnB = assignedHeaderB.locator('..').locator('..');
+  const assignedColumnB = assignedHeaderB.locator('..').locator('..').locator('..');
   await assignedColumnB.getByRole('button', { name: title }).first().waitFor({ timeout: 12_000 });
   await screenshot(pageB, 'tasks_b_after_realtime_move');
 
@@ -103,4 +105,3 @@ try {
 }
 
 console.log('realtime smoke ok; screenshots in', outDir);
-
