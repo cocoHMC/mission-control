@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "node ../../scripts/rm_dir.mjs .next && next build --webpack",
+    "build": "node ../../scripts/rm_dir.mjs .next && node ../../scripts/rm_dir.mjs .next-dev && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run"
