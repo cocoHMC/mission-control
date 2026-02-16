@@ -34,6 +34,43 @@ function nonNullBox(box, label) {
   return box;
 }
 
+async function pointerDrag(page, handle, start, target) {
+  await handle.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    bubbles: true,
+    clientX: start.x,
+    clientY: start.y,
+    button: 0,
+    isPrimary: true,
+    pointerType: 'mouse',
+  });
+
+  const steps = 18;
+  for (let i = 1; i <= steps; i++) {
+    const x = start.x + ((target.x - start.x) * i) / steps;
+    const y = start.y + ((target.y - start.y) * i) / steps;
+    await page.dispatchEvent('body', 'pointermove', {
+      pointerId: 1,
+      bubbles: true,
+      clientX: x,
+      clientY: y,
+      buttons: 1,
+      isPrimary: true,
+      pointerType: 'mouse',
+    });
+  }
+
+  await page.dispatchEvent('body', 'pointerup', {
+    pointerId: 1,
+    bubbles: true,
+    clientX: target.x,
+    clientY: target.y,
+    button: 0,
+    isPrimary: true,
+    pointerType: 'mouse',
+  });
+}
+
 const browser = await chromium.launch();
 try {
   const context = await browser.newContext({
@@ -74,27 +111,38 @@ try {
   // Drag to Assigned in tab A (status update), and verify tab B follows.
   const cardInA = pageA.getByRole('button', { name: title }).first();
   await cardInA.waitFor({ timeout: 20_000 });
+  // Drag is activated from the grip handle (not the whole card).
+  const handleInA = cardInA.locator('button[aria-label="Drag task"]').first();
+  await handleInA.waitFor({ timeout: 20_000 });
   const assignedHeaderA = pageA.getByText('Assigned', { exact: true }).first();
   await assignedHeaderA.waitFor({ timeout: 20_000 });
+  // Column DOM structure: label -> inner header -> header wrapper -> column wrapper.
+  const assignedColumnA = assignedHeaderA.locator('..').locator('..').locator('..');
 
-  const cardBox = nonNullBox(await cardInA.boundingBox(), 'task card');
-  const headerRowBox = nonNullBox(await assignedHeaderA.locator('..').boundingBox(), 'assigned header row');
+  const handleBox = nonNullBox(await handleInA.boundingBox(), 'drag handle');
+  const colBox = nonNullBox(await assignedColumnA.boundingBox(), 'assigned column');
 
-  const startX = cardBox.x + cardBox.width / 2;
-  const startY = cardBox.y + cardBox.height / 2;
-  const targetX = headerRowBox.x + headerRowBox.width / 2;
-  const targetY = headerRowBox.y + headerRowBox.height + 140;
+  const startX = handleBox.x + handleBox.width / 2;
+  const startY = handleBox.y + handleBox.height / 2;
+  const targetX = colBox.x + colBox.width / 2;
+  const targetY = colBox.y + colBox.height / 2;
 
-  await pageA.mouse.move(startX, startY);
-  await pageA.mouse.down();
-  await pageA.mouse.move(targetX, targetY, { steps: 18 });
-  await pageA.mouse.up();
+  await pointerDrag(
+    pageA,
+    handleInA,
+    { x: startX, y: startY },
+    { x: targetX, y: targetY }
+  );
 
   // Verify tab B re-renders the card under Assigned.
   const assignedHeaderB = pageB.getByText('Assigned', { exact: true }).first();
   await assignedHeaderB.waitFor({ timeout: 20_000 });
-  const assignedColumnB = assignedHeaderB.locator('..').locator('..');
-  await assignedColumnB.getByRole('button', { name: title }).first().waitFor({ timeout: 12_000 });
+  const assignedColumnB = assignedHeaderB.locator('..').locator('..').locator('..');
+  await assignedColumnB
+    .getByRole('button', { name: title })
+    .first()
+    // The Assigned column may be scrollable; presence matters more than viewport visibility.
+    .waitFor({ timeout: 12_000, state: 'attached' });
   await screenshot(pageB, 'tasks_b_after_realtime_move');
 
   await context.close();
@@ -103,4 +151,3 @@ try {
 }
 
 console.log('realtime smoke ok; screenshots in', outDir);
-
