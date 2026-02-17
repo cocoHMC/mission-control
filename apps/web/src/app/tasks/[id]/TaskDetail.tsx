@@ -12,7 +12,20 @@ import { MentionsTextarea } from '@/components/mentions/MentionsTextarea';
 import { Textarea } from '@/components/ui/textarea';
 import { CopyButton } from '@/components/ui/copy-button';
 import { cn, formatShortDate, fromDateTimeLocalValue, toDateTimeLocalValue } from '@/lib/utils';
-import type { Agent, DocumentRecord, Message, NodeRecord, ReviewChecklist, ReviewChecklistItem, Subtask, Task, TaskFile } from '@/lib/types';
+import type {
+  Activity,
+  Agent,
+  DocumentRecord,
+  Message,
+  NodeRecord,
+  OpenClawTaskPolicy,
+  ReviewChecklist,
+  ReviewChecklistItem,
+  Subtask,
+  Task,
+  TaskFile,
+  WorkflowRun,
+} from '@/lib/types';
 import { mcApiUrl, mcFetch } from '@/lib/clientApi';
 import { buildVaultHintMarkdown, stripVaultHintMarkdown, upsertVaultHintMarkdown } from '@/lib/vaultHint';
 
@@ -193,6 +206,15 @@ export function TaskDetail({
   const [reviewChecklist, setReviewChecklist] = React.useState<ReviewChecklist>(() => coerceReviewChecklist(task.reviewChecklist));
   const [newReviewItemLabel, setNewReviewItemLabel] = React.useState('');
   const [saveError, setSaveError] = React.useState<string | null>(null);
+  const [policyDraft, setPolicyDraft] = React.useState<string>(() => {
+    try {
+      return task.policy ? JSON.stringify(task.policy, null, 2) : '';
+    } catch {
+      return '';
+    }
+  });
+  const [policyError, setPolicyError] = React.useState<string | null>(null);
+  const [policySaving, setPolicySaving] = React.useState(false);
   const [startAt, setStartAt] = React.useState(toDateTimeLocalValue(task.startAt));
   const [dueAt, setDueAt] = React.useState(toDateTimeLocalValue(task.dueAt));
   const [vaultAgent, setVaultAgent] = React.useState<string>('');
@@ -307,6 +329,11 @@ export function TaskDetail({
   const [sessionLoading, setSessionLoading] = React.useState(false);
   const [sessionError, setSessionError] = React.useState<string | null>(null);
 
+  const [timelineLoading, setTimelineLoading] = React.useState(false);
+  const [timelineError, setTimelineError] = React.useState<string | null>(null);
+  const [activities, setActivities] = React.useState<Activity[]>([]);
+  const [workflowRuns, setWorkflowRuns] = React.useState<WorkflowRun[]>([]);
+
   React.useEffect(() => {
     setChatAgentId((prev) => {
       if (openclawAssigneeIds.includes(prev)) return prev;
@@ -346,6 +373,17 @@ export function TaskDetail({
     const nextChecklist = coerceReviewChecklist(task.reviewChecklist);
     setReviewChecklist((prev) => (sameReviewChecklist(prev, nextChecklist) ? prev : nextChecklist));
 
+    setPolicyDraft((prev) => {
+      let next = '';
+      try {
+        next = task.policy ? JSON.stringify(task.policy, null, 2) : '';
+      } catch {
+        next = '';
+      }
+      return prev === next ? prev : next;
+    });
+    setPolicyError(null);
+
     const nextStartAt = toDateTimeLocalValue(task.startAt);
     setStartAt((prev) => (prev === nextStartAt ? prev : nextStartAt));
 
@@ -371,6 +409,7 @@ export function TaskDetail({
     task.aiModel,
     task.archived,
     task.requiresReview,
+    task.policy,
     task.reviewChecklist,
     task.startAt,
     task.dueAt,
@@ -569,6 +608,81 @@ export function TaskDetail({
     const out = await updateTask({ reviewChecklist: next });
     if (!out.ok) setReviewChecklist(prev);
   }
+
+  async function savePolicy() {
+    const raw = policyDraft.trim();
+    if (!raw) {
+      setPolicySaving(true);
+      setPolicyError(null);
+      try {
+        const out = await updateTask({ policy: null });
+        if (!out.ok) return;
+      } finally {
+        setPolicySaving(false);
+      }
+      return;
+    }
+
+    let parsed: OpenClawTaskPolicy | any;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      setPolicyError('Policy must be valid JSON.');
+      return;
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      setPolicyError('Policy must be a JSON object.');
+      return;
+    }
+    setPolicySaving(true);
+    setPolicyError(null);
+    try {
+      const out = await updateTask({ policy: parsed });
+      if (!out.ok) return;
+    } finally {
+      setPolicySaving(false);
+    }
+  }
+
+  const refreshTimeline = React.useCallback(async () => {
+    setTimelineLoading(true);
+    setTimelineError(null);
+    try {
+      const [actsRes, runsRes] = await Promise.all([
+        mcFetch(
+          `/api/activity?${new URLSearchParams({
+            page: '1',
+            perPage: '50',
+            sort: '-createdAt',
+            filter: `taskId = "${task.id}"`,
+          }).toString()}`,
+          { cache: 'no-store' }
+        ).then((r) => r.json().catch(() => null)),
+        mcFetch(
+          `/api/workflow-runs?${new URLSearchParams({
+            page: '1',
+            perPage: '20',
+            sort: '-createdAt',
+            filter: `taskId = "${task.id}"`,
+          }).toString()}`,
+          { cache: 'no-store' }
+        ).then((r) => r.json().catch(() => null)),
+      ]);
+
+      setActivities(Array.isArray(actsRes?.items) ? (actsRes.items as Activity[]) : []);
+      setWorkflowRuns(Array.isArray(runsRes?.items) ? (runsRes.items as WorkflowRun[]) : []);
+    } catch (err: unknown) {
+      setTimelineError(err instanceof Error ? err.message : String(err));
+      setActivities([]);
+      setWorkflowRuns([]);
+    } finally {
+      setTimelineLoading(false);
+    }
+  }, [task.id]);
+
+  React.useEffect(() => {
+    void refreshTimeline();
+  }, [refreshTimeline]);
 
   async function toggleReviewItem(id: string, done: boolean) {
     const next = {
@@ -1053,6 +1167,71 @@ export function TaskDetail({
         </div>
 
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm font-semibold">Timeline</div>
+            <div className="flex items-center gap-2">
+              <Button type="button" size="sm" variant="secondary" onClick={() => void refreshTimeline()} disabled={timelineLoading}>
+                {timelineLoading ? 'Refreshing…' : 'Refresh'}
+              </Button>
+            </div>
+          </div>
+          {timelineError ? (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{timelineError}</div>
+          ) : null}
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs uppercase tracking-[0.2em] text-muted">Activities</div>
+                <div className="text-xs text-muted">{activities.length}</div>
+              </div>
+              <div className="mt-3 space-y-2">
+                {activities.map((a) => (
+                  <div key={a.id} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+                      <div className="font-mono">{a.type}</div>
+                      {a.createdAt ? <div>{formatShortDate(a.createdAt)}</div> : null}
+                    </div>
+                    <div className="mt-2 text-sm text-[var(--foreground)]">{a.summary}</div>
+                  </div>
+                ))}
+                {!activities.length ? <div className="text-sm text-muted">{timelineLoading ? 'Loading…' : 'No activities yet.'}</div> : null}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs uppercase tracking-[0.2em] text-muted">Workflow Runs</div>
+                <div className="text-xs text-muted">{workflowRuns.length}</div>
+              </div>
+              <div className="mt-3 space-y-2">
+                {workflowRuns.map((r) => (
+                  <details key={r.id} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
+                    <summary className="cursor-pointer">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-sm font-medium">{r.status || 'queued'}</div>
+                        <div className="text-xs text-muted">{r.createdAt ? formatShortDate(r.createdAt) : ''}</div>
+                      </div>
+                      <div className="mt-1 truncate font-mono text-xs text-muted">{r.workflowId}</div>
+                    </summary>
+                    {r.log ? (
+                      <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-xs text-[var(--foreground)]">
+                        {r.log}
+                      </pre>
+                    ) : null}
+                    {r.result ? (
+                      <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-xs text-[var(--foreground)]">
+                        {typeof r.result === 'string' ? r.result : JSON.stringify(r.result, null, 2)}
+                      </pre>
+                    ) : null}
+                  </details>
+                ))}
+                {!workflowRuns.length ? <div className="text-sm text-muted">{timelineLoading ? 'Loading…' : 'No runs yet.'}</div> : null}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
           <div className="flex items-center justify-between gap-4">
             <div className="text-sm font-semibold">Subtasks</div>
             <div className="text-xs text-muted">
@@ -1330,6 +1509,52 @@ export function TaskDetail({
               </div>
             </div>
           ) : null}
+
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-[0.2em] text-muted">Policy (advanced)</div>
+                <div className="mt-1 text-xs text-muted">
+                  JSON policy that controls worker-to-OpenClaw delivery (mute, budgets, rate limits).
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button type="button" size="sm" variant="secondary" onClick={() => setPolicyDraft(JSON.stringify({ openclaw: { mute: true } }, null, 2))}>
+                  Mute
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() =>
+                    setPolicyDraft(
+                      JSON.stringify({ openclaw: { mute: false, maxTokensPct: 85, maxSendsPerHour: 6 } }, null, 2)
+                    )
+                  }
+                >
+                  Budget template
+                </Button>
+              </div>
+            </div>
+            {policyError ? (
+              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">{policyError}</div>
+            ) : null}
+            <Textarea
+              value={policyDraft}
+              onChange={(e) => setPolicyDraft(e.target.value)}
+              placeholder='{\n  "openclaw": {\n    "mute": false,\n    "maxTokensPct": 85,\n    "maxSendsPerHour": 6\n  }\n}'
+              className="mt-3 min-h-[160px] font-mono text-xs"
+            />
+            <div className="mt-3 flex items-center gap-2">
+              <Button type="button" size="sm" onClick={() => void savePolicy()} disabled={policySaving}>
+                {policySaving ? 'Saving…' : 'Save policy'}
+              </Button>
+              <Button type="button" size="sm" variant="secondary" onClick={() => setPolicyDraft('')} disabled={policySaving}>
+                Clear
+              </Button>
+            </div>
+          </div>
+
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
             <div className="text-xs uppercase tracking-[0.2em] text-muted">AI controls</div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">

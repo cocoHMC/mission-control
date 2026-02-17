@@ -3,6 +3,18 @@ export type TaskStatus = 'inbox' | 'assigned' | 'in_progress' | 'review' | 'done
 export type ReviewChecklistItem = { id: string; label: string; done: boolean };
 export type ReviewChecklist = { version: 1; items: ReviewChecklistItem[] };
 
+export type OpenClawTaskPolicy = {
+  // Delivery controls for worker -> OpenClaw notification sends.
+  openclaw?: {
+    mute?: boolean;
+    // Suppress sends once the per-task OpenClaw session reaches these limits.
+    maxTokensPct?: number;
+    maxTokensUsed?: number;
+    // Per (agent, task) send cap enforced by the worker for notifications.
+    maxSendsPerHour?: number;
+  };
+};
+
 export type Task = {
   id: string;
   title: string;
@@ -35,7 +47,7 @@ export type Task = {
   completedAt?: string;
   requiresReview?: boolean;
   // Optional task-level policy knobs (e.g. future tool profile / escalation rules).
-  policy?: unknown;
+  policy?: OpenClawTaskPolicy | unknown;
   // When requiresReview=true, this can enforce a "done" gate and provide deterministic review steps.
   reviewChecklist?: ReviewChecklist | null;
   order?: number;

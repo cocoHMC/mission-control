@@ -240,12 +240,17 @@ async function ensureAuth() {
 }
 
 async function toolsInvoke(tool: string, args: unknown) {
+  return toolsInvokeWithOpts(tool, args);
+}
+
+async function toolsInvokeWithOpts(tool: string, args: unknown, opts: { timeoutMs?: number; sessionKey?: string } = {}) {
   if (env.OPENCLAW_GATEWAY_DISABLED || !env.OPENCLAW_GATEWAY_TOKEN) {
     throw new Error('OPENCLAW_GATEWAY_DISABLED');
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), env.OPENCLAW_TOOLS_TIMEOUT_MS);
+  const timeoutMs = opts.timeoutMs ?? env.OPENCLAW_TOOLS_TIMEOUT_MS;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   let res: Response;
   try {
@@ -255,12 +260,12 @@ async function toolsInvoke(tool: string, args: unknown) {
         'content-type': 'application/json',
         authorization: `Bearer ${env.OPENCLAW_GATEWAY_TOKEN}`,
       },
-      body: JSON.stringify({ tool, args }),
+      body: JSON.stringify({ tool, args, ...(opts.sessionKey ? { sessionKey: opts.sessionKey } : {}) }),
       signal: controller.signal,
     });
   } catch (err: any) {
     if (err?.name === 'AbortError') {
-      throw new Error(`tools/invoke ${tool} timed out after ${env.OPENCLAW_TOOLS_TIMEOUT_MS}ms`);
+      throw new Error(`tools/invoke ${tool} timed out after ${timeoutMs}ms`);
     }
     throw err;
   } finally {
@@ -282,11 +287,83 @@ async function toolsInvoke(tool: string, args: unknown) {
   return json;
 }
 
+function invokeText(payload: any) {
+  const content = payload?.result?.content;
+  if (!Array.isArray(content)) return '';
+  const text = content.find((c: any) => c?.type === 'text')?.text;
+  return typeof text === 'string' ? text : '';
+}
+
+function invokeParsedJson(payload: any) {
+  const text = invokeText(payload).trim();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 function sessionKeyForAgent(agentId: string, taskId?: string | null) {
   // Keep Mission Control notifications out of the user's primary "main" chat/session.
   // This prevents notification storms from bloating context and burning tokens.
   const safeTask = taskId ? String(taskId).trim() : '';
   return safeTask ? `agent:${agentId}:mc:${safeTask}` : `agent:${agentId}:mc`;
+}
+
+type OpenClawDeliveryPolicy = {
+  mute?: boolean;
+  maxTokensPct?: number;
+  maxTokensUsed?: number;
+  maxSendsPerHour?: number;
+};
+
+function policyForTask(taskId?: string | null): OpenClawDeliveryPolicy | null {
+  if (!taskId) return null;
+  const task = taskCache.get(String(taskId).trim()) || null;
+  if (!task) return null;
+  let policy: any = task?.policy ?? null;
+  if (typeof policy === 'string') {
+    try {
+      policy = JSON.parse(policy);
+    } catch {
+      policy = null;
+    }
+  }
+  if (!policy || typeof policy !== 'object') return null;
+  const oc = (policy as any).openclaw;
+  if (!oc || typeof oc !== 'object') return null;
+  const out: OpenClawDeliveryPolicy = {};
+  if (typeof oc.mute === 'boolean') out.mute = oc.mute;
+  if (typeof oc.maxTokensPct === 'number' && Number.isFinite(oc.maxTokensPct)) out.maxTokensPct = oc.maxTokensPct;
+  if (typeof oc.maxTokensUsed === 'number' && Number.isFinite(oc.maxTokensUsed)) out.maxTokensUsed = oc.maxTokensUsed;
+  if (typeof oc.maxSendsPerHour === 'number' && Number.isFinite(oc.maxSendsPerHour)) out.maxSendsPerHour = oc.maxSendsPerHour;
+  return out;
+}
+
+const sendHistoryByTarget = new Map<string, number[]>();
+const sessionBudgetCache = new Map<string, { at: number; tokensUsed: number | null; tokensMax: number | null; tokensPct: number | null }>();
+
+async function sessionBudget(sessionKey: string) {
+  const key = String(sessionKey || '').trim();
+  if (!key) return { tokensUsed: null, tokensMax: null, tokensPct: null };
+
+  const cached = sessionBudgetCache.get(key);
+  const now = Date.now();
+  if (cached && now - cached.at < 60_000) {
+    return { tokensUsed: cached.tokensUsed, tokensMax: cached.tokensMax, tokensPct: cached.tokensPct };
+  }
+
+  // Deterministic tool: does not run an agent turn.
+  const out = await toolsInvokeWithOpts('sessions_list', { limit: 500, messageLimit: 0 }, { timeoutMs: 8_000 });
+  const parsed = invokeParsedJson(out);
+  const sessions = Array.isArray((parsed as any)?.sessions) ? (parsed as any).sessions : [];
+  const found = sessions.find((s: any) => typeof s?.key === 'string' && s.key === key) || null;
+  const used = typeof found?.totalTokens === 'number' ? found.totalTokens : null;
+  const max = typeof found?.contextTokens === 'number' ? found.contextTokens : null;
+  const pct = used !== null && max !== null && max > 0 ? Math.round((used / max) * 100) : null;
+  sessionBudgetCache.set(key, { at: now, tokensUsed: used, tokensMax: max, tokensPct: pct });
+  return { tokensUsed: used, tokensMax: max, tokensPct: pct };
 }
 
 function normalizeAgentId(agentId?: string | null) {
@@ -385,6 +462,65 @@ async function sendToAgent(agentId: string, message: string, taskId?: string | n
   }
 
   const sessionKey = sessionKeyForAgent(resolved, taskId);
+
+  if (taskId) {
+    const token = await ensureAuth();
+    const policy = policyForTask(taskId);
+    const policyKey = `${resolved}|${String(taskId).trim()}`;
+
+    if (policy?.mute) {
+      await createActivity(token, 'delivery_suppressed', `Suppressed OpenClaw send (muted by policy).`, String(taskId), resolved);
+      return { sent: false, reason: 'muted' };
+    }
+
+    if (typeof policy?.maxSendsPerHour === 'number' && policy.maxSendsPerHour > 0) {
+      const now = Date.now();
+      const windowMs = 60 * 60_000;
+      const list = sendHistoryByTarget.get(policyKey) || [];
+      const kept = list.filter((ts) => now - ts < windowMs);
+      if (kept.length >= policy.maxSendsPerHour) {
+        sendHistoryByTarget.set(policyKey, kept);
+        await createActivity(
+          token,
+          'delivery_suppressed',
+          `Suppressed OpenClaw send (rate limit: ${policy.maxSendsPerHour}/hour).`,
+          String(taskId),
+          resolved
+        );
+        return { sent: false, reason: 'rate_limit' };
+      }
+      sendHistoryByTarget.set(policyKey, kept);
+    }
+
+    if (typeof policy?.maxTokensPct === 'number' || typeof policy?.maxTokensUsed === 'number') {
+      try {
+        const b = await sessionBudget(sessionKey);
+        if (typeof policy.maxTokensPct === 'number' && b.tokensPct !== null && b.tokensPct >= policy.maxTokensPct) {
+          await createActivity(
+            token,
+            'delivery_suppressed',
+            `Suppressed OpenClaw send (session budget: ${b.tokensPct}% >= ${policy.maxTokensPct}%).`,
+            String(taskId),
+            resolved
+          );
+          return { sent: false, reason: 'budget_pct' };
+        }
+        if (typeof policy.maxTokensUsed === 'number' && b.tokensUsed !== null && b.tokensUsed >= policy.maxTokensUsed) {
+          await createActivity(
+            token,
+            'delivery_suppressed',
+            `Suppressed OpenClaw send (session budget: ${b.tokensUsed} >= ${policy.maxTokensUsed} tokens).`,
+            String(taskId),
+            resolved
+          );
+          return { sent: false, reason: 'budget_used' };
+        }
+      } catch (err: any) {
+        console.warn('[worker] budget check failed (continuing with send)', err?.message || err);
+      }
+    }
+  }
+
   const directives = openclawInlineDirectivesFor(resolved, taskId);
   const prefixed = directives.length ? `${directives.join('\n')}\n${message}` : message;
   // Do not fallback to the OpenClaw CLI here:
@@ -394,6 +530,14 @@ async function sendToAgent(agentId: string, message: string, taskId?: string | n
   // waiting for the agent to finish a full turn. Waiting caused worker timeouts,
   // retries, and notification storms (token burn).
   await toolsInvoke('sessions_send', { sessionKey, message: prefixed, timeoutSeconds: 0 });
+  if (taskId) {
+    const key = `${resolved}|${String(taskId).trim()}`;
+    const now = Date.now();
+    const list = sendHistoryByTarget.get(key) || [];
+    list.push(now);
+    sendHistoryByTarget.set(key, list);
+  }
+  return { sent: true };
 }
 
 async function createActivity(token: string, type: string, summary: string, taskId?: string, actorAgentId?: string) {
@@ -577,7 +721,11 @@ async function deliverPendingNotifications(token: string) {
       const msg = `${header}\n${lines.join('\n')}`;
 
       try {
-        await sendToAgent(agentId, msg, taskId || null);
+        const out = await sendToAgent(agentId, msg, taskId || null);
+        if (out && typeof out === 'object' && out.sent === false) {
+          // Policy suppressed; treat as delivered so we don't spin.
+          console.log('[worker] delivery suppressed by policy', { agentId, taskId, reason: (out as any).reason || '' });
+        }
       } catch (err: any) {
         if (err?.message === 'OPENCLAW_GATEWAY_DISABLED') {
           console.log('[worker] OpenClaw delivery disabled, holding notifications');

@@ -8,6 +8,24 @@ function safeString(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+async function createActivity(type: string, summary: string, taskId?: string, actorAgentId?: string) {
+  const now = new Date().toISOString();
+  try {
+    await pbFetch('/api/collections/activities/records', {
+      method: 'POST',
+      body: {
+        type,
+        summary,
+        taskId: taskId ?? '',
+        actorAgentId: actorAgentId ?? '',
+        createdAt: now,
+      },
+    });
+  } catch {
+    // Best-effort only: workflow runs should not fail because activity logging failed.
+  }
+}
+
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const q = url.searchParams.toString();
@@ -42,6 +60,12 @@ export async function POST(req: NextRequest) {
   };
 
   const created = await pbFetch<any>('/api/collections/workflow_runs/records', { method: 'POST', body: basePayload });
+  await createActivity(
+    'workflow_run_started',
+    `Workflow run started (${safeString(workflow?.name) || workflowId}).`,
+    taskId || '',
+    ''
+  );
 
   if (kind !== 'lobster') {
     return NextResponse.json({ ok: true, run: created });
@@ -57,6 +81,7 @@ export async function POST(req: NextRequest) {
         updatedAt: new Date().toISOString(),
       },
     });
+    await createActivity('workflow_run_failed', `Workflow run failed (missing pipeline).`, taskId || '', '');
     return NextResponse.json({ ok: false, error: 'Workflow has no pipeline.', run: failed }, { status: 400 });
   }
 
@@ -79,6 +104,7 @@ export async function POST(req: NextRequest) {
         updatedAt: new Date().toISOString(),
       },
     });
+    await createActivity('workflow_run_succeeded', `Workflow run succeeded (${safeString(workflow?.name) || workflowId}).`, taskId || '', '');
     return NextResponse.json({ ok: true, run: updated });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -91,7 +117,7 @@ export async function POST(req: NextRequest) {
         updatedAt: new Date().toISOString(),
       },
     });
+    await createActivity('workflow_run_failed', `Workflow run failed (${safeString(workflow?.name) || workflowId}): ${msg || 'error'}`, taskId || '', '');
     return NextResponse.json({ ok: false, error: msg || 'Lobster run failed.', run: updated }, { status: 502 });
   }
 }
-
