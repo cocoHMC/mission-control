@@ -302,6 +302,8 @@ async function main() {
         // PocketBase validates required bool/number fields as "must be truthy",
         // which breaks defaults like `false` and `0`. We enforce these in app logic instead.
         { type: 'bool', name: 'requiresReview' },
+        { type: 'json', name: 'policy' },
+        { type: 'json', name: 'reviewChecklist' },
         { type: 'number', name: 'order' },
         { type: 'number', name: 'subtasksTotal' },
         { type: 'number', name: 'subtasksDone' },
@@ -371,6 +373,39 @@ async function main() {
         { type: 'text', name: 'exportPath' },
         { type: 'date', name: 'createdAt', required: true },
         { type: 'date', name: 'updatedAt', required: true },
+      ],
+    },
+    {
+      name: 'workflows',
+      type: 'base',
+      schema: [
+        { type: 'text', name: 'name', required: true },
+        { type: 'text', name: 'description' },
+        { type: 'select', name: 'kind', options: { maxSelect: 1, values: ['lobster', 'manual'] } },
+        { type: 'editor', name: 'pipeline' },
+        { type: 'date', name: 'createdAt', required: true },
+        { type: 'date', name: 'updatedAt', required: true },
+      ],
+    },
+    {
+      name: 'workflow_runs',
+      type: 'base',
+      schema: [
+        { type: 'text', name: 'workflowId', required: true },
+        { type: 'text', name: 'taskId' },
+        { type: 'select', name: 'status', options: { maxSelect: 1, values: ['queued', 'running', 'succeeded', 'failed'] } },
+        { type: 'text', name: 'sessionKey' },
+        { type: 'json', name: 'vars' },
+        { type: 'json', name: 'result' },
+        { type: 'editor', name: 'log' },
+        { type: 'date', name: 'startedAt' },
+        { type: 'date', name: 'finishedAt' },
+        { type: 'date', name: 'createdAt', required: true },
+        { type: 'date', name: 'updatedAt', required: true },
+      ],
+      indexes: [
+        'CREATE INDEX `idx_workflowId_workflow_runs` ON `workflow_runs` (`workflowId`)',
+        'CREATE INDEX `idx_taskId_workflow_runs` ON `workflow_runs` (`taskId`)',
       ],
     },
     {

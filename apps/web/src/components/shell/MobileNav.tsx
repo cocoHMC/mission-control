@@ -11,6 +11,8 @@ import {
   LayoutDashboard,
   ListTodo,
   MessageSquare,
+  Orbit,
+  Shield,
   Server,
   Settings,
   SlidersHorizontal,
@@ -25,7 +27,9 @@ const nav = [
   { href: '/sessions', label: 'Sessions', icon: MessageSquare },
   { href: '/nodes', label: 'Nodes', icon: Server },
   { href: '/docs', label: 'Docs', icon: ClipboardCheck },
+  { href: '/workflows', label: 'Workflows', icon: Orbit },
   { href: '/openclaw', label: 'OpenClaw', icon: SlidersHorizontal },
+  { href: '/ops', label: 'Ops', icon: Shield },
   { href: '/download', label: 'Downloads', icon: Download },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];

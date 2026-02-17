@@ -1,5 +1,8 @@
 export type TaskStatus = 'inbox' | 'assigned' | 'in_progress' | 'review' | 'done' | 'blocked';
 
+export type ReviewChecklistItem = { id: string; label: string; done: boolean };
+export type ReviewChecklist = { version: 1; items: ReviewChecklistItem[] };
+
 export type Task = {
   id: string;
   title: string;
@@ -31,6 +34,10 @@ export type Task = {
   dueAt?: string;
   completedAt?: string;
   requiresReview?: boolean;
+  // Optional task-level policy knobs (e.g. future tool profile / escalation rules).
+  policy?: unknown;
+  // When requiresReview=true, this can enforce a "done" gate and provide deterministic review steps.
+  reviewChecklist?: ReviewChecklist | null;
   order?: number;
   subtasksTotal?: number;
   subtasksDone?: number;
@@ -169,4 +176,31 @@ export type VaultAudit = {
   meta?: unknown;
   created?: string;
   updated?: string;
+};
+
+export type WorkflowKind = 'lobster' | 'manual';
+export type Workflow = {
+  id: string;
+  name: string;
+  description?: string;
+  kind?: WorkflowKind;
+  pipeline?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type WorkflowRunStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+export type WorkflowRun = {
+  id: string;
+  workflowId: string;
+  taskId?: string;
+  status?: WorkflowRunStatus;
+  sessionKey?: string;
+  vars?: unknown;
+  result?: unknown;
+  log?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };

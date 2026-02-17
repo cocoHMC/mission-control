@@ -131,6 +131,7 @@ export function OpenClawOverviewClient() {
     { href: '/openclaw/models', label: 'Models' },
     { href: '/openclaw/channels', label: 'Channels' },
     { href: '/openclaw/skills', label: 'Skills' },
+    { href: '/openclaw/memory', label: 'Memory' },
     { href: '/openclaw/cron', label: 'Cron' },
     { href: '/openclaw/system', label: 'System' },
     { href: '/openclaw/devices', label: 'Devices' },
