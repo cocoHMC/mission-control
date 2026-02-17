@@ -227,8 +227,23 @@ export type WorkflowSchedule = {
   vars?: unknown;
   running?: boolean;
   runningRunId?: string;
+  runningStartedAt?: string;
   lastRunAt?: string;
   nextRunAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type WorkflowTriggerEvent = 'task_status_to';
+export type WorkflowTrigger = {
+  id: string;
+  workflowId: string;
+  enabled?: boolean;
+  event?: WorkflowTriggerEvent;
+  statusTo?: TaskStatus;
+  labelsAny?: string[] | unknown;
+  sessionKey?: string;
+  vars?: unknown;
   createdAt?: string;
   updatedAt?: string;
 };

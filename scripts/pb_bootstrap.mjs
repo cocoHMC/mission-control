@@ -422,6 +422,7 @@ async function main() {
         { type: 'json', name: 'vars' },
         { type: 'bool', name: 'running' },
         { type: 'text', name: 'runningRunId' },
+        { type: 'date', name: 'runningStartedAt' },
         { type: 'date', name: 'lastRunAt' },
         { type: 'date', name: 'nextRunAt' },
         { type: 'date', name: 'createdAt', required: true },
@@ -430,6 +431,26 @@ async function main() {
       indexes: [
         'CREATE INDEX `idx_workflowId_workflow_schedules` ON `workflow_schedules` (`workflowId`)',
         'CREATE INDEX `idx_enabled_nextRunAt_workflow_schedules` ON `workflow_schedules` (`enabled`, `nextRunAt`)',
+      ],
+    },
+    {
+      name: 'workflow_triggers',
+      type: 'base',
+      schema: [
+        { type: 'text', name: 'workflowId', required: true },
+        { type: 'bool', name: 'enabled' },
+        { type: 'select', name: 'event', options: { maxSelect: 1, values: ['task_status_to'] } },
+        { type: 'select', name: 'statusTo', options: { maxSelect: 1, values: ['inbox', 'assigned', 'in_progress', 'review', 'done', 'blocked'] } },
+        // Optional: only fire when task labels match at least one of these.
+        { type: 'json', name: 'labelsAny' },
+        { type: 'text', name: 'sessionKey' },
+        { type: 'json', name: 'vars' },
+        { type: 'date', name: 'createdAt', required: true },
+        { type: 'date', name: 'updatedAt', required: true },
+      ],
+      indexes: [
+        'CREATE INDEX `idx_workflowId_workflow_triggers` ON `workflow_triggers` (`workflowId`)',
+        'CREATE INDEX `idx_enabled_statusTo_workflow_triggers` ON `workflow_triggers` (`enabled`, `statusTo`)',
       ],
     },
     {
