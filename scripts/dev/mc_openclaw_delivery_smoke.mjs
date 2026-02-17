@@ -15,6 +15,11 @@ function basicAuth(user, pass) {
   return `Basic ${token}`;
 }
 
+function pbEscapeFilter(value) {
+  // PocketBase filter strings use double quotes; escape defensively.
+  return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 async function fetchJson(url, init) {
   const res = await fetch(url, init);
   const text = await res.text().catch(() => '');
@@ -90,7 +95,11 @@ async function localDeliveryState(taskId, agentId) {
   ].join(' ');
 
   try {
-    const { stdout } = await execFileAsync('sqlite3', ['pb/pb_data/data.db', sql], { cwd: process.cwd() });
+    const defaultPath = 'pb/pb_data/data.db';
+    const dbPath =
+      process.env.MC_PB_SQLITE_PATH ||
+      (process.env.MC_DATA_DIR ? `${process.env.MC_DATA_DIR}/pb/pb_data/data.db` : defaultPath);
+    const { stdout } = await execFileAsync('sqlite3', [dbPath, sql], { cwd: process.cwd() });
     const line = String(stdout || '').trim();
     if (!line) return { found: false, delivered: false, deliveredAt: '' };
     const [deliveredRaw, deliveredAtRaw] = line.split('|');
@@ -102,6 +111,34 @@ async function localDeliveryState(taskId, agentId) {
   } catch {
     return { found: false, delivered: false, deliveredAt: '' };
   }
+}
+
+async function pbDeliveryState(taskId, agentId) {
+  const pbUrl = String(process.env.PB_URL || '').trim();
+  const adminEmail = String(process.env.PB_ADMIN_EMAIL || '').trim();
+  const adminPassword = String(process.env.PB_ADMIN_PASSWORD || '').trim();
+  if (bad(pbUrl) || bad(adminEmail) || bad(adminPassword)) return { ok: false, delivered: false, deliveredAt: '' };
+
+  const auth = await fetchJson(new URL('/api/collections/_superusers/auth-with-password', pbUrl).toString(), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ identity: adminEmail, password: adminPassword }),
+  });
+  if (!auth.res.ok) return { ok: false, delivered: false, deliveredAt: '' };
+  const token = String(auth.json?.token || '').trim();
+  if (bad(token)) return { ok: false, delivered: false, deliveredAt: '' };
+
+  const filter = `taskId = "${pbEscapeFilter(taskId)}" && toAgentId = "${pbEscapeFilter(agentId)}"`;
+  const q = new URLSearchParams({ page: '1', perPage: '1', filter }).toString();
+  const list = await fetchJson(new URL(`/api/collections/notifications/records?${q}`, pbUrl).toString(), {
+    method: 'GET',
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!list.res.ok) return { ok: false, delivered: false, deliveredAt: '' };
+
+  const item = Array.isArray(list.json?.items) ? list.json.items[0] : null;
+  if (!item) return { ok: true, delivered: false, deliveredAt: '' };
+  return { ok: true, delivered: Boolean(item.delivered), deliveredAt: String(item.deliveredAt || '') };
 }
 
 async function main() {
@@ -149,6 +186,17 @@ async function main() {
   const needle = `Assigned: ${title}`;
 
   while (Date.now() - start < timeoutMs) {
+    // Preferred: check PocketBase delivery state. This indicates Mission Control successfully invoked OpenClaw
+    // sessions_send and marked the notification delivered (even if sessions_history is delayed).
+    const pbState = await pbDeliveryState(taskId, agentId);
+    if (pbState.ok && pbState.delivered) {
+      console.log(
+        '[openclaw-delivery] ok',
+        JSON.stringify({ taskId, sessionKey, deliveredAt: pbState.deliveredAt || null, ms: Date.now() - start })
+      );
+      return;
+    }
+
     const local = await localDeliveryState(taskId, agentId);
     if (local.found && local.delivered) {
       console.log('[openclaw-delivery] ok', JSON.stringify({ taskId, sessionKey, deliveredAt: local.deliveredAt || null, ms: Date.now() - start }));
