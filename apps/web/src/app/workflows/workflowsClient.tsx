@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { mcFetch } from '@/lib/clientApi';
-import type { Workflow, WorkflowRun, WorkflowSchedule } from '@/lib/types';
+import type { Workflow, WorkflowRun, WorkflowSchedule, WorkflowTrigger } from '@/lib/types';
 import { cn, formatShortDate } from '@/lib/utils';
 
 function safeString(value: unknown) {
@@ -28,15 +28,18 @@ export function WorkflowsClient({
   initialWorkflows,
   initialRuns,
   initialSchedules,
+  initialTriggers,
 }: {
   initialWorkflows: Workflow[];
   initialRuns: WorkflowRun[];
   initialSchedules: WorkflowSchedule[];
+  initialTriggers: WorkflowTrigger[];
 }) {
   const params = useSearchParams();
   const [workflows, setWorkflows] = React.useState<Workflow[]>(initialWorkflows);
   const [runs, setRuns] = React.useState<WorkflowRun[]>(initialRuns);
   const [schedules, setSchedules] = React.useState<WorkflowSchedule[]>(initialSchedules);
+  const [triggers, setTriggers] = React.useState<WorkflowTrigger[]>(initialTriggers);
 
   const [creating, setCreating] = React.useState(false);
   const [name, setName] = React.useState('');
@@ -58,6 +61,14 @@ export function WorkflowsClient({
   const [scheduleSessionKey, setScheduleSessionKey] = React.useState('');
   const [scheduleVarsText, setScheduleVarsText] = React.useState('{}');
   const [scheduling, setScheduling] = React.useState(false);
+
+  const [triggerWorkflowId, setTriggerWorkflowId] = React.useState<string>(initialWorkflows[0]?.id || '');
+  const [triggerEnabled, setTriggerEnabled] = React.useState(true);
+  const [triggerStatusTo, setTriggerStatusTo] = React.useState<'inbox' | 'assigned' | 'in_progress' | 'review' | 'done' | 'blocked'>('review');
+  const [triggerLabelsAny, setTriggerLabelsAny] = React.useState('');
+  const [triggerSessionKey, setTriggerSessionKey] = React.useState('');
+  const [triggerVarsText, setTriggerVarsText] = React.useState('{}');
+  const [creatingTrigger, setCreatingTrigger] = React.useState(false);
 
   React.useEffect(() => {
     // Support deep links like /workflows?taskId=...&sessionKey=...&workflowId=...
@@ -89,9 +100,16 @@ export function WorkflowsClient({
     )
       .then((r) => r.json())
       .catch(() => null);
+    const tt = await mcFetch(
+      `/api/workflow-triggers?${new URLSearchParams({ page: '1', perPage: '200', sort: '-updatedAt' }).toString()}`,
+      { cache: 'no-store' }
+    )
+      .then((r) => r.json())
+      .catch(() => null);
     setWorkflows(Array.isArray(wf?.items) ? wf.items : []);
     setRuns(Array.isArray(rr?.items) ? rr.items : []);
     setSchedules(Array.isArray(ss?.items) ? ss.items : []);
+    setTriggers(Array.isArray(tt?.items) ? tt.items : []);
   }
 
   async function onCreate(e: React.FormEvent) {
@@ -256,6 +274,77 @@ export function WorkflowsClient({
     }
   }
 
+  async function onCreateTrigger(e: React.FormEvent) {
+    e.preventDefault();
+    const wfId = safeString(triggerWorkflowId);
+    if (!wfId) return;
+    setCreatingTrigger(true);
+    setError(null);
+    try {
+      let vars: any = null;
+      const raw = triggerVarsText.trim();
+      if (raw) {
+        try {
+          vars = JSON.parse(raw);
+        } catch {
+          throw new Error('Trigger vars must be valid JSON.');
+        }
+      }
+      const labelsAny = triggerLabelsAny
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const res = await mcFetch('/api/workflow-triggers', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workflowId: wfId,
+          enabled: triggerEnabled,
+          event: 'task_status_to',
+          statusTo: triggerStatusTo,
+          labelsAny,
+          sessionKey: triggerSessionKey.trim(),
+          vars,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || `Create trigger failed ${res.status}`);
+      await refresh();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreatingTrigger(false);
+    }
+  }
+
+  async function toggleTrigger(id: string, enabled: boolean) {
+    setError(null);
+    const res = await mcFetch(`/api/workflow-triggers/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => null);
+      setError(json?.error || `Update trigger failed (${res.status})`);
+      return;
+    }
+    await refresh();
+  }
+
+  async function deleteTrigger(id: string) {
+    if (!window.confirm('Delete trigger?')) return;
+    setError(null);
+    const res = await mcFetch(`/api/workflow-triggers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const json = await res.json().catch(() => null);
+      setError(json?.error || `Delete trigger failed (${res.status})`);
+      return;
+    }
+    await refresh();
+  }
+
   return (
     <div className="grid min-h-0 gap-6 lg:grid-cols-2">
       <div className="min-h-0 space-y-6">
@@ -353,6 +442,52 @@ export function WorkflowsClient({
             </label>
             <Button type="submit" disabled={scheduling}>
               {scheduling ? 'Scheduling…' : 'Create schedule'}
+            </Button>
+          </form>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
+          <div className="text-sm font-semibold">Workflow Triggers</div>
+          <div className="mt-2 text-xs text-muted">Automatically start a workflow when a task hits a status (worker executes).</div>
+          <form onSubmit={onCreateTrigger} className="mt-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+              <span>Workflow</span>
+              <select
+                className="min-w-[260px] rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-xs text-[var(--foreground)]"
+                value={triggerWorkflowId}
+                onChange={(e) => setTriggerWorkflowId(e.target.value)}
+              >
+                {workflows.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} ({w.kind || 'manual'})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+              <span>Status to</span>
+              <select
+                className="rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-xs text-[var(--foreground)]"
+                value={triggerStatusTo}
+                onChange={(e) => setTriggerStatusTo(e.target.value as any)}
+              >
+                <option value="inbox">inbox</option>
+                <option value="assigned">assigned</option>
+                <option value="in_progress">in_progress</option>
+                <option value="review">review</option>
+                <option value="done">done</option>
+                <option value="blocked">blocked</option>
+              </select>
+            </div>
+            <Input value={triggerLabelsAny} onChange={(e) => setTriggerLabelsAny(e.target.value)} placeholder="labelsAny (optional, comma-separated)" />
+            <Input value={triggerSessionKey} onChange={(e) => setTriggerSessionKey(e.target.value)} placeholder="Session key (optional)" />
+            <Textarea value={triggerVarsText} onChange={(e) => setTriggerVarsText(e.target.value)} className="min-h-[120px] font-mono text-xs" />
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <input type="checkbox" checked={triggerEnabled} onChange={(e) => setTriggerEnabled(e.target.checked)} />
+              Enabled
+            </label>
+            <Button type="submit" disabled={creatingTrigger}>
+              {creatingTrigger ? 'Creating…' : 'Create trigger'}
             </Button>
           </form>
         </div>
@@ -472,6 +607,36 @@ export function WorkflowsClient({
               </div>
             ))}
             {!schedules.length ? <div className="text-sm text-muted">No schedules yet.</div> : null}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold">Triggers</div>
+            <div className="text-xs text-muted">{triggers.length}</div>
+          </div>
+          <div className="mt-4 space-y-3">
+            {triggers.map((t) => (
+              <div key={t.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">
+                      {t.event || 'task_status_to'} → {t.statusTo || '—'} · {String(t.workflowId).slice(0, 8)}
+                    </div>
+                    <div className="mt-1 text-xs text-muted">{t.enabled ? 'enabled' : 'disabled'}</div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" size="sm" variant="secondary" onClick={() => void toggleTrigger(t.id, !t.enabled)}>
+                      {t.enabled ? 'Disable' : 'Enable'}
+                    </Button>
+                    <Button type="button" size="sm" variant="destructive" onClick={() => void deleteTrigger(t.id)}>
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!triggers.length ? <div className="text-sm text-muted">No triggers yet.</div> : null}
           </div>
         </div>
       </div>

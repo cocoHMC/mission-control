@@ -934,6 +934,7 @@ async function handleTaskEvent(token: string, record: any, action: string) {
     // Option A: mirror a compact "how/why" snapshot into the task thread as an agent comment
     // so humans don't have to open the OpenClaw session chat for the end state.
     await maybePostStatusSnapshotComment(token, prev, record);
+    await maybeFireWorkflowTriggers(token, prev, record);
   }
 
   // Auto-done policy: tasks only stay in review when explicitly required.
@@ -1456,6 +1457,7 @@ async function executeWorkflowSchedule(token: string, schedule: any) {
     body: {
       running: kind === 'lobster',
       runningRunId: kind === 'lobster' ? runId : '',
+      runningStartedAt: kind === 'lobster' ? nowIsoStamp : '',
       lastRunAt: nowIsoStamp,
       nextRunAt,
       updatedAt: nowIsoStamp,
@@ -1484,7 +1486,7 @@ async function executeWorkflowSchedule(token: string, schedule: any) {
     await pbFetch(`/api/collections/workflow_schedules/records/${scheduleId}`, {
       method: 'PATCH',
       token,
-      body: { running: false, runningRunId: '', updatedAt: nowIso() },
+      body: { running: false, runningRunId: '', runningStartedAt: '', updatedAt: nowIso() },
     }).catch(() => {});
     await createActivity(token, 'workflow_run_failed', `Workflow run failed (missing pipeline).`, taskId || '', '');
     return;
@@ -1517,7 +1519,7 @@ async function executeWorkflowSchedule(token: string, schedule: any) {
     await pbFetch(`/api/collections/workflow_schedules/records/${scheduleId}`, {
       method: 'PATCH',
       token,
-      body: { running: false, runningRunId: '', updatedAt: nowIso() },
+      body: { running: false, runningRunId: '', runningStartedAt: '', updatedAt: nowIso() },
     }).catch(() => {});
   }
 }
@@ -1527,6 +1529,29 @@ async function runWorkflowSchedules(token: string) {
   if (scheduleTicking) return;
   scheduleTicking = true;
   try {
+    // Recovery: clear schedules that were left "running" due to worker crash.
+    // Anything older than 30 minutes is treated as stale.
+    try {
+      const cutoff = new Date(Date.now() - 30 * 60_000);
+      const q = new URLSearchParams({
+        page: '1',
+        perPage: '50',
+        sort: 'runningStartedAt',
+        filter: `running = true && runningStartedAt != "" && runningStartedAt <= "${pbFilterString(pbDateForFilter(cutoff))}"`,
+      });
+      const stale = await pbFetch(`/api/collections/workflow_schedules/records?${q.toString()}`, { token });
+      for (const s of (stale?.items ?? []) as any[]) {
+        await pbFetch(`/api/collections/workflow_schedules/records/${s.id}`, {
+          method: 'PATCH',
+          token,
+          body: { running: false, runningRunId: '', runningStartedAt: '', updatedAt: nowIso() },
+        }).catch(() => {});
+        await createActivity(token, 'workflow_schedule_recovered', `Recovered stale schedule ${s.id} (cleared running lock).`);
+      }
+    } catch {
+      // ignore recovery errors
+    }
+
     const due = await listDueWorkflowSchedules(token);
     for (const s of due) {
       // Fire sequentially to keep OpenClaw load predictable.
@@ -1537,6 +1562,153 @@ async function runWorkflowSchedules(token: string) {
     console.error('[worker] schedules tick failed', err?.message || err);
   } finally {
     scheduleTicking = false;
+  }
+}
+
+function normalizeStringArray(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((v) => String(v ?? '').trim()).filter(Boolean);
+}
+
+function labelsMatchAny(taskLabels: string[], labelsAny: string[]) {
+  if (!labelsAny.length) return true;
+  const set = new Set(taskLabels.map((l) => l.toLowerCase()));
+  for (const l of labelsAny) {
+    if (set.has(String(l).toLowerCase())) return true;
+  }
+  return false;
+}
+
+const triggersByStatusTo = new Map<string, any[]>();
+const recentTriggerFires = new Map<string, number>();
+
+async function refreshWorkflowTriggers(token: string) {
+  try {
+    const q = new URLSearchParams({
+      page: '1',
+      perPage: '200',
+      filter: `enabled = true && event = "task_status_to"`,
+    });
+    const list = await pbFetch(`/api/collections/workflow_triggers/records?${q.toString()}`, { token });
+    triggersByStatusTo.clear();
+    for (const t of (list?.items ?? []) as any[]) {
+      const statusTo = String(t?.statusTo || '').trim();
+      if (!statusTo) continue;
+      const arr = triggersByStatusTo.get(statusTo) || [];
+      arr.push(t);
+      triggersByStatusTo.set(statusTo, arr);
+    }
+  } catch (err: any) {
+    console.error('[worker] refreshWorkflowTriggers failed', err?.message || err);
+  }
+}
+
+async function executeWorkflowTrigger(token: string, trigger: any, record: any) {
+  const triggerId = String(trigger?.id || '').trim();
+  const workflowId = String(trigger?.workflowId || '').trim();
+  const taskId = String(record?.id || '').trim();
+  const statusTo = String(trigger?.statusTo || '').trim();
+  if (!triggerId || !workflowId || !taskId || !statusTo) return;
+
+  // Dedupe: avoid accidental double-firing if PB reconnects or events replay.
+  const dedupeKey = `${triggerId}|${taskId}|${statusTo}`;
+  const now = Date.now();
+  for (const [k, ts] of recentTriggerFires) {
+    if (now - ts > 5 * 60_000) recentTriggerFires.delete(k);
+  }
+  if (recentTriggerFires.has(dedupeKey)) return;
+  recentTriggerFires.set(dedupeKey, now);
+
+  let workflow: any;
+  try {
+    workflow = await pbFetch(`/api/collections/workflows/records/${workflowId}`, { token });
+  } catch {
+    await createActivity(token, 'workflow_trigger_failed', `Trigger ${triggerId} failed (missing workflow).`, taskId);
+    return;
+  }
+
+  const kind = String(workflow?.kind || '').trim() || 'manual';
+  const pipeline = String(workflow?.pipeline || '').trim();
+  const sessionKey = String(trigger?.sessionKey || '').trim();
+  const vars = trigger?.vars ?? null;
+
+  const nowIsoStamp = nowIso();
+  const runBase: any = {
+    workflowId,
+    taskId,
+    sessionKey: sessionKey || '',
+    vars,
+    status: kind === 'lobster' ? 'running' : 'failed',
+    startedAt: kind === 'lobster' ? nowIsoStamp : '',
+    finishedAt: kind === 'lobster' ? '' : nowIsoStamp,
+    createdAt: nowIsoStamp,
+    updatedAt: nowIsoStamp,
+    log: kind === 'lobster' ? '' : `Triggered execution not supported for workflow kind "${kind}".`,
+  };
+
+  const createdRun = await pbFetch('/api/collections/workflow_runs/records', { method: 'POST', token, body: runBase });
+  const runId = String((createdRun as any)?.id || '').trim();
+
+  await createActivity(
+    token,
+    'workflow_trigger_fired',
+    `Workflow trigger fired (${String(workflow?.name || workflowId).trim() || workflowId}) on status "${statusTo}".`,
+    taskId
+  );
+
+  if (kind !== 'lobster') {
+    await createActivity(token, 'workflow_run_failed', `Workflow run failed (unsupported kind "${kind}").`, taskId);
+    return;
+  }
+  if (!pipeline) {
+    await pbFetch(`/api/collections/workflow_runs/records/${runId}`, {
+      method: 'PATCH',
+      token,
+      body: { status: 'failed', log: 'Missing pipeline on workflow.', finishedAt: nowIso(), updatedAt: nowIso() },
+    }).catch(() => {});
+    await createActivity(token, 'workflow_run_failed', `Workflow run failed (missing pipeline).`, taskId);
+    return;
+  }
+
+  try {
+    const timeoutMs = 10 * 60_000;
+    const args: Record<string, unknown> = { pipeline };
+    if (vars) args.vars = vars;
+    args.taskId = taskId;
+    if (runId) args.runId = runId;
+    const out = await toolsInvokeWithOpts('lobster', args, sessionKey ? { timeoutMs, sessionKey } : { timeoutMs });
+    const result = invokeParsedJson(out) ?? invokeText(out) ?? out;
+    await pbFetch(`/api/collections/workflow_runs/records/${runId}`, {
+      method: 'PATCH',
+      token,
+      body: { status: 'succeeded', result, finishedAt: nowIso(), updatedAt: nowIso() },
+    });
+    await createActivity(token, 'workflow_run_succeeded', `Workflow run succeeded (${String(workflow?.name || workflowId).trim() || workflowId}).`, taskId);
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    await pbFetch(`/api/collections/workflow_runs/records/${runId}`, {
+      method: 'PATCH',
+      token,
+      body: { status: 'failed', log: msg, finishedAt: nowIso(), updatedAt: nowIso() },
+    }).catch(() => {});
+    await createActivity(token, 'workflow_run_failed', `Workflow run failed (${String(workflow?.name || workflowId).trim() || workflowId}): ${msg}`, taskId);
+  }
+}
+
+async function maybeFireWorkflowTriggers(token: string, prev: any, record: any) {
+  if (!prev || prev.status === record.status) return;
+  const statusTo = String(record.status || '').trim();
+  if (!statusTo) return;
+  if (record.archived) return;
+
+  const triggers = triggersByStatusTo.get(statusTo) || [];
+  if (!triggers.length) return;
+
+  const taskLabels = normalizeStringArray(record.labels);
+  for (const t of triggers) {
+    const labelsAny = normalizeStringArray(t.labelsAny);
+    if (!labelsMatchAny(taskLabels, labelsAny)) continue;
+    await executeWorkflowTrigger(token, t, record);
   }
 }
 
@@ -1640,6 +1812,7 @@ async function main() {
 
   await refreshAgents(pbToken);
   await refreshTasks(pbToken);
+  await refreshWorkflowTriggers(pbToken);
   await subscribeWithRetry(pbToken);
 
   // Recover assignments that happened while the worker was down.
@@ -1654,6 +1827,7 @@ async function main() {
   setInterval(() => void maybeStandup(pbToken), 60_000);
   setInterval(() => void snapshotNodes(pbToken), 60_000 * env.MC_NODE_SNAPSHOT_MINUTES);
   setInterval(() => void runWorkflowSchedules(pbToken), 30_000);
+  setInterval(() => void refreshWorkflowTriggers(pbToken), 60_000);
 
   // keep alive
   // eslint-disable-next-line no-constant-condition
