@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { CopyButton } from '@/components/ui/copy-button';
 import { mcFetch } from '@/lib/clientApi';
 import type { Workflow, WorkflowRun, WorkflowSchedule, WorkflowTrigger } from '@/lib/types';
 import { cn, formatShortDate } from '@/lib/utils';
@@ -40,6 +41,12 @@ export function WorkflowsClient({
   const [runs, setRuns] = React.useState<WorkflowRun[]>(initialRuns);
   const [schedules, setSchedules] = React.useState<WorkflowSchedule[]>(initialSchedules);
   const [triggers, setTriggers] = React.useState<WorkflowTrigger[]>(initialTriggers);
+
+  const workflowNameById = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const w of workflows) map.set(w.id, w.name);
+    return map;
+  }, [workflows]);
 
   const [creating, setCreating] = React.useState(false);
   const [name, setName] = React.useState('');
@@ -532,7 +539,7 @@ export function WorkflowsClient({
                       <div className="text-sm font-medium">
                         {r.status || 'queued'}{' '}
                         <span className="text-xs text-muted">
-                          {r.workflowId.slice(0, 8)}
+                          {(workflowNameById.get(r.workflowId) || r.workflowId).slice(0, 40)}
                           {r.taskId ? ` · task ${r.taskId.slice(0, 8)}` : ''}
                         </span>
                       </div>
@@ -545,6 +552,14 @@ export function WorkflowsClient({
                     </Badge>
                   </div>
                 </summary>
+                {r.commandId ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2 font-mono text-[var(--foreground)]">
+                      {r.commandId}
+                    </div>
+                    <CopyButton value={r.commandId} label="Copy commandId" />
+                  </div>
+                ) : null}
                 {r.log ? (
                   <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 text-xs text-[var(--foreground)]">
                     {r.log}
@@ -572,7 +587,7 @@ export function WorkflowsClient({
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-sm font-medium">
-                      {String(s.workflowId).slice(0, 8)} · every {s.intervalMinutes ?? '—'} min
+                      {(workflowNameById.get(String(s.workflowId)) || String(s.workflowId).slice(0, 8))} · every {s.intervalMinutes ?? '—'} min
                     </div>
                     <div className="mt-1 text-xs text-muted">
                       {s.enabled ? 'enabled' : 'disabled'}
@@ -621,9 +636,13 @@ export function WorkflowsClient({
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-sm font-medium">
-                      {t.event || 'task_status_to'} → {t.statusTo || '—'} · {String(t.workflowId).slice(0, 8)}
+                      {t.event || 'task_status_to'} → {t.statusTo || '—'} ·{' '}
+                      {(workflowNameById.get(String(t.workflowId)) || String(t.workflowId).slice(0, 8)).slice(0, 48)}
                     </div>
-                    <div className="mt-1 text-xs text-muted">{t.enabled ? 'enabled' : 'disabled'}</div>
+                    <div className="mt-1 text-xs text-muted">
+                      {t.enabled ? 'enabled' : 'disabled'}
+                      {Array.isArray(t.labelsAny) && t.labelsAny.length ? ` · labelsAny: ${t.labelsAny.join(', ')}` : ''}
+                    </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" size="sm" variant="secondary" onClick={() => void toggleTrigger(t.id, !t.enabled)}>
