@@ -31,12 +31,14 @@ export function OpsClient() {
   const [approvals, setApprovals] = React.useState<any>(null);
   const [mcSessions, setMcSessions] = React.useState<any[]>([]);
   const [runs, setRuns] = React.useState<any[]>([]);
+  const [schedules, setSchedules] = React.useState<any[]>([]);
+  const [incidents, setIncidents] = React.useState<any[]>([]);
 
   async function refresh() {
     setLoading(true);
     setError(null);
     try {
-      const [mcHealthRes, pbHealthRes, ocPingRes, ocStatusRes, approvalsRes, sessionsRes, runsRes] = await Promise.all([
+      const [mcHealthRes, pbHealthRes, ocPingRes, ocStatusRes, approvalsRes, sessionsRes, runsRes, schedulesRes, activityRes] = await Promise.all([
         mcFetch('/api/health', { cache: 'no-store' }),
         mcFetch('/api/pb/health', { cache: 'no-store' }),
         mcFetch('/api/openclaw/ping', { cache: 'no-store' }),
@@ -48,9 +50,15 @@ export function OpsClient() {
         mcFetch(`/api/workflow-runs?${new URLSearchParams({ page: '1', perPage: '20', sort: '-createdAt' }).toString()}`, {
           cache: 'no-store',
         }),
+        mcFetch(`/api/workflow-schedules?${new URLSearchParams({ page: '1', perPage: '200', sort: '-updatedAt' }).toString()}`, {
+          cache: 'no-store',
+        }),
+        mcFetch(`/api/activity?${new URLSearchParams({ page: '1', perPage: '60', sort: '-createdAt' }).toString()}`, {
+          cache: 'no-store',
+        }),
       ]);
 
-      const [mcHealth, pbHealth, ocPing, ocStatus, approvalsJson, sessionsJson, runsJson] = await Promise.all([
+      const [mcHealth, pbHealth, ocPing, ocStatus, approvalsJson, sessionsJson, runsJson, schedulesJson, activityJson] = await Promise.all([
         mcHealthRes.json().catch(() => null),
         pbHealthRes.json().catch(() => null),
         ocPingRes.json().catch(() => null),
@@ -58,6 +66,8 @@ export function OpsClient() {
         approvalsRes.json().catch(() => null),
         sessionsRes.json().catch(() => null),
         runsRes.json().catch(() => null),
+        schedulesRes.json().catch(() => null),
+        activityRes.json().catch(() => null),
       ]);
 
       const rows: HealthRow[] = [
@@ -79,6 +89,19 @@ export function OpsClient() {
 
       const runItems = Array.isArray(runsJson?.items) ? (runsJson.items as any[]) : [];
       setRuns(runItems.slice(0, 20));
+
+      const scheduleItems = Array.isArray(schedulesJson?.items) ? (schedulesJson.items as any[]) : [];
+      setSchedules(scheduleItems.slice(0, 50));
+
+      const actItems = Array.isArray(activityJson?.items) ? (activityJson.items as any[]) : [];
+      setIncidents(
+        actItems
+          .filter((a) => {
+            const t = String(a?.type || '');
+            return t === 'delivery_suppressed' || t === 'workflow_run_failed' || t === 'workflow_schedule_disabled';
+          })
+          .slice(0, 25)
+      );
 
       setUpdatedAt(new Date().toISOString());
     } catch (err: unknown) {
@@ -150,6 +173,27 @@ export function OpsClient() {
 
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
           <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold">Incidents</div>
+            <div className="text-xs text-muted">{incidents.length}</div>
+          </div>
+          <div className="mt-2 text-xs text-muted">Recent suppressions and workflow failures.</div>
+          <div className="mt-4 space-y-2">
+            {incidents.map((a) => (
+              <div key={a.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+                  <div className="font-mono">{a.type}</div>
+                  {a.createdAt ? <div>{formatShortDate(a.createdAt)}</div> : null}
+                </div>
+                <div className="mt-2 text-sm text-[var(--foreground)]">{String(a.summary || '')}</div>
+                {a.taskId ? <div className="mt-1 text-xs text-muted">task {String(a.taskId).slice(0, 8)}</div> : null}
+              </div>
+            ))}
+            {!incidents.length ? <div className="text-sm text-muted">No incidents found.</div> : null}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
+          <div className="flex items-center justify-between gap-3">
             <div className="text-sm font-semibold">Approvals Snapshot</div>
             <Link href="/openclaw/approvals">
               <Button size="sm" variant="secondary">
@@ -215,6 +259,39 @@ export function OpsClient() {
 
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 lg:col-span-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm font-semibold">Workflow Schedules</div>
+            <Link href="/workflows">
+              <Button size="sm" variant="secondary">
+                Manage
+              </Button>
+            </Link>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {schedules.map((s) => (
+              <div key={s.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">
+                      {String(s.workflowId || '').slice(0, 8)} · every {s.intervalMinutes ?? '—'} min
+                    </div>
+                    <div className="mt-1 text-xs text-muted">
+                      {s.enabled ? 'enabled' : 'disabled'}
+                      {s.running ? ' · running' : ''}
+                      {s.nextRunAt ? ` · next ${formatShortDate(s.nextRunAt)}` : ''}
+                    </div>
+                  </div>
+                  <Badge className={cn('border-none', s.enabled ? 'bg-emerald-600 text-white' : 'bg-[var(--surface)] text-[var(--foreground)]')}>
+                    {s.enabled ? 'on' : 'off'}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+            {!schedules.length ? <div className="text-sm text-muted">No schedules yet.</div> : null}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 lg:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm font-semibold">Recent Workflow Runs</div>
             <Link href="/workflows">
               <Button size="sm" variant="secondary">
@@ -267,4 +344,3 @@ export function OpsClient() {
     </div>
   );
 }
-

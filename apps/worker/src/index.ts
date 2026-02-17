@@ -1377,6 +1377,169 @@ async function maybeStandup(token: string) {
   lastStandupDate = dateKey;
 }
 
+function toPositiveNumber(value: unknown) {
+  const n = typeof value === 'number' ? value : Number.parseFloat(String(value ?? ''));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+async function listDueWorkflowSchedules(token: string) {
+  const now = new Date();
+  const nowPb = pbDateForFilter(now);
+  const q = new URLSearchParams({
+    page: '1',
+    perPage: '50',
+    sort: 'nextRunAt',
+    filter: `enabled = true && running = false && (nextRunAt = "" || nextRunAt <= "${pbFilterString(nowPb)}")`,
+  });
+  const list = await pbFetch(`/api/collections/workflow_schedules/records?${q.toString()}`, { token });
+  return (list?.items ?? []) as any[];
+}
+
+async function executeWorkflowSchedule(token: string, schedule: any) {
+  const scheduleId = String(schedule?.id || '').trim();
+  const workflowId = String(schedule?.workflowId || '').trim();
+  if (!scheduleId || !workflowId) return;
+
+  const intervalMinutes = toPositiveNumber(schedule?.intervalMinutes);
+  if (!intervalMinutes) {
+    await pbFetch(`/api/collections/workflow_schedules/records/${scheduleId}`, {
+      method: 'PATCH',
+      token,
+      body: { enabled: false, updatedAt: nowIso() },
+    }).catch(() => {});
+    await createActivity(token, 'workflow_schedule_disabled', `Disabled schedule ${scheduleId} (invalid interval).`);
+    return;
+  }
+
+  let workflow: any;
+  try {
+    workflow = await pbFetch(`/api/collections/workflows/records/${workflowId}`, { token });
+  } catch (err: any) {
+    await pbFetch(`/api/collections/workflow_schedules/records/${scheduleId}`, {
+      method: 'PATCH',
+      token,
+      body: { enabled: false, updatedAt: nowIso() },
+    }).catch(() => {});
+    await createActivity(token, 'workflow_schedule_disabled', `Disabled schedule ${scheduleId} (missing workflow).`);
+    return;
+  }
+
+  const kind = String(workflow?.kind || '').trim() || 'manual';
+  const pipeline = String(workflow?.pipeline || '').trim();
+  const taskId = String(schedule?.taskId || '').trim();
+  const sessionKey = String(schedule?.sessionKey || '').trim();
+  const vars = schedule?.vars ?? null;
+
+  const now = new Date();
+  const nowIsoStamp = now.toISOString();
+  const nextRunAt = new Date(Date.now() + intervalMinutes * 60_000).toISOString();
+
+  const runBase: any = {
+    workflowId,
+    taskId: taskId || '',
+    sessionKey: sessionKey || '',
+    vars,
+    status: kind === 'lobster' ? 'running' : 'failed',
+    startedAt: kind === 'lobster' ? nowIsoStamp : '',
+    finishedAt: kind === 'lobster' ? '' : nowIsoStamp,
+    createdAt: nowIsoStamp,
+    updatedAt: nowIsoStamp,
+    log: kind === 'lobster' ? '' : `Scheduled execution not supported for workflow kind "${kind}".`,
+  };
+
+  const createdRun = await pbFetch('/api/collections/workflow_runs/records', { method: 'POST', token, body: runBase });
+  const runId = String((createdRun as any)?.id || '').trim();
+
+  await pbFetch(`/api/collections/workflow_schedules/records/${scheduleId}`, {
+    method: 'PATCH',
+    token,
+    body: {
+      running: kind === 'lobster',
+      runningRunId: kind === 'lobster' ? runId : '',
+      lastRunAt: nowIsoStamp,
+      nextRunAt,
+      updatedAt: nowIsoStamp,
+    },
+  }).catch(() => {});
+
+  await createActivity(
+    token,
+    'workflow_schedule_fired',
+    `Workflow schedule fired (${String(workflow?.name || workflowId).trim() || workflowId}).`,
+    taskId || '',
+    ''
+  );
+
+  if (kind !== 'lobster') {
+    await createActivity(token, 'workflow_run_failed', `Workflow run failed (unsupported kind "${kind}").`, taskId || '', '');
+    return;
+  }
+
+  if (!pipeline) {
+    await pbFetch(`/api/collections/workflow_runs/records/${runId}`, {
+      method: 'PATCH',
+      token,
+      body: { status: 'failed', log: 'Missing pipeline on workflow.', finishedAt: nowIso(), updatedAt: nowIso() },
+    }).catch(() => {});
+    await pbFetch(`/api/collections/workflow_schedules/records/${scheduleId}`, {
+      method: 'PATCH',
+      token,
+      body: { running: false, runningRunId: '', updatedAt: nowIso() },
+    }).catch(() => {});
+    await createActivity(token, 'workflow_run_failed', `Workflow run failed (missing pipeline).`, taskId || '', '');
+    return;
+  }
+
+  try {
+    const timeoutMs = 10 * 60_000;
+    const args: Record<string, unknown> = { pipeline };
+    if (vars) args.vars = vars;
+    if (taskId) args.taskId = taskId;
+    if (runId) args.runId = runId;
+
+    const out = await toolsInvokeWithOpts('lobster', args, sessionKey ? { timeoutMs, sessionKey } : { timeoutMs });
+    const result = invokeParsedJson(out) ?? invokeText(out) ?? out;
+    await pbFetch(`/api/collections/workflow_runs/records/${runId}`, {
+      method: 'PATCH',
+      token,
+      body: { status: 'succeeded', result, finishedAt: nowIso(), updatedAt: nowIso() },
+    });
+    await createActivity(token, 'workflow_run_succeeded', `Workflow run succeeded (${String(workflow?.name || workflowId).trim() || workflowId}).`, taskId || '', '');
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    await pbFetch(`/api/collections/workflow_runs/records/${runId}`, {
+      method: 'PATCH',
+      token,
+      body: { status: 'failed', log: msg, finishedAt: nowIso(), updatedAt: nowIso() },
+    }).catch(() => {});
+    await createActivity(token, 'workflow_run_failed', `Workflow run failed (${String(workflow?.name || workflowId).trim() || workflowId}): ${msg}`, taskId || '', '');
+  } finally {
+    await pbFetch(`/api/collections/workflow_schedules/records/${scheduleId}`, {
+      method: 'PATCH',
+      token,
+      body: { running: false, runningRunId: '', updatedAt: nowIso() },
+    }).catch(() => {});
+  }
+}
+
+let scheduleTicking = false;
+async function runWorkflowSchedules(token: string) {
+  if (scheduleTicking) return;
+  scheduleTicking = true;
+  try {
+    const due = await listDueWorkflowSchedules(token);
+    for (const s of due) {
+      // Fire sequentially to keep OpenClaw load predictable.
+      // Schedules are interval-based, and we update nextRunAt immediately.
+      await executeWorkflowSchedule(token, s);
+    }
+  } catch (err: any) {
+    console.error('[worker] schedules tick failed', err?.message || err);
+  } finally {
+    scheduleTicking = false;
+  }
+}
+
 async function snapshotNodes(token: string) {
   if (env.OPENCLAW_GATEWAY_DISABLED) return;
   if (env.MC_NODE_SNAPSHOT_MODE === 'off') return;
@@ -1490,6 +1653,7 @@ async function main() {
   setInterval(() => void backfillAssignedTaskNotifications(pbToken), 60_000 * 5);
   setInterval(() => void maybeStandup(pbToken), 60_000);
   setInterval(() => void snapshotNodes(pbToken), 60_000 * env.MC_NODE_SNAPSHOT_MINUTES);
+  setInterval(() => void runWorkflowSchedules(pbToken), 30_000);
 
   // keep alive
   // eslint-disable-next-line no-constant-condition

@@ -409,6 +409,30 @@ async function main() {
       ],
     },
     {
+      name: 'workflow_schedules',
+      type: 'base',
+      schema: [
+        { type: 'text', name: 'workflowId', required: true },
+        { type: 'bool', name: 'enabled' },
+        // Minimal scheduling: fixed interval in minutes.
+        { type: 'number', name: 'intervalMinutes' },
+        // Optional binding: taskId and/or a sessionKey to run tool calls in context.
+        { type: 'text', name: 'taskId' },
+        { type: 'text', name: 'sessionKey' },
+        { type: 'json', name: 'vars' },
+        { type: 'bool', name: 'running' },
+        { type: 'text', name: 'runningRunId' },
+        { type: 'date', name: 'lastRunAt' },
+        { type: 'date', name: 'nextRunAt' },
+        { type: 'date', name: 'createdAt', required: true },
+        { type: 'date', name: 'updatedAt', required: true },
+      ],
+      indexes: [
+        'CREATE INDEX `idx_workflowId_workflow_schedules` ON `workflow_schedules` (`workflowId`)',
+        'CREATE INDEX `idx_enabled_nextRunAt_workflow_schedules` ON `workflow_schedules` (`enabled`, `nextRunAt`)',
+      ],
+    },
+    {
       name: 'activities',
       type: 'base',
       schema: [

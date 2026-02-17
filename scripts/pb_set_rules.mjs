@@ -45,6 +45,7 @@ async function main() {
     'documents',
     'workflows',
     'workflow_runs',
+    'workflow_schedules',
     'activities',
     'notifications',
     'task_subscriptions',

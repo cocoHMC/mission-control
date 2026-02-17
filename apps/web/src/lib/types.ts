@@ -216,3 +216,19 @@ export type WorkflowRun = {
   createdAt?: string;
   updatedAt?: string;
 };
+
+export type WorkflowSchedule = {
+  id: string;
+  workflowId: string;
+  enabled?: boolean;
+  intervalMinutes?: number;
+  taskId?: string;
+  sessionKey?: string;
+  vars?: unknown;
+  running?: boolean;
+  runningRunId?: string;
+  lastRunAt?: string;
+  nextRunAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
