@@ -54,23 +54,73 @@ stop_children() {
     kill "$PB_PID" >/dev/null 2>&1 || true
     PB_PID=""
   fi
+  if [ -n "${PB_LOG_CAPPER_PID:-}" ]; then
+    kill "$PB_LOG_CAPPER_PID" >/dev/null 2>&1 || true
+    PB_LOG_CAPPER_PID=""
+  fi
 }
 
 trap 'stop_children; exit 0' INT TERM
 trap 'stop_children' EXIT
 
+cap_log_file() {
+  local path="$1"
+  local max_bytes="${2:-2147483648}"  # 2 GiB
+  local keep_bytes="${3:-268435456}"  # 256 MiB
+
+  [ -f "$path" ] || return 0
+
+  local size=""
+  size="$(stat -f%z "$path" 2>/dev/null || true)"
+  if [ -z "$size" ]; then
+    size="$(wc -c <"$path" 2>/dev/null || echo 0)"
+  fi
+
+  if [ "$size" -gt "$max_bytes" ]; then
+    tail -c "$keep_bytes" "$path" > "${path}.tmp" 2>/dev/null || true
+    if [ -s "${path}.tmp" ]; then
+      mv "${path}.tmp" "$path"
+    else
+      rm -f "${path}.tmp" 2>/dev/null || true
+      : > "$path"
+    fi
+  fi
+}
+
+start_log_capper() {
+  local path="$1"
+  local max_bytes="$2"
+  local keep_bytes="$3"
+
+  # Foreground-only: callers background this function and capture `$!`.
+  # Avoid command substitution here; bash 3.2 can hang if a subshell starts
+  # background jobs during `$(...)`.
+  set +e
+  while true; do
+    cap_log_file "$path" "$max_bytes" "$keep_bytes"
+    sleep 10
+  done
+}
+
 while true; do
   WEB_PID=""
   WORKER_PID=""
   PB_PID=""
+  PB_LOG_CAPPER_PID=""
 
   PB_DATA_DIR="$DATA_DIR/pb/pb_data"
   PB_LOG="$DATA_DIR/pb/pocketbase.log"
+  PB_LOG_MAX_BYTES="${MC_PB_LOG_MAX_BYTES:-2147483648}"   # 2 GiB
+  PB_LOG_KEEP_BYTES="${MC_PB_LOG_KEEP_BYTES:-268435456}"  # 256 MiB
   mkdir -p "$PB_DATA_DIR"
+
+  cap_log_file "$PB_LOG" "$PB_LOG_MAX_BYTES" "$PB_LOG_KEEP_BYTES"
 
   # Start PocketBase (production mode).
   "$PB_BIN" serve --dir "$PB_DATA_DIR" --migrationsDir "$ROOT_DIR/pb/pb_migrations" > "$PB_LOG" 2>&1 &
   PB_PID=$!
+  start_log_capper "$PB_LOG" "$PB_LOG_MAX_BYTES" "$PB_LOG_KEEP_BYTES" &
+  PB_LOG_CAPPER_PID=$!
 
   sleep 1
 

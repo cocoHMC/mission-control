@@ -58,7 +58,13 @@ Suggested services:
 
 ## Healthchecks
 - `scripts/healthcheck.sh`
- - Optional: `node scripts/openclaw_ping.mjs` to validate Tools Invoke token.
+- Optional: `node scripts/openclaw_ping.mjs` to validate Tools Invoke token.
+- Optional: `MC_HEALTHCHECK_PING=true MC_HEALTHCHECK_OPENCLAW_TEST=true ./scripts/healthcheck.sh`
+  - validates tools/invoke ping and `/api/openclaw/test` delivery probe.
+- Queue/dispatch SLO view: `/openclaw/status` (uses `/api/openclaw/status/telemetry`).
+- Worker guardrails:
+  - delivery retries are bounded (`MC_DELIVERY_MAX_ATTEMPTS`, default `4`) and failed notifications are moved to DLQ activity events (`type=delivery_dlq`).
+  - lease escalation is presence-aware when enabled (`MC_ESCALATION_PRESENCE_ENABLED=true`).
 
 ## Backups
 - `scripts/backup.sh`

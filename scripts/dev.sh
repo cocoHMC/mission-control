@@ -33,6 +33,47 @@ if [ ! -x "$PB_BIN" ]; then
   fi
 fi
 
+cap_log_file() {
+  local path="$1"
+  local max_bytes="${2:-2147483648}"  # 2 GiB
+  local keep_bytes="${3:-268435456}"  # 256 MiB
+
+  [ -f "$path" ] || return 0
+
+  local size=""
+  size="$(stat -f%z "$path" 2>/dev/null || true)"
+  if [ -z "$size" ]; then
+    size="$(wc -c <"$path" 2>/dev/null || echo 0)"
+  fi
+
+  # If the log exceeds max_bytes, keep only the last keep_bytes.
+  if [ "$size" -gt "$max_bytes" ]; then
+    tail -c "$keep_bytes" "$path" > "${path}.tmp" 2>/dev/null || true
+    if [ -s "${path}.tmp" ]; then
+      mv "${path}.tmp" "$path"
+    else
+      rm -f "${path}.tmp" 2>/dev/null || true
+      : > "$path"
+    fi
+  fi
+}
+
+start_log_capper() {
+  local path="$1"
+  local max_bytes="$2"
+  local keep_bytes="$3"
+
+  # Important: this must run in the *current* shell so callers can background it
+  # and capture `$!`. Using command substitution like `pid="$(start_log_capper ...)"`
+  # runs the function in a subshell, and background jobs can cause the subshell to
+  # hang forever on macOS (bash 3.2). Keep this foreground-only.
+  set +e
+  while true; do
+    cap_log_file "$path" "$max_bytes" "$keep_bytes"
+    sleep 10
+  done
+}
+
 PB_HTTP="$("$DOTENV_BIN" -e "$ROOT_DIR/.env" -- node -e '
 try {
   const raw = String(process.env.PB_URL || "").trim() || "http://127.0.0.1:8090";
@@ -83,6 +124,10 @@ stop_children() {
     kill "$PB_PID" >/dev/null 2>&1 || true
     PB_PID=""
   fi
+  if [ -n "${PB_LOG_CAPPER_PID:-}" ]; then
+    kill "$PB_LOG_CAPPER_PID" >/dev/null 2>&1 || true
+    PB_LOG_CAPPER_PID=""
+  fi
 }
 
 trap 'stop_children; exit 0' INT TERM
@@ -92,12 +137,20 @@ while true; do
   WEB_PID=""
   WORKER_PID=""
   PB_PID=""
+  PB_LOG_CAPPER_PID=""
 
   if pb_is_up; then
     echo "[mission-control] PocketBase already running at $PB_URL (reusing)"
   else
-    "$PB_BIN" serve --dev --dir "$ROOT_DIR/pb/pb_data" --migrationsDir "$ROOT_DIR/pb/pb_migrations" --http "$PB_HTTP" > "$ROOT_DIR/pb/pocketbase.log" 2>&1 &
+    PB_LOG="$ROOT_DIR/pb/pocketbase.log"
+    PB_LOG_MAX_BYTES="${MC_PB_LOG_MAX_BYTES:-2147483648}"   # 2 GiB
+    PB_LOG_KEEP_BYTES="${MC_PB_LOG_KEEP_BYTES:-268435456}"  # 256 MiB
+    cap_log_file "$PB_LOG" "$PB_LOG_MAX_BYTES" "$PB_LOG_KEEP_BYTES"
+
+    "$PB_BIN" serve --dev --dir "$ROOT_DIR/pb/pb_data" --migrationsDir "$ROOT_DIR/pb/pb_migrations" --http "$PB_HTTP" > "$PB_LOG" 2>&1 &
     PB_PID=$!
+    start_log_capper "$PB_LOG" "$PB_LOG_MAX_BYTES" "$PB_LOG_KEEP_BYTES" &
+    PB_LOG_CAPPER_PID=$!
     sleep 1
   fi
 

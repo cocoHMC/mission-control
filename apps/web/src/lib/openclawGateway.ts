@@ -5,7 +5,14 @@ type ToolInvokeOpts = {
   sessionKey?: string;
   action?: string;
   dryRun?: boolean;
+  // Optional idempotency key for OpenClaw command queue.
+  commandId?: string;
 };
+
+function requestId(prefix = 'mc-web') {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${Date.now().toString(36)}-${rand}`;
+}
 
 function isTruthy(value: string | undefined) {
   const v = String(value || '').trim().toLowerCase();
@@ -122,12 +129,14 @@ export async function openclawToolsInvoke<T = unknown>(
   const timeoutMs = opts.timeoutMs ?? Number(process.env.OPENCLAW_TOOLS_TIMEOUT_MS || 10_000);
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  const reqId = requestId();
   try {
     const body: Record<string, unknown> = {
       tool,
       args,
       ...(opts.action ? { action: opts.action } : {}),
       ...(typeof opts.dryRun === 'boolean' ? { dryRun: opts.dryRun } : {}),
+      ...(opts.commandId ? { commandId: opts.commandId } : {}),
       ...(opts.sessionKey || defaultSessionKey ? { sessionKey: opts.sessionKey || defaultSessionKey } : {}),
     };
 
@@ -136,8 +145,10 @@ export async function openclawToolsInvoke<T = unknown>(
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${token}`,
-        // Pass through a hint so OpenClaw logs can attribute calls.
+        // Pass through hints so OpenClaw logs can attribute/trace calls.
         'x-mission-control': '1',
+        'x-mission-control-source': 'web',
+        'x-openclaw-request-id': reqId,
       },
       body: JSON.stringify(body),
       signal: ctrl.signal,
@@ -154,7 +165,7 @@ export async function openclawToolsInvoke<T = unknown>(
     if (!res.ok) {
       const msg = safeErrorMessage(raw);
       const prefix = res.status === 401 ? 'Unauthorized OpenClaw token.' : `tools/invoke failed (${res.status}).`;
-      throw new Error(`${prefix}${msg ? ` ${msg}` : ''}`.trim());
+      throw new Error(`${prefix}${msg ? ` ${msg}` : ''} [requestId=${reqId}]`.trim());
     }
 
     const text = (() => {

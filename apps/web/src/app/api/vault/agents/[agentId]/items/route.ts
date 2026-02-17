@@ -83,7 +83,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ agen
   try {
     const guard = requireAdminAuth(req);
     if (guard) return guard;
-    if (!isVaultConfigured()) return NextResponse.json({ ok: false, error: 'Vault setup required' }, { status: 409 });
+    // Vault is optional in Mission Control; when it's not configured we still want the UI
+    // to render cleanly without triggering noisy "Failed to load resource" console errors.
+    if (!isVaultConfigured()) {
+      return NextResponse.json(
+        { ok: false, error: 'Vault setup required', configured: false, items: [], page: 1, perPage: 0, totalItems: 0, totalPages: 0 },
+        { headers: { 'cache-control': 'no-store' } }
+      );
+    }
 
     const { agentId: openclawId } = await params;
     const agent = await ensurePbAgent(openclawId);

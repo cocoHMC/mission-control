@@ -250,6 +250,16 @@ Open `http://127.0.0.1:4010/settings` and use the “Getting Started” card:
 - Check OpenClaw status
 - Copy a Tools Invoke ping command
 - Follow the node pairing checklist
+- Open `http://127.0.0.1:4010/openclaw/status` for Queue SLO telemetry (queue depth + pending notification backlog)
+  - includes delivery DLQ counters (notifications dropped after max retries)
+
+CLI checks:
+- `MC_HEALTHCHECK_PING=true ./scripts/healthcheck.sh`
+  - validates PocketBase + web health
+  - runs a `sessions_send` ping via `/tools/invoke`
+- `MC_HEALTHCHECK_PING=true MC_HEALTHCHECK_OPENCLAW_TEST=true ./scripts/healthcheck.sh`
+  - includes `/api/openclaw/test` validation (requires Basic Auth env)
+  - verifies token access + delivery permission probe (`sessions_send` dry-run)
 
 ## Docker (Portable / Windows-Friendly)
 Docker is great for PocketBase and for running Mission Control on a server. Note:
