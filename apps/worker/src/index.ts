@@ -1689,6 +1689,14 @@ async function executeWorkflowSchedule(token: string, schedule: any) {
 
   const createdRun = await pbFetch('/api/collections/workflow_runs/records', { method: 'POST', token, body: runBase });
   const runId = String((createdRun as any)?.id || '').trim();
+  const commandId = runId ? `mcwfr-${runId}` : '';
+  if (commandId) {
+    await pbFetch(`/api/collections/workflow_runs/records/${runId}`, {
+      method: 'PATCH',
+      token,
+      body: { commandId, updatedAt: nowIso() },
+    }).catch(() => {});
+  }
 
   await pbFetch(`/api/collections/workflow_schedules/records/${scheduleId}`, {
     method: 'PATCH',
@@ -1738,7 +1746,11 @@ async function executeWorkflowSchedule(token: string, schedule: any) {
     if (taskId) args.taskId = taskId;
     if (runId) args.runId = runId;
 
-    const out = await toolsInvokeWithOpts('lobster', args, sessionKey ? { timeoutMs, sessionKey } : { timeoutMs });
+    const out = await toolsInvokeWithOpts(
+      'lobster',
+      args,
+      sessionKey ? { timeoutMs, sessionKey, commandId } : { timeoutMs, commandId }
+    );
     const result = invokeParsedJson(out) ?? invokeText(out) ?? out;
     await pbFetch(`/api/collections/workflow_runs/records/${runId}`, {
       method: 'PATCH',
@@ -1911,6 +1923,14 @@ async function executeWorkflowTrigger(token: string, trigger: any, record: any) 
 
   const createdRun = await pbFetch('/api/collections/workflow_runs/records', { method: 'POST', token, body: runBase });
   const runId = String((createdRun as any)?.id || '').trim();
+  const commandId = runId ? `mcwfr-${runId}` : '';
+  if (commandId) {
+    await pbFetch(`/api/collections/workflow_runs/records/${runId}`, {
+      method: 'PATCH',
+      token,
+      body: { commandId, updatedAt: nowIso() },
+    }).catch(() => {});
+  }
 
   await createActivity(
     token,
@@ -1939,7 +1959,11 @@ async function executeWorkflowTrigger(token: string, trigger: any, record: any) 
     if (vars) args.vars = vars;
     args.taskId = taskId;
     if (runId) args.runId = runId;
-    const out = await toolsInvokeWithOpts('lobster', args, sessionKey ? { timeoutMs, sessionKey } : { timeoutMs });
+    const out = await toolsInvokeWithOpts(
+      'lobster',
+      args,
+      sessionKey ? { timeoutMs, sessionKey, commandId } : { timeoutMs, commandId }
+    );
     const result = invokeParsedJson(out) ?? invokeText(out) ?? out;
     await pbFetch(`/api/collections/workflow_runs/records/${runId}`, {
       method: 'PATCH',

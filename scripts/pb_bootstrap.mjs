@@ -395,6 +395,8 @@ async function main() {
         { type: 'text', name: 'taskId' },
         { type: 'select', name: 'status', options: { maxSelect: 1, values: ['queued', 'running', 'succeeded', 'failed'] } },
         { type: 'text', name: 'sessionKey' },
+        // Optional OpenClaw command queue idempotency key (helps dedupe retries/replays).
+        { type: 'text', name: 'commandId' },
         { type: 'json', name: 'vars' },
         { type: 'json', name: 'result' },
         { type: 'editor', name: 'log' },

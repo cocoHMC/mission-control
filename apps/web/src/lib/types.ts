@@ -208,6 +208,7 @@ export type WorkflowRun = {
   taskId?: string;
   status?: WorkflowRunStatus;
   sessionKey?: string;
+  commandId?: string;
   vars?: unknown;
   result?: unknown;
   log?: string;

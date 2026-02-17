@@ -60,6 +60,17 @@ export async function POST(req: NextRequest) {
   };
 
   const created = await pbFetch<any>('/api/collections/workflow_runs/records', { method: 'POST', body: basePayload });
+  const commandId = `mcwfr-${String(created?.id || '').trim()}`;
+  if (commandId !== 'mcwfr-') {
+    try {
+      await pbFetch<any>(`/api/collections/workflow_runs/records/${created.id}`, {
+        method: 'PATCH',
+        body: { commandId, updatedAt: new Date().toISOString() },
+      });
+    } catch {
+      // Best-effort only: runs still work without persisting commandId.
+    }
+  }
   await createActivity(
     'workflow_run_started',
     `Workflow run started (${safeString(workflow?.name) || workflowId}).`,
@@ -93,7 +104,11 @@ export async function POST(req: NextRequest) {
     if (taskId) args.taskId = taskId;
     if (created.id) args.runId = created.id;
 
-    const out = await openclawToolsInvoke<any>('lobster', args, sessionKey ? { sessionKey, timeoutMs } : { timeoutMs });
+    const out = await openclawToolsInvoke<any>(
+      'lobster',
+      args,
+      sessionKey ? { sessionKey, timeoutMs, commandId } : { timeoutMs, commandId }
+    );
     const result = out.parsedText ?? out.raw;
     const updated = await pbFetch<any>(`/api/collections/workflow_runs/records/${created.id}`, {
       method: 'PATCH',
