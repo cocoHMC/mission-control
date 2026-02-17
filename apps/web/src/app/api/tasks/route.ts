@@ -36,6 +36,8 @@ export async function POST(req: NextRequest) {
     dueAt: body.dueAt ?? '',
     completedAt: '',
     requiresReview: Boolean(body.requiresReview ?? false),
+    policy: body.policy ?? null,
+    reviewChecklist: body.reviewChecklist ?? null,
     order: typeof body.order === 'number' ? body.order : Date.now(),
     subtasksTotal: 0,
     subtasksDone: 0,

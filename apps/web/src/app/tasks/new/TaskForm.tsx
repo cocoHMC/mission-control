@@ -223,6 +223,18 @@ export function TaskForm({
         startAt: fromDateTimeLocalValue(startAt) || '',
         dueAt: fromDateTimeLocalValue(dueAt) || '',
         requiresReview,
+        ...(requiresReview
+          ? {
+              reviewChecklist: {
+                version: 1,
+                items: [
+                  { id: 'deliverable', label: 'Deliverable attached (doc/link/file)', done: false },
+                  { id: 'tests', label: 'Tests or smoke checks passed', done: false },
+                  { id: 'deploy', label: 'Deploy / runtime verified (if applicable)', done: false },
+                ],
+              },
+            }
+          : {}),
       }),
     });
     if (!res.ok) {

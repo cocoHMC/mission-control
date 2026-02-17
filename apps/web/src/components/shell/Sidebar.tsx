@@ -10,6 +10,8 @@ import {
   LayoutDashboard,
   ListTodo,
   MessageSquare,
+  Orbit,
+  Shield,
   Server,
   Settings,
   SlidersHorizontal,
@@ -27,6 +29,7 @@ const sections: Array<{
       { href: '/tasks', label: 'Tasks', icon: ListTodo },
       { href: '/activity', label: 'Activity', icon: BarChart3 },
       { href: '/docs', label: 'Documents', icon: ClipboardCheck },
+      { href: '/workflows', label: 'Workflows', icon: Orbit },
     ],
   },
   {
@@ -41,6 +44,7 @@ const sections: Array<{
     label: 'System',
     items: [
       { href: '/openclaw', label: 'OpenClaw', icon: SlidersHorizontal },
+      { href: '/ops', label: 'Ops', icon: Shield },
       { href: '/download', label: 'Downloads', icon: Download },
       { href: '/settings', label: 'Settings', icon: Settings },
     ],

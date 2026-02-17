@@ -2,6 +2,36 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pbFetch } from '@/lib/pbServer';
 import { ensureTaskSubscription } from '@/lib/subscriptions';
 
+type ReviewChecklistItem = { id: string; label: string; done: boolean };
+type ReviewChecklist = { version: 1; items: ReviewChecklistItem[] };
+
+function defaultReviewChecklist(): ReviewChecklist {
+  return {
+    version: 1,
+    items: [
+      { id: 'deliverable', label: 'Deliverable attached (doc/link/file)', done: false },
+      { id: 'tests', label: 'Tests or smoke checks passed', done: false },
+      { id: 'deploy', label: 'Deploy / runtime verified (if applicable)', done: false },
+    ],
+  };
+}
+
+function checklistItemsFromRaw(raw: unknown): ReviewChecklistItem[] {
+  if (!raw) return [];
+  const obj = raw as any;
+  const items = Array.isArray(obj?.items) ? obj.items : Array.isArray(raw) ? raw : [];
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((it: any) => {
+      const id = typeof it?.id === 'string' ? it.id.trim() : '';
+      const label = typeof it?.label === 'string' ? it.label.trim() : typeof it?.title === 'string' ? it.title.trim() : '';
+      const done = Boolean(it?.done);
+      if (!label) return null;
+      return { id: id || label.slice(0, 32), label, done };
+    })
+    .filter(Boolean) as ReviewChecklistItem[];
+}
+
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const data = await pbFetch(`/api/collections/tasks/records/${id}`);
@@ -17,6 +47,37 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   delete payload.blockActorId;
   const now = new Date();
   payload.updatedAt = now.toISOString();
+
+  // Review gate: if requiresReview=true, block moving to done until checklist is complete.
+  if (payload.status === 'done') {
+    const current = await pbFetch<any>(`/api/collections/tasks/records/${id}`);
+    const requiresReview = payload.requiresReview ?? current?.requiresReview;
+    if (requiresReview) {
+      const items = checklistItemsFromRaw(payload.reviewChecklist ?? current?.reviewChecklist);
+      if (!items.length) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'Review checklist required before marking done.',
+            suggestedChecklist: defaultReviewChecklist(),
+          },
+          { status: 409 }
+        );
+      }
+      const incomplete = items.filter((it) => !it.done);
+      if (incomplete.length) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Review checklist incomplete (${incomplete.length} remaining).`,
+            incomplete: incomplete.map((it) => ({ id: it.id, label: it.label })),
+          },
+          { status: 409 }
+        );
+      }
+    }
+  }
+
   if (payload.status) {
     if (payload.status === 'done') {
       payload.lastProgressAt = now.toISOString();

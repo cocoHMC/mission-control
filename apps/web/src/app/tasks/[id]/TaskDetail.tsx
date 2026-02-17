@@ -12,12 +12,39 @@ import { MentionsTextarea } from '@/components/mentions/MentionsTextarea';
 import { Textarea } from '@/components/ui/textarea';
 import { CopyButton } from '@/components/ui/copy-button';
 import { cn, formatShortDate, fromDateTimeLocalValue, toDateTimeLocalValue } from '@/lib/utils';
-import type { Agent, DocumentRecord, Message, NodeRecord, Subtask, Task, TaskFile } from '@/lib/types';
+import type { Agent, DocumentRecord, Message, NodeRecord, ReviewChecklist, ReviewChecklistItem, Subtask, Task, TaskFile } from '@/lib/types';
 import { mcApiUrl, mcFetch } from '@/lib/clientApi';
 import { buildVaultHintMarkdown, stripVaultHintMarkdown, upsertVaultHintMarkdown } from '@/lib/vaultHint';
 
 const STATUSES = ['inbox', 'assigned', 'in_progress', 'review', 'blocked', 'done'];
 type Status = (typeof STATUSES)[number];
+
+type OpenClawSessionRow = {
+  sessionKey: string;
+  kind?: string;
+  updatedAt?: string;
+  createdAt?: string;
+  model?: string;
+  modelProvider?: string;
+  thinking?: string;
+  reasoning?: string;
+  verbose?: string;
+  responseUsage?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  tokensUsed?: number;
+  tokensMax?: number;
+  tokensPct?: number;
+  label?: string;
+  displayName?: string;
+  previewText?: string;
+};
+
+type OpenClawHistoryRow = {
+  timestamp?: string;
+  role?: string;
+  text?: string;
+};
 
 function normalizeSelect(value: unknown, fallback: string) {
   const s = String(value ?? '').trim();
@@ -76,6 +103,53 @@ function sameSubtasks(a: Subtask[], b: Subtask[]) {
   return true;
 }
 
+function defaultReviewChecklist(): ReviewChecklist {
+  return {
+    version: 1,
+    items: [
+      { id: 'deliverable', label: 'Deliverable attached (doc/link/file)', done: false },
+      { id: 'tests', label: 'Tests or smoke checks passed', done: false },
+      { id: 'deploy', label: 'Deploy / runtime verified (if applicable)', done: false },
+    ],
+  };
+}
+
+function coerceReviewChecklist(raw: unknown): ReviewChecklist {
+  const obj = raw as any;
+  const itemsRaw = Array.isArray(obj?.items) ? obj.items : Array.isArray(raw) ? raw : [];
+  const items = Array.isArray(itemsRaw)
+    ? (itemsRaw as any[])
+        .map((it) => {
+          const label = typeof it?.label === 'string' ? it.label.trim() : typeof it?.title === 'string' ? it.title.trim() : '';
+          if (!label) return null;
+          const id = typeof it?.id === 'string' && it.id.trim() ? it.id.trim() : label.slice(0, 32);
+          return { id, label, done: Boolean(it?.done) } satisfies ReviewChecklistItem;
+        })
+        .filter(Boolean)
+    : [];
+  return { version: 1, items: items as ReviewChecklistItem[] };
+}
+
+function sameReviewChecklist(a: ReviewChecklist, b: ReviewChecklist) {
+  if (a === b) return true;
+  if (a.version !== b.version) return false;
+  if (a.items.length !== b.items.length) return false;
+  for (let i = 0; i < a.items.length; i++) {
+    const aa = a.items[i];
+    const bb = b.items[i];
+    if (aa.id !== bb.id) return false;
+    if (aa.label !== bb.label) return false;
+    if (Boolean(aa.done) !== Boolean(bb.done)) return false;
+  }
+  return true;
+}
+
+function newChecklistId() {
+  const rand = Math.random().toString(36).slice(2, 10);
+  const ts = Date.now().toString(36).slice(-6);
+  return `${rand}${ts}`;
+}
+
 export function TaskDetail({
   task,
   agents,
@@ -116,6 +190,9 @@ export function TaskDetail({
   const [blockReason, setBlockReason] = React.useState('');
   const [archived, setArchived] = React.useState(Boolean(task.archived));
   const [requiresReview, setRequiresReview] = React.useState(Boolean(task.requiresReview));
+  const [reviewChecklist, setReviewChecklist] = React.useState<ReviewChecklist>(() => coerceReviewChecklist(task.reviewChecklist));
+  const [newReviewItemLabel, setNewReviewItemLabel] = React.useState('');
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const [startAt, setStartAt] = React.useState(toDateTimeLocalValue(task.startAt));
   const [dueAt, setDueAt] = React.useState(toDateTimeLocalValue(task.dueAt));
   const [vaultAgent, setVaultAgent] = React.useState<string>('');
@@ -222,6 +299,13 @@ export function TaskDetail({
   }, [effectiveVaultAgent]);
 
   const [chatAgentId, setChatAgentId] = React.useState(() => openclawAssigneeIds[0] || leadAgentId);
+  const [openclawTraceOpen, setOpenclawTraceOpen] = React.useState(false);
+  const [openclawIncludeTools, setOpenclawIncludeTools] = React.useState(false);
+  const [sessionMeta, setSessionMeta] = React.useState<OpenClawSessionRow | null>(null);
+  const [sessionStatusText, setSessionStatusText] = React.useState<string | null>(null);
+  const [sessionHistory, setSessionHistory] = React.useState<OpenClawHistoryRow[]>([]);
+  const [sessionLoading, setSessionLoading] = React.useState(false);
+  const [sessionError, setSessionError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setChatAgentId((prev) => {
@@ -259,6 +343,9 @@ export function TaskDetail({
     const nextRequiresReview = Boolean(task.requiresReview);
     setRequiresReview((prev) => (prev === nextRequiresReview ? prev : nextRequiresReview));
 
+    const nextChecklist = coerceReviewChecklist(task.reviewChecklist);
+    setReviewChecklist((prev) => (sameReviewChecklist(prev, nextChecklist) ? prev : nextChecklist));
+
     const nextStartAt = toDateTimeLocalValue(task.startAt);
     setStartAt((prev) => (prev === nextStartAt ? prev : nextStartAt));
 
@@ -284,6 +371,7 @@ export function TaskDetail({
     task.aiModel,
     task.archived,
     task.requiresReview,
+    task.reviewChecklist,
     task.startAt,
     task.dueAt,
     task.context,
@@ -366,13 +454,21 @@ export function TaskDetail({
   }, [modelCatalog, aiProvider]);
 
   async function updateTask(payload: Record<string, unknown>) {
-    await mcFetch(`/api/tasks/${task.id}`, {
+    const res = await mcFetch(`/api/tasks/${task.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      const msg = String(json?.error || json?.message || `Update failed (${res.status})`);
+      setSaveError(msg);
+      return { ok: false as const, json };
+    }
+    setSaveError(null);
     router.refresh();
     if (onUpdated) await onUpdated();
+    return { ok: true as const, json };
   }
 
   const mentionables = React.useMemo(() => {
@@ -405,8 +501,10 @@ export function TaskDetail({
   }
 
   async function onStatusChange(value: Status) {
+    const prev = status;
     setStatus(value);
-    await updateTask({ status: value });
+    const out = await updateTask({ status: value });
+    if (!out.ok) setStatus(prev);
   }
 
   async function onAssigneeToggle(id: string, fallbackId: string) {
@@ -447,8 +545,50 @@ export function TaskDetail({
   }
 
   async function onToggleRequiresReview(next: boolean) {
+    const prev = requiresReview;
+    const prevChecklist = reviewChecklist;
     setRequiresReview(next);
-    await updateTask({ requiresReview: next });
+    const payload: Record<string, unknown> = { requiresReview: next };
+    if (next) {
+      if (!reviewChecklist.items.length) {
+        const def = defaultReviewChecklist();
+        setReviewChecklist(def);
+        payload.reviewChecklist = def;
+      }
+    }
+    const out = await updateTask(payload);
+    if (!out.ok) {
+      setRequiresReview(prev);
+      setReviewChecklist(prevChecklist);
+    }
+  }
+
+  async function saveReviewChecklist(next: ReviewChecklist) {
+    const prev = reviewChecklist;
+    setReviewChecklist(next);
+    const out = await updateTask({ reviewChecklist: next });
+    if (!out.ok) setReviewChecklist(prev);
+  }
+
+  async function toggleReviewItem(id: string, done: boolean) {
+    const next = {
+      ...reviewChecklist,
+      items: reviewChecklist.items.map((it) => (it.id === id ? { ...it, done } : it)),
+    };
+    await saveReviewChecklist(next);
+  }
+
+  async function removeReviewItem(id: string) {
+    const next = { ...reviewChecklist, items: reviewChecklist.items.filter((it) => it.id !== id) };
+    await saveReviewChecklist(next);
+  }
+
+  async function addReviewItem() {
+    const label = newReviewItemLabel.trim();
+    if (!label) return;
+    setNewReviewItemLabel('');
+    const next = { ...reviewChecklist, items: [...reviewChecklist.items, { id: newChecklistId(), label, done: false }] };
+    await saveReviewChecklist(next);
   }
 
   async function onSendMessage(event: React.FormEvent) {
@@ -584,13 +724,83 @@ export function TaskDetail({
     if (onUpdated) await onUpdated();
   }
 
+  const taskSessionKey = `agent:${chatAgentId}:mc:${task.id}`;
+
+  const refreshOpenClawSession = React.useCallback(async () => {
+    setSessionLoading(true);
+    setSessionError(null);
+    try {
+      const qs = new URLSearchParams({
+        sessionKey: taskSessionKey,
+        limit: '1',
+        offset: '0',
+        messageLimit: '2',
+      });
+      const [metaRes, statusRes, historyRes] = await Promise.all([
+        mcFetch(`/api/openclaw/sessions?${qs.toString()}`, { cache: 'no-store' }).then((r) => r.json().catch(() => null)),
+        mcFetch(`/api/openclaw/sessions/status?${new URLSearchParams({ sessionKey: taskSessionKey }).toString()}`, {
+          cache: 'no-store',
+        }).then((r) => r.json().catch(() => null)),
+        mcFetch(
+          `/api/openclaw/sessions/history?${new URLSearchParams({
+            sessionKey: taskSessionKey,
+            limit: '200',
+            offset: '0',
+            includeTools: openclawIncludeTools ? '1' : '0',
+          }).toString()}`,
+          { cache: 'no-store' }
+        ).then((r) => r.json().catch(() => null)),
+      ]);
+
+      const row = Array.isArray(metaRes?.rows) ? metaRes.rows[0] : null;
+      setSessionMeta(row && typeof row === 'object' ? (row as OpenClawSessionRow) : null);
+      setSessionStatusText(typeof statusRes?.statusText === 'string' ? statusRes.statusText : null);
+
+      const rows = Array.isArray(historyRes?.rows) ? (historyRes.rows as any[]) : [];
+      setSessionHistory(
+        rows
+          .map((r) => ({
+            timestamp: typeof r?.timestamp === 'string' ? r.timestamp : undefined,
+            role: typeof r?.role === 'string' ? r.role : undefined,
+            text: typeof r?.text === 'string' ? r.text : undefined,
+          }))
+          .filter((r) => r.role || r.text)
+      );
+    } catch (err: unknown) {
+      setSessionError(err instanceof Error ? err.message : String(err));
+      setSessionMeta(null);
+      setSessionStatusText(null);
+      setSessionHistory([]);
+    } finally {
+      setSessionLoading(false);
+    }
+  }, [openclawIncludeTools, taskSessionKey]);
+
+  React.useEffect(() => {
+    // Reset view when switching session targets.
+    setSessionMeta(null);
+    setSessionStatusText(null);
+    setSessionHistory([]);
+    setSessionError(null);
+    setSessionLoading(false);
+  }, [taskSessionKey]);
+
+  React.useEffect(() => {
+    if (!openclawTraceOpen) return;
+    void refreshOpenClawSession();
+  }, [openclawTraceOpen, refreshOpenClawSession]);
+
   const subtaskTotal = subtaskItems.length;
   const subtaskDone = subtaskItems.reduce((acc, s) => acc + (s.done ? 1 : 0), 0);
-  const taskSessionKey = `agent:${chatAgentId}:mc:${task.id}`;
+  const reviewTotal = reviewChecklist.items.length;
+  const reviewDone = reviewChecklist.items.reduce((acc, it) => acc + (it.done ? 1 : 0), 0);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
       <div className="space-y-6">
+        {saveError ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{saveError}</div>
+        ) : null}
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
@@ -677,13 +887,18 @@ export function TaskDetail({
                   bloating your main chat.
                 </div>
               </div>
-              <Link
-                href={`/sessions/${encodeURIComponent(taskSessionKey)}`}
-              >
-                <Button type="button" size="sm" variant="secondary">
-                  Open chat
-                </Button>
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link href={`/sessions/${encodeURIComponent(taskSessionKey)}`}>
+                  <Button type="button" size="sm" variant="secondary">
+                    Open chat
+                  </Button>
+                </Link>
+                <Link href={`/workflows?taskId=${encodeURIComponent(task.id)}&sessionKey=${encodeURIComponent(taskSessionKey)}`}>
+                  <Button type="button" size="sm" variant="secondary">
+                    Workflows
+                  </Button>
+                </Link>
+              </div>
             </div>
 
             {openclawAssigneeIds.length > 1 ? (
@@ -707,6 +922,102 @@ export function TaskDetail({
               <div className="min-w-0 truncate font-mono text-xs text-[var(--foreground)]">{taskSessionKey}</div>
               <CopyButton value={taskSessionKey} label="Copy" />
             </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button type="button" size="sm" variant="secondary" onClick={() => setOpenclawTraceOpen((v) => !v)}>
+                {openclawTraceOpen ? 'Hide' : 'Show'} trace
+              </Button>
+              {openclawTraceOpen ? (
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => void refreshOpenClawSession()}
+                    disabled={sessionLoading}
+                  >
+                    Refresh
+                  </Button>
+                  <label className="ml-2 flex items-center gap-2 text-xs text-muted">
+                    <input
+                      type="checkbox"
+                      checked={openclawIncludeTools}
+                      onChange={(e) => setOpenclawIncludeTools(e.target.checked)}
+                    />
+                    Include tools
+                  </label>
+                </>
+              ) : null}
+            </div>
+
+            {openclawTraceOpen ? (
+              <div className="mt-3 space-y-3">
+                {sessionError ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{sessionError}</div>
+                ) : null}
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">Session</div>
+                    <div className="mt-2 text-xs text-muted">
+                      {sessionMeta?.model ? (
+                        <div className="truncate">
+                          Model: <span className="font-mono text-[var(--foreground)]">{sessionMeta.model}</span>
+                        </div>
+                      ) : (
+                        <div>Model: unknown</div>
+                      )}
+                      {typeof sessionMeta?.tokensUsed === 'number' ? (
+                        <div className="mt-1">
+                          Tokens: <span className="tabular-nums text-[var(--foreground)]">{sessionMeta.tokensUsed}</span>
+                          {typeof sessionMeta?.tokensMax === 'number' ? <span className="text-muted"> / {sessionMeta.tokensMax}</span> : null}
+                          {typeof sessionMeta?.tokensPct === 'number' ? <span className="text-muted"> ({sessionMeta.tokensPct}%)</span> : null}
+                        </div>
+                      ) : null}
+                      {sessionMeta?.updatedAt ? <div className="mt-1">Updated: {formatShortDate(sessionMeta.updatedAt)}</div> : null}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">Status</div>
+                    <div className="mt-2 text-xs text-muted whitespace-pre-wrap">
+                      {sessionStatusText ? sessionStatusText : sessionLoading ? 'Loading…' : 'No status text.'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">Recent History</div>
+                    <div className="text-xs text-muted">{sessionHistory.length} row(s)</div>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {sessionHistory.length ? (
+                      sessionHistory.slice(-15).map((row, idx) => (
+                        <div
+                          key={`${row.timestamp || 't'}-${idx}`}
+                          className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+                            <div className="flex items-center gap-2">
+                              {row.role ? (
+                                <span className="rounded-full border border-[var(--border)] bg-[var(--card)] px-2 py-0.5 font-mono text-[10px] text-[var(--foreground)]">
+                                  {row.role}
+                                </span>
+                              ) : null}
+                              {row.timestamp ? <span>{formatShortDate(row.timestamp)}</span> : null}
+                            </div>
+                          </div>
+                          {row.text ? <pre className="mt-2 whitespace-pre-wrap text-xs text-[var(--foreground)]">{row.text}</pre> : null}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-sm text-muted">{sessionLoading ? 'Loading…' : 'No history yet.'}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
           {!!task.labels?.length && (
             <div className="mt-4 flex flex-wrap gap-2">
@@ -964,6 +1275,61 @@ export function TaskDetail({
               </label>
             </div>
           </div>
+          {requiresReview ? (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.2em] text-muted">Review checklist</div>
+                  <div className="mt-1 text-xs text-muted">Task can’t move to Done until all items are checked.</div>
+                </div>
+                <Badge className="border-none bg-[var(--highlight)] text-[var(--foreground)]">
+                  {reviewDone}/{reviewTotal || 0}
+                </Badge>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {reviewChecklist.items.map((it) => (
+                  <div key={it.id} className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm">
+                    <input type="checkbox" checked={it.done} onChange={(e) => void toggleReviewItem(it.id, e.target.checked)} />
+                    <div className={cn('flex-1', it.done ? 'line-through text-muted' : '')}>{it.label}</div>
+                    <Button type="button" size="sm" variant="secondary" onClick={() => void removeReviewItem(it.id)}>
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+                {!reviewChecklist.items.length ? (
+                  <div className="text-sm text-muted">
+                    No checklist yet.{' '}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void saveReviewChecklist(defaultReviewChecklist())}
+                    >
+                      Use default
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-3 flex items-center gap-2">
+                <Input
+                  value={newReviewItemLabel}
+                  onChange={(e) => setNewReviewItemLabel(e.target.value)}
+                  placeholder="Add checklist item…"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void addReviewItem();
+                    }
+                  }}
+                />
+                <Button type="button" size="sm" variant="secondary" onClick={() => void addReviewItem()} disabled={!newReviewItemLabel.trim()}>
+                  Add
+                </Button>
+              </div>
+            </div>
+          ) : null}
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
             <div className="text-xs uppercase tracking-[0.2em] text-muted">AI controls</div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">

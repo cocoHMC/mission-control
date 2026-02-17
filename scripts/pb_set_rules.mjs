@@ -43,6 +43,8 @@ async function main() {
     'subtasks',
     'messages',
     'documents',
+    'workflows',
+    'workflow_runs',
     'activities',
     'notifications',
     'task_subscriptions',
