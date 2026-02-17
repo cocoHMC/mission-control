@@ -1603,6 +1603,30 @@ async function refreshWorkflowTriggers(token: string) {
   }
 }
 
+let triggerRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let triggerRefreshRunning = false;
+let triggerRefreshRequested = false;
+
+function scheduleWorkflowTriggerRefresh(token: string) {
+  triggerRefreshRequested = true;
+  if (triggerRefreshTimer) return;
+  triggerRefreshTimer = setTimeout(async () => {
+    triggerRefreshTimer = null;
+    if (triggerRefreshRunning) return;
+    triggerRefreshRunning = true;
+    try {
+      // Coalesce bursts (create + patch + toggle) into a minimal set of refreshes.
+      // Always run at least once per burst.
+      while (triggerRefreshRequested) {
+        triggerRefreshRequested = false;
+        await refreshWorkflowTriggers(token);
+      }
+    } finally {
+      triggerRefreshRunning = false;
+    }
+  }, 500);
+}
+
 async function executeWorkflowTrigger(token: string, trigger: any, record: any) {
   const triggerId = String(trigger?.id || '').trim();
   const workflowId = String(trigger?.workflowId || '').trim();
@@ -1789,6 +1813,11 @@ async function subscribeWithRetry(token: string) {
     }
     await pb.collection('subtasks').subscribe('*', async (e) => handleSubtaskEvent(token, e.record, e.action));
     await pb.collection('notifications').subscribe('*', async () => scheduleDeliver(token));
+    try {
+      await pb.collection('workflow_triggers').subscribe('*', async () => scheduleWorkflowTriggerRefresh(token));
+    } catch {
+      // Optional collection (may not exist on older schemas).
+    }
   };
 
   while (true) {
