@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { mcFetch } from '@/lib/clientApi';
-import type { Workflow, WorkflowRun } from '@/lib/types';
+import type { Workflow, WorkflowRun, WorkflowSchedule } from '@/lib/types';
 import { cn, formatShortDate } from '@/lib/utils';
 
 function safeString(value: unknown) {
@@ -24,10 +24,19 @@ function pretty(value: unknown) {
   }
 }
 
-export function WorkflowsClient({ initialWorkflows, initialRuns }: { initialWorkflows: Workflow[]; initialRuns: WorkflowRun[] }) {
+export function WorkflowsClient({
+  initialWorkflows,
+  initialRuns,
+  initialSchedules,
+}: {
+  initialWorkflows: Workflow[];
+  initialRuns: WorkflowRun[];
+  initialSchedules: WorkflowSchedule[];
+}) {
   const params = useSearchParams();
   const [workflows, setWorkflows] = React.useState<Workflow[]>(initialWorkflows);
   const [runs, setRuns] = React.useState<WorkflowRun[]>(initialRuns);
+  const [schedules, setSchedules] = React.useState<WorkflowSchedule[]>(initialSchedules);
 
   const [creating, setCreating] = React.useState(false);
   const [name, setName] = React.useState('');
@@ -41,6 +50,14 @@ export function WorkflowsClient({ initialWorkflows, initialRuns }: { initialWork
   const [varsText, setVarsText] = React.useState('{}');
   const [running, setRunning] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  const [scheduleWorkflowId, setScheduleWorkflowId] = React.useState<string>(initialWorkflows[0]?.id || '');
+  const [scheduleInterval, setScheduleInterval] = React.useState('60');
+  const [scheduleEnabled, setScheduleEnabled] = React.useState(true);
+  const [scheduleTaskId, setScheduleTaskId] = React.useState('');
+  const [scheduleSessionKey, setScheduleSessionKey] = React.useState('');
+  const [scheduleVarsText, setScheduleVarsText] = React.useState('{}');
+  const [scheduling, setScheduling] = React.useState(false);
 
   React.useEffect(() => {
     // Support deep links like /workflows?taskId=...&sessionKey=...&workflowId=...
@@ -66,8 +83,15 @@ export function WorkflowsClient({ initialWorkflows, initialRuns }: { initialWork
         .then((r) => r.json())
         .catch(() => null),
     ]);
+    const ss = await mcFetch(
+      `/api/workflow-schedules?${new URLSearchParams({ page: '1', perPage: '200', sort: '-updatedAt' }).toString()}`,
+      { cache: 'no-store' }
+    )
+      .then((r) => r.json())
+      .catch(() => null);
     setWorkflows(Array.isArray(wf?.items) ? wf.items : []);
     setRuns(Array.isArray(rr?.items) ? rr.items : []);
+    setSchedules(Array.isArray(ss?.items) ? ss.items : []);
   }
 
   async function onCreate(e: React.FormEvent) {
@@ -124,6 +148,102 @@ export function WorkflowsClient({ initialWorkflows, initialRuns }: { initialWork
           taskId: taskId.trim(),
           sessionKey: sessionKey.trim(),
           vars,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || `Run failed ${res.status}`);
+      await refresh();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function onCreateSchedule(e: React.FormEvent) {
+    e.preventDefault();
+    const wfId = safeString(scheduleWorkflowId);
+    if (!wfId) return;
+    const intervalMinutes = Number.parseFloat(scheduleInterval);
+    if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
+      setError('Interval must be a positive number of minutes.');
+      return;
+    }
+
+    setScheduling(true);
+    setError(null);
+    try {
+      let vars: any = null;
+      const raw = scheduleVarsText.trim();
+      if (raw) {
+        try {
+          vars = JSON.parse(raw);
+        } catch {
+          throw new Error('Schedule vars must be valid JSON.');
+        }
+      }
+
+      const res = await mcFetch('/api/workflow-schedules', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workflowId: wfId,
+          enabled: scheduleEnabled,
+          intervalMinutes,
+          taskId: scheduleTaskId.trim(),
+          sessionKey: scheduleSessionKey.trim(),
+          vars,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || `Create schedule failed ${res.status}`);
+      await refresh();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setScheduling(false);
+    }
+  }
+
+  async function toggleSchedule(id: string, enabled: boolean) {
+    setError(null);
+    const res = await mcFetch(`/api/workflow-schedules/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => null);
+      setError(json?.error || `Update schedule failed (${res.status})`);
+      return;
+    }
+    await refresh();
+  }
+
+  async function deleteSchedule(id: string) {
+    if (!window.confirm('Delete schedule?')) return;
+    setError(null);
+    const res = await mcFetch(`/api/workflow-schedules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const json = await res.json().catch(() => null);
+      setError(json?.error || `Delete schedule failed (${res.status})`);
+      return;
+    }
+    await refresh();
+  }
+
+  async function runScheduleNow(s: WorkflowSchedule) {
+    setError(null);
+    setRunning(true);
+    try {
+      const res = await mcFetch('/api/workflow-runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workflowId: s.workflowId,
+          taskId: safeString(s.taskId),
+          sessionKey: safeString(s.sessionKey),
+          vars: s.vars ?? null,
         }),
       });
       const json = await res.json().catch(() => null);
@@ -200,6 +320,42 @@ export function WorkflowsClient({ initialWorkflows, initialRuns }: { initialWork
             </div>
           </form>
         </div>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
+          <div className="text-sm font-semibold">Schedule Workflow</div>
+          <div className="mt-2 text-xs text-muted">Run a workflow repeatedly via the worker (interval-based).</div>
+          <form onSubmit={onCreateSchedule} className="mt-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+              <span>Workflow</span>
+              <select
+                className="min-w-[260px] rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-xs text-[var(--foreground)]"
+                value={scheduleWorkflowId}
+                onChange={(e) => setScheduleWorkflowId(e.target.value)}
+              >
+                {workflows.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} ({w.kind || 'manual'})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Input value={scheduleInterval} onChange={(e) => setScheduleInterval(e.target.value)} placeholder="Interval minutes (e.g. 60)" />
+            <Input value={scheduleTaskId} onChange={(e) => setScheduleTaskId(e.target.value)} placeholder="Task id (optional)" />
+            <Input
+              value={scheduleSessionKey}
+              onChange={(e) => setScheduleSessionKey(e.target.value)}
+              placeholder="Session key (optional)"
+            />
+            <Textarea value={scheduleVarsText} onChange={(e) => setScheduleVarsText(e.target.value)} className="min-h-[120px] font-mono text-xs" />
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <input type="checkbox" checked={scheduleEnabled} onChange={(e) => setScheduleEnabled(e.target.checked)} />
+              Enabled
+            </label>
+            <Button type="submit" disabled={scheduling}>
+              {scheduling ? 'Scheduling…' : 'Create schedule'}
+            </Button>
+          </form>
+        </div>
       </div>
 
       <div className="min-h-0 space-y-6">
@@ -267,6 +423,55 @@ export function WorkflowsClient({ initialWorkflows, initialRuns }: { initialWork
               </details>
             ))}
             {!runs.length ? <div className="text-sm text-muted">No runs yet.</div> : null}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold">Schedules</div>
+            <div className="text-xs text-muted">{schedules.length}</div>
+          </div>
+          <div className="mt-4 space-y-3">
+            {schedules.map((s) => (
+              <div key={s.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">
+                      {String(s.workflowId).slice(0, 8)} · every {s.intervalMinutes ?? '—'} min
+                    </div>
+                    <div className="mt-1 text-xs text-muted">
+                      {s.enabled ? 'enabled' : 'disabled'}
+                      {s.running ? ` · running` : ''}
+                      {s.nextRunAt ? ` · next ${formatShortDate(s.nextRunAt)}` : ''}
+                    </div>
+                    {s.taskId ? <div className="mt-1 text-xs text-muted">task {String(s.taskId).slice(0, 8)}</div> : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void runScheduleNow(s)}
+                      disabled={running}
+                    >
+                      Run now
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void toggleSchedule(s.id, !s.enabled)}
+                    >
+                      {s.enabled ? 'Disable' : 'Enable'}
+                    </Button>
+                    <Button type="button" size="sm" variant="destructive" onClick={() => void deleteSchedule(s.id)}>
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!schedules.length ? <div className="text-sm text-muted">No schedules yet.</div> : null}
           </div>
         </div>
       </div>
