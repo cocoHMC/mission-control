@@ -10,6 +10,7 @@ import { mcFetch } from '@/lib/clientApi';
 
 type StatusReport = any;
 type UsageCost = any;
+type Telemetry = any;
 
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
@@ -30,6 +31,7 @@ export function StatusClient() {
   const [error, setError] = React.useState<string | null>(null);
   const [report, setReport] = React.useState<StatusReport | null>(null);
   const [usage, setUsage] = React.useState<UsageCost | null>(null);
+  const [telemetry, setTelemetry] = React.useState<Telemetry | null>(null);
 
   const [days, setDays] = React.useState(14);
   const [deep, setDeep] = React.useState(false);
@@ -45,9 +47,10 @@ export function StatusClient() {
         usage: includeUsageProbe ? '1' : '0',
         all: all ? '1' : '0',
       });
-      const [statusRes, usageRes] = await Promise.all([
+      const [statusRes, usageRes, telemetryRes] = await Promise.all([
         mcFetch(`/api/openclaw/status/report?${q.toString()}`, { cache: 'no-store' }),
         mcFetch(`/api/openclaw/gateway/usage-cost?days=${days}`, { cache: 'no-store' }),
+        mcFetch('/api/openclaw/status/telemetry', { cache: 'no-store' }),
       ]);
 
       const statusJson = await statusRes.json().catch(() => null);
@@ -57,10 +60,15 @@ export function StatusClient() {
       const usageJson = await usageRes.json().catch(() => null);
       if (!usageRes.ok) throw new Error(usageJson?.error || 'Failed to load usage-cost summary');
       setUsage(usageJson?.usage ?? null);
+
+      const telemetryJson = await telemetryRes.json().catch(() => null);
+      if (!telemetryRes.ok) throw new Error(telemetryJson?.error || 'Failed to load queue telemetry');
+      setTelemetry(telemetryJson?.telemetry ?? null);
     } catch (err: any) {
       setError(err?.message || String(err));
       setReport(null);
       setUsage(null);
+      setTelemetry(null);
     } finally {
       setLoading(false);
     }
@@ -79,6 +87,10 @@ export function StatusClient() {
   const totals = usage?.totals || null;
   const daily = Array.isArray(usage?.daily) ? usage.daily : [];
   const lastDay = daily.length ? daily[daily.length - 1] : null;
+  const queue = telemetry?.queue || null;
+  const dispatch = telemetry?.dispatch || null;
+  const slo = telemetry?.slo || null;
+  const queueModes = queue?.modes && typeof queue.modes === 'object' ? Object.entries(queue.modes) : [];
 
   return (
     <div className="space-y-4">
@@ -87,6 +99,9 @@ export function StatusClient() {
           <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Sessions: {report?.sessions?.count ?? '—'}</Badge>
           <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Queued events: {queuedEvents.length}</Badge>
           <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Heartbeats: {heartbeatAgents.length}</Badge>
+          <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Queue depth: {queue?.maxDepth ?? '—'}</Badge>
+          <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Pending notifs: {dispatch?.pendingNotifications ?? '—'}</Badge>
+          <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">DLQ(24h): {dispatch?.deliveryDlqLast24h ?? '—'}</Badge>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-xs text-muted">
@@ -185,6 +200,66 @@ export function StatusClient() {
                 </div>
               </div>
             ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Queue SLO</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 text-xs">
+              <div className="text-xs uppercase tracking-[0.2em] text-muted">Health</div>
+              <div className="mt-2 flex items-center gap-2">
+                <Badge className={`border-none ${slo?.healthy ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
+                  {slo?.healthy ? 'healthy' : 'degraded'}
+                </Badge>
+                <span>
+                  Queue max <span className="font-mono text-[var(--foreground)]">{queue?.maxDepth ?? '—'}</span> / SLO{' '}
+                  <span className="font-mono text-[var(--foreground)]">{slo?.queueDepthSlo ?? '—'}</span>
+                </span>
+              </div>
+              <div className="mt-2">
+                Oldest pending:{' '}
+                <span className="font-mono text-[var(--foreground)]">{dispatch?.oldestPendingAgeSeconds ?? '—'}s</span>
+                {'  '} (SLO <span className="font-mono text-[var(--foreground)]">{slo?.backlogSloSeconds ?? '—'}s</span>)
+              </div>
+              <div className="mt-2">
+                Overdue pending:{' '}
+                <span className="font-mono text-[var(--foreground)]">{dispatch?.backlogOverdueCount ?? '—'}</span>
+              </div>
+              <div className="mt-2">
+                Delivery DLQ (24h/all):{' '}
+                <span className="font-mono text-[var(--foreground)]">
+                  {dispatch?.deliveryDlqLast24h ?? '—'} / {dispatch?.deliveryDlqTotal ?? '—'}
+                </span>
+              </div>
+            </div>
+
+            {Array.isArray(slo?.violations) && slo.violations.length ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-xs text-red-700">
+                {slo.violations.map((v: string, idx: number) => (
+                  <div key={idx}>{v}</div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-muted">No SLO violations detected.</div>
+            )}
+
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 text-xs">
+              <div className="text-xs uppercase tracking-[0.2em] text-muted">Queue modes</div>
+              {!queueModes.length ? (
+                <div className="mt-2 text-muted">No queue mode data.</div>
+              ) : (
+                <div className="mt-2 grid gap-1">
+                  {queueModes.map(([mode, count]) => (
+                    <div key={mode}>
+                      {mode}: <span className="font-mono text-[var(--foreground)]">{String(count)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 

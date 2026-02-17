@@ -40,12 +40,27 @@ async function screenshot(page, name) {
 
 async function visit(page, p, { expectText } = {}) {
   const url = toUrl(p);
-  const resp = await page.goto(url, {
-    waitUntil: 'domcontentloaded',
-    timeout: 60_000,
-  });
-  const status = resp ? resp.status() : null;
-  if (status && status >= 400) throw new Error(`HTTP ${status} for ${p}`);
+  let lastErr = null;
+  let status = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const resp = await page.goto(url, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60_000,
+      });
+      status = resp ? resp.status() : null;
+      if (status && status >= 400) throw new Error(`HTTP ${status} for ${p}`);
+      lastErr = null;
+      break;
+    } catch (err) {
+      const msg = String(err?.message || err);
+      lastErr = err;
+      // Next.js dev + rapid page crawls can intermittently abort navigations while recompiling.
+      if (!msg.includes('net::ERR_ABORTED') || attempt === 3) break;
+      await page.waitForTimeout(600);
+    }
+  }
+  if (lastErr) throw lastErr;
   if (expectText) await page.getByText(expectText, { exact: false }).first().waitFor({ timeout: 15_000 });
   await page.waitForTimeout(500);
   await screenshot(page, safeName(p));
@@ -61,6 +76,13 @@ try {
 
   const errors = [];
   page.on('pageerror', (err) => errors.push(`pageerror: ${err?.message || String(err)}`));
+  page.on('response', (res) => {
+    // Capture conflict responses explicitly; these often show up as an unhelpful
+    // "Failed to load resource: 409 (Conflict)" console error without a URL.
+    if (res.status() !== 409) return;
+    const req = res.request();
+    errors.push(`http 409: ${req.method()} ${res.url()}`);
+  });
   page.on('console', (msg) => {
     // Filter out noisy warnings; we only fail on real errors.
     if (msg.type() !== 'error') return;
@@ -68,7 +90,12 @@ try {
     // Next.js dev HMR WebSocket sometimes fails in headless/basic-auth setups.
     // This is dev-only and doesn't impact `next build && next start`.
     if (text.includes('/_next/webpack-hmr')) return;
-    errors.push(`console.error: ${text}`);
+    // Update checks can legitimately fail in restricted/offline environments.
+    // Treat this as non-fatal for local smoke.
+    if (text.includes('/api/openclaw/update/status') && text.includes('502')) return;
+    const loc = msg.location?.() || {};
+    const where = loc.url ? ` (${loc.url}:${(loc.lineNumber ?? 0) + 1}:${(loc.columnNumber ?? 0) + 1})` : '';
+    errors.push(`console.error: ${text}${where}`);
   });
 
   // Core pages
@@ -163,14 +190,21 @@ try {
   await page.getByText(docTitle, { exact: false }).first().waitFor({ timeout: 30_000 });
 
   // Subtasks: toggle the first checkbox.
-  const firstSubtaskCheckbox = page.locator('div:has-text(\"Subtasks\")').locator('input[type=\"checkbox\"]').first();
+  // Be precise with the scope; a loose `div:has-text("Subtasks")` can match the entire page and
+  // accidentally click unrelated checkboxes.
+  const subtasksCard = page
+    .getByText('Subtasks', { exact: true })
+    .first()
+    .locator('..') // header row
+    .locator('..'); // card container
+  const firstSubtaskCheckbox = subtasksCard.locator('input[type="checkbox"]').first();
   if (await firstSubtaskCheckbox.count()) {
     await Promise.all([
       page.waitForResponse(
         (r) => r.url().includes('/api/subtasks/') && r.request().method() === 'PATCH' && r.ok(),
         { timeout: 20_000 }
       ),
-      firstSubtaskCheckbox.check(),
+      firstSubtaskCheckbox.click(),
     ]);
   }
 

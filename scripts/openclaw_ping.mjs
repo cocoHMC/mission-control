@@ -6,6 +6,7 @@ const token = process.env.OPENCLAW_GATEWAY_TOKEN;
 const agentId = process.env.MC_LEAD_AGENT_ID || process.env.MC_LEAD_AGENT || 'coco';
 const message = process.env.MC_PING_MESSAGE || '[Mission Control] tools/invoke healthcheck ping';
 const timeoutMs = Number(process.env.OPENCLAW_TOOLS_TIMEOUT_MS || 10_000);
+const reqId = `mc-ping-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 if (!token) {
   console.error('Missing OPENCLAW_GATEWAY_TOKEN');
@@ -22,9 +23,13 @@ try {
     headers: {
       'content-type': 'application/json',
       authorization: `Bearer ${token}`,
+      'x-mission-control': '1',
+      'x-mission-control-source': 'healthcheck',
+      'x-openclaw-request-id': reqId,
     },
     body: JSON.stringify({
       tool: 'sessions_send',
+      commandId: `${reqId}-cmd`,
       args: { sessionKey: `agent:${agentId}:main`, message, timeoutSeconds: 0 },
     }),
     signal: controller.signal,
