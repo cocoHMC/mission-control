@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminAuth } from '@/lib/adminAuth';
-import { openclawToolsInvoke } from '@/lib/openclawGateway';
+import { OpenClawToolsInvokeError, openclawToolsInvoke } from '@/lib/openclawGateway';
 
 export const runtime = 'nodejs';
 
@@ -81,6 +81,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, commandId, result: parsed ?? out.raw });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (err instanceof OpenClawToolsInvokeError && err.blockedByPolicy) {
+      return NextResponse.json(
+        {
+          ok: false,
+          commandId,
+          blocked: true,
+          error:
+            'OpenClaw gateway policy blocked sessions_send. Add `gateway.tools.allow: [\"sessions_send\"]` or use a non-HTTP send path.',
+          detail: msg || '',
+        },
+        { status: 409 }
+      );
+    }
     const looksLikeTimeout = /abort|aborted|timeout|timed out|context deadline exceeded/i.test(msg || '');
     if (looksLikeTimeout) {
       // Ambiguous: the gateway call timed out, but the message is often still delivered.

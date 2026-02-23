@@ -4,11 +4,28 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Command } from 'cmdk';
-import { BarChart3, Command as CommandIcon, FilePlus2, ListTodo, MessageSquare, Server, Settings, UserRound } from 'lucide-react';
+import {
+  BarChart3,
+  Command as CommandIcon,
+  FilePlus2,
+  FolderKanban,
+  Gauge,
+  Inbox,
+  Layers3,
+  ListTodo,
+  MessageSquare,
+  Server,
+  Settings,
+  UserRound,
+} from 'lucide-react';
 
 const actions = [
   { label: 'Create new task', icon: FilePlus2, href: '/tasks/new' },
   { label: 'Open tasks board', icon: ListTodo, href: '/tasks' },
+  { label: 'Open inbox', icon: Inbox, href: '/inbox' },
+  { label: 'Manage workspaces', icon: Layers3, href: '/workspaces' },
+  { label: 'Manage projects', icon: FolderKanban, href: '/projects' },
+  { label: 'Usage dashboard', icon: Gauge, href: '/usage' },
   { label: 'View activity feed', icon: BarChart3, href: '/activity' },
   { label: 'Chat sessions', icon: MessageSquare, href: '/sessions' },
   { label: 'Manage nodes', icon: Server, href: '/nodes' },

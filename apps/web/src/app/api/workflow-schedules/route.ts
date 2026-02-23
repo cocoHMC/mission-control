@@ -25,6 +25,14 @@ export async function POST(req: NextRequest) {
 
   const workflowId = safeString(body.workflowId);
   if (!workflowId) return NextResponse.json({ ok: false, error: 'workflowId required' }, { status: 400 });
+  const workflow = await pbFetch<any>(`/api/collections/workflows/records/${workflowId}`).catch(() => null);
+  const workflowKind = safeString(workflow?.kind) || 'manual';
+  if (workflowKind !== 'lobster') {
+    return NextResponse.json(
+      { ok: false, error: `Scheduled runs require a lobster workflow (got "${workflowKind}").` },
+      { status: 400 }
+    );
+  }
 
   const intervalMinutes = safeNumber(body.intervalMinutes);
   if (intervalMinutes === null || intervalMinutes <= 0) {
@@ -50,4 +58,3 @@ export async function POST(req: NextRequest) {
   const created = await pbFetch('/api/collections/workflow_schedules/records', { method: 'POST', body: payload });
   return NextResponse.json(created);
 }
-

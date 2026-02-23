@@ -19,10 +19,12 @@ import type {
   Message,
   NodeRecord,
   OpenClawTaskPolicy,
+  Project,
   ReviewChecklist,
   ReviewChecklistItem,
   Subtask,
   Task,
+  TaskDependency,
   TaskFile,
   WorkflowRun,
 } from '@/lib/types';
@@ -171,6 +173,7 @@ export function TaskDetail({
   files,
   subtasks,
   nodes = [],
+  projects = [],
   onUpdated,
 }: {
   task: Task;
@@ -180,6 +183,7 @@ export function TaskDetail({
   files: TaskFile[];
   subtasks: Subtask[];
   nodes?: NodeRecord[];
+  projects?: Project[];
   onUpdated?: () => void | Promise<void>;
 }) {
   const router = useRouter();
@@ -189,6 +193,7 @@ export function TaskDetail({
   const [docTitle, setDocTitle] = React.useState('');
   const [docContent, setDocContent] = React.useState('');
   const [contextDraft, setContextDraft] = React.useState(task.context ?? '');
+  const [projectId, setProjectId] = React.useState(String(task.projectId || ''));
   const [editingContext, setEditingContext] = React.useState(false);
   const [assignees, setAssignees] = React.useState<string[]>(task.assigneeIds ?? []);
   const [labelsInput, setLabelsInput] = React.useState((task.labels ?? []).join(', '));
@@ -227,6 +232,11 @@ export function TaskDetail({
   const [vaultLoadError, setVaultLoadError] = React.useState<string | null>(null);
   const [subtaskItems, setSubtaskItems] = React.useState<Subtask[]>(subtasks ?? []);
   const [newSubtaskTitle, setNewSubtaskTitle] = React.useState('');
+  const [dependencies, setDependencies] = React.useState<TaskDependency[]>([]);
+  const [dependents, setDependents] = React.useState<TaskDependency[]>([]);
+  const [newDependencyTaskId, setNewDependencyTaskId] = React.useState('');
+  const [newDependencyReason, setNewDependencyReason] = React.useState('');
+  const [dependencyLoading, setDependencyLoading] = React.useState(false);
   const [uploadTitle, setUploadTitle] = React.useState('');
   const [uploadFile, setUploadFile] = React.useState<File | null>(null);
   const [uploading, setUploading] = React.useState(false);
@@ -393,6 +403,9 @@ export function TaskDetail({
     const nextContextDraft = String(task.context ?? '');
     setContextDraft((prev) => (prev === nextContextDraft ? prev : nextContextDraft));
 
+    const nextProjectId = String(task.projectId || '');
+    setProjectId((prev) => (prev === nextProjectId ? prev : nextProjectId));
+
     const nextVault = String(task.vaultItem || '');
     setVaultHandle((prev) => (prev === nextVault ? prev : nextVault));
 
@@ -414,6 +427,7 @@ export function TaskDetail({
     task.startAt,
     task.dueAt,
     task.context,
+    task.projectId,
     task.vaultItem,
   ]);
 
@@ -508,6 +522,64 @@ export function TaskDetail({
     router.refresh();
     if (onUpdated) await onUpdated();
     return { ok: true as const, json };
+  }
+
+  const refreshDependencies = React.useCallback(async () => {
+    setDependencyLoading(true);
+    try {
+      const [blockedRes, dependentsRes] = await Promise.all([
+        mcFetch(
+          `/api/task-dependencies?${new URLSearchParams({
+            page: '1',
+            perPage: '200',
+            blockedTaskId: task.id,
+            includeDetails: '1',
+          }).toString()}`,
+          { cache: 'no-store' }
+        ).then((r) => r.json().catch(() => null)),
+        mcFetch(
+          `/api/task-dependencies?${new URLSearchParams({
+            page: '1',
+            perPage: '200',
+            dependsOnTaskId: task.id,
+            includeDetails: '1',
+          }).toString()}`,
+          { cache: 'no-store' }
+        ).then((r) => r.json().catch(() => null)),
+      ]);
+      setDependencies(Array.isArray(blockedRes?.items) ? (blockedRes.items as TaskDependency[]) : []);
+      setDependents(Array.isArray(dependentsRes?.items) ? (dependentsRes.items as TaskDependency[]) : []);
+    } finally {
+      setDependencyLoading(false);
+    }
+  }, [task.id]);
+
+  React.useEffect(() => {
+    void refreshDependencies();
+  }, [refreshDependencies]);
+
+  async function addDependency() {
+    const dependsOnTaskId = String(newDependencyTaskId || '').trim();
+    if (!dependsOnTaskId || dependsOnTaskId === task.id) return;
+    const res = await mcFetch('/api/task-dependencies', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        blockedTaskId: task.id,
+        dependsOnTaskId,
+        reason: String(newDependencyReason || '').trim(),
+      }),
+    });
+    if (!res.ok) return;
+    setNewDependencyTaskId('');
+    setNewDependencyReason('');
+    await refreshDependencies();
+  }
+
+  async function removeDependency(dependencyId: string) {
+    const res = await mcFetch(`/api/task-dependencies/${encodeURIComponent(dependencyId)}`, { method: 'DELETE' });
+    if (!res.ok) return;
+    await refreshDependencies();
   }
 
   const mentionables = React.useMemo(() => {
@@ -937,6 +1009,11 @@ export function TaskDetail({
               )}
               {task.requiresReview ? (
                 <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-1">requires review</span>
+              ) : null}
+              {projectId ? (
+                <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
+                  project {projects.find((p) => p.id === projectId)?.name || projectId}
+                </span>
               ) : null}
             </div>
           )}
@@ -1441,6 +1518,109 @@ export function TaskDetail({
         </div>
 
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm font-semibold">Dependencies</div>
+            <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">
+              blocked by {dependencies.length}
+            </Badge>
+          </div>
+          <div className="text-xs text-muted">
+            Task cannot move to <span className="font-mono text-[var(--foreground)]">in_progress</span> until all blockers are done.
+          </div>
+
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+            <div className="text-xs uppercase tracking-[0.2em] text-muted">Blocked by</div>
+            <div className="mt-2 space-y-2">
+              {dependencies.map((dep) => {
+                const blocking = dep.dependsOnTask;
+                const status = String(blocking?.status || 'unknown');
+                return (
+                  <div key={dep.id} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-[var(--foreground)]">
+                          {blocking?.title || dep.dependsOnTaskId}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                          <span className="font-mono">{dep.dependsOnTaskId}</span>
+                          <Badge className={`border-none ${status === 'done' ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-black'}`}>
+                            {status}
+                          </Badge>
+                        </div>
+                        {dep.reason ? <div className="mt-1 text-xs text-muted">{dep.reason}</div> : null}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/tasks/${encodeURIComponent(dep.dependsOnTaskId)}`}
+                          className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium"
+                        >
+                          Open
+                        </Link>
+                        <Button type="button" size="sm" variant="secondary" onClick={() => void removeDependency(dep.id)}>
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {!dependencies.length ? (
+                <div className="text-sm text-muted">{dependencyLoading ? 'Loading…' : 'No blockers.'}</div>
+              ) : null}
+            </div>
+            <div className="mt-3 space-y-2">
+              <Input
+                value={newDependencyTaskId}
+                onChange={(e) => setNewDependencyTaskId(e.target.value)}
+                placeholder="Blocking task ID"
+              />
+              <Input
+                value={newDependencyReason}
+                onChange={(e) => setNewDependencyReason(e.target.value)}
+                placeholder="Reason (optional)"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => void addDependency()}
+                disabled={!newDependencyTaskId.trim()}
+              >
+                Add blocker
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+            <div className="text-xs uppercase tracking-[0.2em] text-muted">Blocking these tasks</div>
+            <div className="mt-2 space-y-2">
+              {dependents.map((dep) => (
+                <div key={dep.id} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-[var(--foreground)]">
+                        {dep.blockedTask?.title || dep.blockedTaskId}
+                      </div>
+                      <div className="mt-1 text-xs text-muted">
+                        <span className="font-mono">{dep.blockedTaskId}</span>
+                        {dep.blockedTask?.status ? ` · ${dep.blockedTask.status}` : ''}
+                      </div>
+                    </div>
+                    <Link
+                      href={`/tasks/${encodeURIComponent(dep.blockedTaskId)}`}
+                      className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium"
+                    >
+                      Open
+                    </Link>
+                  </div>
+                </div>
+              ))}
+              {!dependents.length ? <div className="text-sm text-muted">No dependent tasks.</div> : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 space-y-3">
           <div className="text-sm font-semibold">Task metadata</div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
             <div className="flex items-center justify-between gap-4">
@@ -1830,6 +2010,27 @@ export function TaskDetail({
             <Button type="button" size="sm" variant="secondary" className="mt-3" onClick={onUpdateDates}>
               Save dates
             </Button>
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-[0.2em] text-muted">Project</label>
+            <select
+              value={projectId}
+              onChange={async (event) => {
+                const value = String(event.target.value || '').trim();
+                setProjectId(value);
+                await updateTask({ projectId: value || '' });
+              }}
+              className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+            >
+              <option value="">No project</option>
+              {projects
+                .filter((p) => !p.archived && String(p.status || 'active') !== 'archived')
+                .map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name || project.id}
+                  </option>
+                ))}
+            </select>
           </div>
           <div>
             <label className="text-xs uppercase tracking-[0.2em] text-muted">Execution device (optional)</label>

@@ -25,7 +25,7 @@ import { mcFetch } from '@/lib/clientApi';
 import { TaskDrawer } from '@/app/tasks/TaskDrawer';
 import { TaskCreateDrawer } from '@/app/tasks/TaskCreateDrawer';
 import { TaskViewToggle } from '@/app/tasks/TaskViewToggle';
-import type { Agent, NodeRecord, Task, TaskStatus } from '@/lib/types';
+import type { Agent, NodeRecord, Project, Task, TaskStatus } from '@/lib/types';
 
 const DEFAULT_EVENT_MINUTES = 30;
 
@@ -146,7 +146,17 @@ function taskToEvent(task: Task, pbIdToKey: Map<string, string>, keyToUser: Map<
   };
 }
 
-export function TaskCalendar({ initialTasks, agents, nodes }: { initialTasks: Task[]; agents: Agent[]; nodes: NodeRecord[] }) {
+export function TaskCalendar({
+  initialTasks,
+  agents,
+  nodes,
+  projects,
+}: {
+  initialTasks: Task[];
+  agents: Agent[];
+  nodes: NodeRecord[];
+  projects: Project[];
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -171,16 +181,27 @@ export function TaskCalendar({ initialTasks, agents, nodes }: { initialTasks: Ta
 
   const { users, pbIdToKey, keyToUser } = React.useMemo(() => buildUsers(agents || []), [agents]);
 
+  const selectedProjectId = React.useMemo(() => String(searchParams.get('project') || '').trim(), [searchParams]);
+
+  const visibleTasks = React.useMemo(
+    () =>
+      (tasks || []).filter((task) => {
+        if (task.archived) return false;
+        if (!selectedProjectId) return true;
+        return String(task.projectId || '').trim() === selectedProjectId;
+      }),
+    [tasks, selectedProjectId]
+  );
+
   const scheduledEvents = React.useMemo(() => {
-    return (tasks || [])
+    return visibleTasks
       .map((t) => taskToEvent(t, pbIdToKey, keyToUser))
       .filter(Boolean) as IEvent[];
-  }, [keyToUser, pbIdToKey, tasks]);
+  }, [keyToUser, pbIdToKey, visibleTasks]);
 
   const unscheduledTasks = React.useMemo(() => {
     const q = unscheduledQuery.trim().toLowerCase();
-    return (tasks || [])
-      .filter((t) => !t.archived)
+    return visibleTasks
       .filter((t) => !safeDate(t.startAt) && !safeDate(t.dueAt))
       .filter((t) => {
         if (!q) return true;
@@ -189,7 +210,7 @@ export function TaskCalendar({ initialTasks, agents, nodes }: { initialTasks: Ta
         return title.includes(q) || desc.includes(q);
       })
       .sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
-  }, [tasks, unscheduledQuery]);
+  }, [visibleTasks, unscheduledQuery]);
 
   // Keep tasks fresh via PB realtime when available; fall back to polling.
   React.useEffect(() => {
@@ -330,6 +351,7 @@ export function TaskCalendar({ initialTasks, agents, nodes }: { initialTasks: Ta
     const body = {
       title: draft.title,
       description: draft.description ?? '',
+      projectId: selectedProjectId || '',
       status,
       startAt: draft.startDate,
       dueAt: draft.endDate,
@@ -448,6 +470,28 @@ export function TaskCalendar({ initialTasks, agents, nodes }: { initialTasks: Ta
                 <div className="lg:hidden">
                   <TaskViewToggle variant="inline" />
                 </div>
+                <select
+                  className="h-9 rounded-xl border border-border bg-background px-3 text-xs"
+                  value={selectedProjectId}
+                  onChange={(event) => {
+                    const params = new URLSearchParams(searchParams.toString());
+                    const value = String(event.target.value || '').trim();
+                    if (value) params.set('project', value);
+                    else params.delete('project');
+                    params.set('view', 'calendar');
+                    const next = params.toString();
+                    router.replace(next ? `/tasks?${next}` : '/tasks?view=calendar', { scroll: false });
+                  }}
+                >
+                  <option value="">All projects</option>
+                  {projects
+                    .filter((p) => !p.archived && String(p.status || 'active') !== 'archived')
+                    .map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name || project.id}
+                      </option>
+                    ))}
+                </select>
                 <Button
                   type="button"
                   variant="outline"
@@ -616,11 +660,20 @@ export function TaskCalendar({ initialTasks, agents, nodes }: { initialTasks: Ta
           open={createOpen}
           agents={agents}
           nodes={nodes}
+          projects={projects}
+          initialProjectId={selectedProjectId || undefined}
           onClose={closeCreateDrawer}
           initialStartAt={createInitialStartAt}
           initialDueAt={createInitialDueAt}
         />
-        <TaskDrawer open={drawerOpen} taskId={taskParam} agents={agents} nodes={nodes} onClose={closeDrawer} />
+        <TaskDrawer
+          open={drawerOpen}
+          taskId={taskParam}
+          agents={agents}
+          nodes={nodes}
+          projects={projects}
+          onClose={closeDrawer}
+        />
       </DndProvider>
     </CalendarProvider>
   );

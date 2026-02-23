@@ -5,6 +5,10 @@ import { ensureTaskSubscription } from '@/lib/subscriptions';
 type ReviewChecklistItem = { id: string; label: string; done: boolean };
 type ReviewChecklist = { version: 1; items: ReviewChecklistItem[] };
 
+function pbFilterString(value: string) {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 function defaultReviewChecklist(): ReviewChecklist {
   return {
     version: 1,
@@ -32,6 +36,45 @@ function checklistItemsFromRaw(raw: unknown): ReviewChecklistItem[] {
     .filter(Boolean) as ReviewChecklistItem[];
 }
 
+async function unresolvedDependencies(taskId: string) {
+  const q = new URLSearchParams({
+    page: '1',
+    perPage: '200',
+    filter: `blockedTaskId = "${pbFilterString(taskId)}"`,
+  });
+
+  let deps: any[] = [];
+  try {
+    const list = await pbFetch<{ items?: any[] }>(`/api/collections/task_dependencies/records?${q.toString()}`);
+    deps = Array.isArray(list?.items) ? list.items : [];
+  } catch {
+    // Optional collection (older schema): no dependencies to enforce.
+    return [];
+  }
+
+  const dependsIds = Array.from(
+    new Set(deps.map((d) => String(d?.dependsOnTaskId || '').trim()).filter(Boolean))
+  );
+  if (!dependsIds.length) return [];
+
+  const rows = await Promise.all(
+    dependsIds.map(async (dependsOnTaskId) => {
+      try {
+        const task = await pbFetch<any>(`/api/collections/tasks/records/${dependsOnTaskId}`);
+        return {
+          taskId: dependsOnTaskId,
+          title: String(task?.title || dependsOnTaskId),
+          status: String(task?.status || 'unknown'),
+        };
+      } catch {
+        return { taskId: dependsOnTaskId, title: dependsOnTaskId, status: 'missing' };
+      }
+    })
+  );
+
+  return rows.filter((row) => row.status !== 'done');
+}
+
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const data = await pbFetch(`/api/collections/tasks/records/${id}`);
@@ -47,6 +90,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   delete payload.blockActorId;
   const now = new Date();
   payload.updatedAt = now.toISOString();
+
+  // Review gate: if requiresReview=true, block moving to done until checklist is complete.
+  if (payload.status === 'in_progress') {
+    const unresolved = await unresolvedDependencies(id);
+    if (unresolved.length) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Task has unresolved dependencies (${unresolved.length}).`,
+          unresolved,
+        },
+        { status: 409 }
+      );
+    }
+  }
 
   // Review gate: if requiresReview=true, block moving to done until checklist is complete.
   if (payload.status === 'done') {
@@ -159,6 +217,8 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   await deleteRelated('task_subscriptions', `taskId = "${id}"`);
   await deleteRelated('subtasks', `taskId = "${id}"`);
   await deleteRelated('task_files', `taskId = "${id}"`);
+  await deleteRelated('task_dependencies', `blockedTaskId = "${id}"`).catch(() => {});
+  await deleteRelated('task_dependencies', `dependsOnTaskId = "${id}"`).catch(() => {});
 
   await pbFetch(`/api/collections/tasks/records/${id}`, { method: 'DELETE' });
 

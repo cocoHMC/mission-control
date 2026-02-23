@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pbFetch } from '@/lib/pbServer';
 import { openclawToolsInvoke } from '@/lib/openclawGateway';
+import { executeManualWorkflowRun } from '@/lib/workflowEngine';
 
 export const runtime = 'nodejs';
 
@@ -79,7 +80,37 @@ export async function POST(req: NextRequest) {
   );
 
   if (kind !== 'lobster') {
-    return NextResponse.json({ ok: true, run: created });
+    try {
+      const out = await executeManualWorkflowRun(String(created?.id || ''));
+      const status = out.waitingApproval ? 202 : out.ok ? 200 : 502;
+      return NextResponse.json(
+        {
+          ok: out.ok,
+          waitingApproval: Boolean(out.waitingApproval),
+          run: out.run ?? created,
+          error: out.error || '',
+        },
+        { status }
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const failed = await pbFetch<any>(`/api/collections/workflow_runs/records/${created.id}`, {
+        method: 'PATCH',
+        body: {
+          status: 'failed',
+          log: msg || 'Manual workflow run failed.',
+          finishedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      }).catch(() => created);
+      await createActivity(
+        'workflow_run_failed',
+        `Workflow run failed (${safeString(workflow?.name) || workflowId}): ${msg || 'error'}`,
+        taskId || '',
+        ''
+      );
+      return NextResponse.json({ ok: false, error: msg || 'Manual workflow run failed.', run: failed }, { status: 502 });
+    }
   }
 
   if (!pipeline) {

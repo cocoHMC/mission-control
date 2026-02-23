@@ -43,6 +43,45 @@ function safeErrorMessage(payload: unknown) {
   }
 }
 
+function looksLikeBlockedTool(status: number, tool: string, payload: unknown) {
+  const msg = safeErrorMessage(payload).toLowerCase();
+  if (status === 404 && (tool === 'sessions_send' || tool === 'sessions_spawn')) return true;
+  if (status === 403 && (tool === 'sessions_send' || tool === 'sessions_spawn')) return true;
+  return (
+    msg.includes('hard-deny') ||
+    msg.includes('hard deny') ||
+    msg.includes('blocked') ||
+    msg.includes('deny') ||
+    msg.includes('not allowed') ||
+    msg.includes('disabled by policy')
+  );
+}
+
+export class OpenClawToolsInvokeError extends Error {
+  status: number;
+  tool: string;
+  requestId: string;
+  blockedByPolicy: boolean;
+  payload: unknown;
+
+  constructor(input: {
+    message: string;
+    status: number;
+    tool: string;
+    requestId: string;
+    blockedByPolicy: boolean;
+    payload: unknown;
+  }) {
+    super(input.message);
+    this.name = 'OpenClawToolsInvokeError';
+    this.status = input.status;
+    this.tool = input.tool;
+    this.requestId = input.requestId;
+    this.blockedByPolicy = input.blockedByPolicy;
+    this.payload = input.payload;
+  }
+}
+
 export type ToolInvokeResult<T> = {
   raw: unknown;
   parsedText: T | null;
@@ -164,8 +203,19 @@ export async function openclawToolsInvoke<T = unknown>(
 
     if (!res.ok) {
       const msg = safeErrorMessage(raw);
+      const blocked = looksLikeBlockedTool(res.status, tool, raw);
       const prefix = res.status === 401 ? 'Unauthorized OpenClaw token.' : `tools/invoke failed (${res.status}).`;
-      throw new Error(`${prefix}${msg ? ` ${msg}` : ''} [requestId=${reqId}]`.trim());
+      const remediation = blocked
+        ? ' Tool blocked by gateway policy. Allow it in `gateway.tools.allow` or use a non-HTTP delivery path.'
+        : '';
+      throw new OpenClawToolsInvokeError({
+        message: `${prefix}${msg ? ` ${msg}` : ''}${remediation} [requestId=${reqId}]`.trim(),
+        status: res.status,
+        tool,
+        requestId: reqId,
+        blockedByPolicy: blocked,
+        payload: raw,
+      });
     }
 
     const text = (() => {
@@ -185,6 +235,11 @@ export async function openclawToolsInvoke<T = unknown>(
     }
 
     return { raw, parsedText, text };
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new Error(`tools/invoke ${tool} timed out after ${timeoutMs}ms [requestId=${reqId}]`);
+    }
+    throw err;
   } finally {
     clearTimeout(t);
   }

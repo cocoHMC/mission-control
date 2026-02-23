@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminAuth } from '@/lib/adminAuth';
-import { openclawToolsInvoke } from '@/lib/openclawGateway';
+import { OpenClawToolsInvokeError, openclawToolsInvoke } from '@/lib/openclawGateway';
 
 export const runtime = 'nodejs';
 
@@ -74,8 +74,19 @@ export async function POST(req: NextRequest) {
     const out = await openclawToolsInvoke<any>('sessions_spawn', args, { sessionKey, timeoutMs: 25_000 });
     return NextResponse.json({ ok: true, result: out.parsedText ?? out.raw });
   } catch (err: unknown) {
+    if (err instanceof OpenClawToolsInvokeError && err.blockedByPolicy) {
+      return NextResponse.json(
+        {
+          ok: false,
+          blocked: true,
+          error:
+            'OpenClaw gateway policy blocked sessions_spawn. Add `gateway.tools.allow: ["sessions_spawn"]` or use a non-HTTP spawn path.',
+          detail: err.message || '',
+        },
+        { status: 409 }
+      );
+    }
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ ok: false, error: msg || 'Failed to spawn sub-agent.' }, { status: 502 });
   }
 }
-

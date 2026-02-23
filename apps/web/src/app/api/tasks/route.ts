@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
   const leadAgentId = process.env.MC_LEAD_AGENT_ID || process.env.MC_LEAD_AGENT || 'coco';
   const now = new Date().toISOString();
   const payload = {
+    projectId: String(body.projectId || '').trim(),
     title: body.title,
     description: body.description ?? '',
     context: body.context ?? '',

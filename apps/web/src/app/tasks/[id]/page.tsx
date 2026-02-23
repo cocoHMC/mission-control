@@ -2,7 +2,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { Topbar } from '@/components/shell/Topbar';
 import { pbFetch } from '@/lib/pbServer';
 import { TaskDetail } from '@/app/tasks/[id]/TaskDetail';
-import type { Agent, DocumentRecord, Message, NodeRecord, PBList, Subtask, Task, TaskFile } from '@/lib/types';
+import type { Agent, DocumentRecord, Message, NodeRecord, PBList, Project, Subtask, Task, TaskFile } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,9 +47,18 @@ async function getNodes() {
   return pbFetch<PBList<NodeRecord>>(`/api/collections/nodes/records?${q.toString()}`);
 }
 
+async function getProjects() {
+  const q = new URLSearchParams({ page: '1', perPage: '200', sort: '-updatedAt' });
+  try {
+    return await pbFetch<PBList<Project>>(`/api/collections/projects/records?${q.toString()}`);
+  } catch {
+    return { items: [], page: 1, perPage: 200, totalItems: 0, totalPages: 1 } as PBList<Project>;
+  }
+}
+
 export default async function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [task, agents, messages, documents, files, subtasks, nodes] = await Promise.all([
+  const [task, agents, messages, documents, files, subtasks, nodes, projects] = await Promise.all([
     getTask(id),
     getAgents(),
     getMessages(id),
@@ -57,6 +66,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
     getFiles(id),
     getSubtasks(id),
     getNodes(),
+    getProjects(),
   ]);
 
   return (
@@ -68,6 +78,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
             task={task}
             agents={agents.items ?? []}
             nodes={nodes.items ?? []}
+            projects={projects.items ?? []}
             messages={messages.items ?? []}
             documents={documents.items ?? []}
             files={files.items ?? []}

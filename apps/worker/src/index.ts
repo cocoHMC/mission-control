@@ -34,6 +34,15 @@ const Env = z.object({
   OPENCLAW_GATEWAY_TOKEN: z.string().optional(),
   OPENCLAW_GATEWAY_DISABLED: EnvBool,
   OPENCLAW_TOOLS_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+  MC_NOTIFICATION_FALLBACK_CMD: z.string().optional(),
+  MC_NOTIFICATION_FALLBACK_ON_TOOL_BLOCK: EnvBool.default(true),
+  MC_TOOL_BLOCK_COOLDOWN_MS: z.coerce.number().int().positive().default(60_000),
+  MC_USAGE_COLLECT_ENABLED: EnvBool.default(true),
+  MC_USAGE_COLLECT_MINUTES: z.coerce.number().int().positive().default(5),
+  MC_USAGE_MODEL_PRICES_JSON: z.string().optional(),
+  MC_PROJECT_BUDGET_CHECK_MINUTES: z.coerce.number().int().positive().default(15),
+  MC_PROJECT_BUDGET_ALERT_COOLDOWN_MS: z.coerce.number().int().positive().default(6 * 60 * 60_000),
+  MC_BUDGET_PAUSE_AUTOMATIONS: EnvBool.default(true),
 
   WEB_PUSH_ENABLED: EnvBool,
   WEB_PUSH_PUBLIC_KEY: z.string().optional(),
@@ -77,6 +86,15 @@ const env = Env.parse({
   OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
   OPENCLAW_GATEWAY_DISABLED: process.env.OPENCLAW_GATEWAY_DISABLED,
   OPENCLAW_TOOLS_TIMEOUT_MS: process.env.OPENCLAW_TOOLS_TIMEOUT_MS,
+  MC_NOTIFICATION_FALLBACK_CMD: process.env.MC_NOTIFICATION_FALLBACK_CMD,
+  MC_NOTIFICATION_FALLBACK_ON_TOOL_BLOCK: process.env.MC_NOTIFICATION_FALLBACK_ON_TOOL_BLOCK,
+  MC_TOOL_BLOCK_COOLDOWN_MS: process.env.MC_TOOL_BLOCK_COOLDOWN_MS,
+  MC_USAGE_COLLECT_ENABLED: process.env.MC_USAGE_COLLECT_ENABLED,
+  MC_USAGE_COLLECT_MINUTES: process.env.MC_USAGE_COLLECT_MINUTES,
+  MC_USAGE_MODEL_PRICES_JSON: process.env.MC_USAGE_MODEL_PRICES_JSON,
+  MC_PROJECT_BUDGET_CHECK_MINUTES: process.env.MC_PROJECT_BUDGET_CHECK_MINUTES,
+  MC_PROJECT_BUDGET_ALERT_COOLDOWN_MS: process.env.MC_PROJECT_BUDGET_ALERT_COOLDOWN_MS,
+  MC_BUDGET_PAUSE_AUTOMATIONS: process.env.MC_BUDGET_PAUSE_AUTOMATIONS,
 
   WEB_PUSH_ENABLED: process.env.WEB_PUSH_ENABLED,
   WEB_PUSH_PUBLIC_KEY: process.env.WEB_PUSH_PUBLIC_KEY,
@@ -129,6 +147,7 @@ const mcBaseUrl = normalizeBaseUrl(
 );
 
 const taskCache = new Map<string, any>();
+const projectCache = new Map<string, any>();
 const agentByRecordId = new Map<string, any>();
 const agentByOpenclawId = new Map<string, any>();
 const recentNotifications = new Map<string, number>();
@@ -136,13 +155,47 @@ const recentPush = new Map<string, number>();
 let delivering = false;
 let deliverTimer: ReturnType<typeof setTimeout> | null = null;
 let circuitUntilMs = 0;
+let openclawToolBlockedUntilMs = 0;
 const sendTimestamps: number[] = [];
 const sentNotificationIds = new Map<string, number>();
 const deliveryFailureByNotification = new Map<string, { count: number; lastAt: number; lastError: string }>();
 const dlqHandledNotifications = new Map<string, number>();
 const activeAgentsCache = new Set<string>();
+const automationPolicyNoticeByKey = new Map<string, number>();
 let activeAgentsCacheExpiresAt = 0;
 let lastStandupDate = '';
+const usageSnapshotBySession = new Map<
+  string,
+  { inputTokens: number; outputTokens: number; tokensUsed: number; tokensMax: number; tokensPct: number; at: number }
+>();
+const budgetAlertByProjectKey = new Map<string, number>();
+let usageCollectionDisabledUntilMs = 0;
+let resolvedGatewayUrlCache: { url: string; expiresAt: number } | null = null;
+
+type ModelPrice = { inputPer1k: number; outputPer1k: number };
+
+function parseModelPriceMap(raw: string) {
+  const map = new Map<string, ModelPrice>();
+  const text = String(raw || '').trim();
+  if (!text) return map;
+  try {
+    const parsed = JSON.parse(text);
+    const entries = parsed && typeof parsed === 'object' ? Object.entries(parsed as Record<string, any>) : [];
+    for (const [model, row] of entries) {
+      const key = String(model || '').trim();
+      if (!key) continue;
+      const inputPer1k = Number(row?.inputPer1k ?? row?.inPer1k ?? row?.input ?? row?.in ?? 0);
+      const outputPer1k = Number(row?.outputPer1k ?? row?.outPer1k ?? row?.output ?? row?.out ?? 0);
+      if (!Number.isFinite(inputPer1k) || !Number.isFinite(outputPer1k)) continue;
+      map.set(key, { inputPer1k, outputPer1k });
+    }
+  } catch {
+    // ignore malformed JSON
+  }
+  return map;
+}
+
+const usageModelPriceMap = parseModelPriceMap(env.MC_USAGE_MODEL_PRICES_JSON || '');
 
 const webPushEnabled = Boolean(
   env.WEB_PUSH_ENABLED && env.WEB_PUSH_PUBLIC_KEY && env.WEB_PUSH_PRIVATE_KEY
@@ -236,6 +289,36 @@ function sessionKeyAgentId(sessionKey: string) {
   if (!raw.startsWith('agent:')) return '';
   const parts = raw.split(':');
   return parts[1] ? parts[1].trim() : '';
+}
+
+function sessionKeyTaskId(sessionKey: string) {
+  const raw = String(sessionKey || '').trim();
+  if (!raw.startsWith('agent:')) return '';
+  const idx = raw.indexOf(':mc:');
+  if (idx === -1) return '';
+  return raw.slice(idx + 4).trim();
+}
+
+function safeNumber(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function round(value: number, digits = 6) {
+  const base = 10 ** digits;
+  return Math.round(value * base) / base;
+}
+
+function estimateCostUsd(model: string, inputTokens: number, outputTokens: number) {
+  const key = String(model || '').trim();
+  if (!key) return null;
+  const row = usageModelPriceMap.get(key);
+  if (!row) return null;
+  const inCost = (safeNumber(inputTokens) / 1000) * safeNumber(row.inputPer1k);
+  const outCost = (safeNumber(outputTokens) / 1000) * safeNumber(row.outputPer1k);
+  const total = inCost + outCost;
+  if (!Number.isFinite(total)) return null;
+  return round(total, 8);
 }
 
 async function refreshActiveAgentsFromOpenClaw() {
@@ -341,7 +424,8 @@ function shouldPush(key: string) {
 }
 
 function isCircuitOpen() {
-  return Date.now() < circuitUntilMs;
+  const now = Date.now();
+  return now < circuitUntilMs || now < openclawToolBlockedUntilMs;
 }
 
 function allowSendOrTrip() {
@@ -420,58 +504,188 @@ async function ensureAuth() {
 
 type ToolsInvokeOpts = { timeoutMs?: number; sessionKey?: string; commandId?: string };
 
+class ToolsInvokeHttpError extends Error {
+  status: number;
+  tool: string;
+  requestId: string;
+  blockedByPolicy: boolean;
+  payload: any;
+
+  constructor(input: { message: string; status: number; tool: string; requestId: string; blockedByPolicy: boolean; payload: any }) {
+    super(input.message);
+    this.name = 'ToolsInvokeHttpError';
+    this.status = input.status;
+    this.tool = input.tool;
+    this.requestId = input.requestId;
+    this.blockedByPolicy = input.blockedByPolicy;
+    this.payload = input.payload;
+  }
+}
+
+function toolErrorMessage(payload: any) {
+  if (!payload) return '';
+  if (typeof payload === 'string') return payload;
+  if (typeof payload === 'object') {
+    if (typeof payload?.error?.message === 'string') return payload.error.message;
+    if (typeof payload?.message === 'string') return payload.message;
+  }
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return String(payload);
+  }
+}
+
+function looksLikeBlockedTool(status: number, tool: string, payload: any) {
+  const msg = toolErrorMessage(payload).toLowerCase();
+  if (
+    status === 404 &&
+    ['sessions_send', 'sessions_spawn'].includes(tool) &&
+    (msg.includes('tool') || msg.includes('not available') || msg.includes('blocked') || msg.includes('deny'))
+  ) {
+    return true;
+  }
+  if (status === 403 && ['sessions_send', 'sessions_spawn'].includes(tool)) return true;
+  if (!msg) return false;
+  return (
+    msg.includes('hard-deny') ||
+    msg.includes('hard deny') ||
+    msg.includes('blocked') ||
+    msg.includes('deny') ||
+    msg.includes('not allowed') ||
+    msg.includes('disabled by policy')
+  );
+}
+
+function normalizeGatewayUrl(value: string) {
+  try {
+    return new URL(String(value || '').trim()).toString().replace(/\/$/, '');
+  } catch {
+    return String(value || '').trim().replace(/\/$/, '');
+  }
+}
+
+function pushUniqueGatewayUrl(target: string[], value?: string | null) {
+  const normalized = normalizeGatewayUrl(String(value || ''));
+  if (!normalized) return;
+  if (target.includes(normalized)) return;
+  target.push(normalized);
+}
+
+async function gatewayCandidates() {
+  const out: string[] = [];
+  if (resolvedGatewayUrlCache && Date.now() < resolvedGatewayUrlCache.expiresAt) {
+    pushUniqueGatewayUrl(out, resolvedGatewayUrlCache.url);
+  }
+
+  pushUniqueGatewayUrl(out, env.OPENCLAW_GATEWAY_URL);
+
+  try {
+    const preferred = new URL(env.OPENCLAW_GATEWAY_URL);
+    if (preferred.port) {
+      pushUniqueGatewayUrl(out, `http://127.0.0.1:${preferred.port}`);
+      pushUniqueGatewayUrl(out, `http://localhost:${preferred.port}`);
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const cliBin = String(env.OPENCLAW_CLI || 'openclaw').trim() || 'openclaw';
+    const { stdout } = await execAsync(`${cliBin} gateway status --json --no-probe --timeout 3000`, {
+      timeout: 6_000,
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    const parsed = JSON.parse(String(stdout || '{}'));
+    const host = String(parsed?.gateway?.bindHost || '').trim();
+    const port = Number(parsed?.gateway?.port || 0);
+    if (host && Number.isFinite(port) && port > 0) {
+      pushUniqueGatewayUrl(out, `http://${host}:${port}`);
+      pushUniqueGatewayUrl(out, `http://127.0.0.1:${port}`);
+      pushUniqueGatewayUrl(out, `http://localhost:${port}`);
+    }
+  } catch {
+    // ignore
+  }
+
+  if (!out.length) pushUniqueGatewayUrl(out, 'http://127.0.0.1:18789');
+  return out;
+}
+
 async function toolsInvoke(tool: string, args: unknown, opts: ToolsInvokeOpts = {}) {
   if (env.OPENCLAW_GATEWAY_DISABLED || !env.OPENCLAW_GATEWAY_TOKEN) {
     throw new Error('OPENCLAW_GATEWAY_DISABLED');
   }
 
-  const controller = new AbortController();
   const reqId = requestId();
   const timeoutMs = opts.timeoutMs ?? env.OPENCLAW_TOOLS_TIMEOUT_MS;
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const candidates = await gatewayCandidates();
+  let lastNetworkErr = '';
 
-  let res: Response;
-  try {
-    res = await fetch(new URL('/tools/invoke', env.OPENCLAW_GATEWAY_URL), {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${env.OPENCLAW_GATEWAY_TOKEN}`,
-        'x-mission-control': '1',
-        'x-mission-control-source': 'worker',
-        'x-openclaw-request-id': reqId,
-      },
-      body: JSON.stringify({
-        tool,
-        args,
-        ...(opts.sessionKey ? { sessionKey: opts.sessionKey } : {}),
-        ...(opts.commandId ? { commandId: opts.commandId } : {}),
-      }),
-      signal: controller.signal,
-    });
-  } catch (err: any) {
-    if (err?.name === 'AbortError') {
-      throw new Error(`tools/invoke ${tool} timed out after ${timeoutMs}ms`);
-      throw new Error(`tools/invoke ${tool} timed out after ${timeoutMs}ms [requestId=${reqId}]`);
+  for (const base of candidates) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    let res: Response;
+    try {
+      res = await fetch(new URL('/tools/invoke', base), {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${env.OPENCLAW_GATEWAY_TOKEN}`,
+          'x-mission-control': '1',
+          'x-mission-control-source': 'worker',
+          'x-openclaw-request-id': reqId,
+        },
+        body: JSON.stringify({
+          tool,
+          args,
+          ...(opts.sessionKey ? { sessionKey: opts.sessionKey } : {}),
+          ...(opts.commandId ? { commandId: opts.commandId } : {}),
+        }),
+        signal: controller.signal,
+      });
+    } catch (err: any) {
+      clearTimeout(timeout);
+      if (err?.name === 'AbortError') {
+        lastNetworkErr = `tools/invoke ${tool} timed out after ${timeoutMs}ms @ ${base} [requestId=${reqId}]`;
+        continue;
+      }
+      lastNetworkErr = `${String(err?.message || err)} @ ${base}`;
+      continue;
+    } finally {
+      clearTimeout(timeout);
     }
-    throw err;
-  } finally {
-    clearTimeout(timeout);
+
+    const text = await res.text().catch(() => '');
+    let json: any = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      json = text;
+    }
+
+    if (!res.ok) {
+      const blocked = looksLikeBlockedTool(res.status, tool, json);
+      const msg = toolErrorMessage(json);
+      const help = blocked
+        ? 'Tool blocked by OpenClaw gateway policy. Allow it via gateway.tools.allow or configure MC_NOTIFICATION_FALLBACK_CMD.'
+        : '';
+      throw new ToolsInvokeHttpError({
+        message: `tools/invoke ${tool} ${res.status}${msg ? `: ${msg}` : ''}${help ? ` (${help})` : ''} [requestId=${reqId}]`,
+        status: res.status,
+        tool,
+        requestId: reqId,
+        blockedByPolicy: blocked,
+        payload: json,
+      });
+    }
+
+    resolvedGatewayUrlCache = { url: base, expiresAt: Date.now() + 60_000 };
+    return json;
   }
 
-  const text = await res.text().catch(() => '');
-  let json: any = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    json = text;
-  }
-
-  if (!res.ok) {
-    throw new Error(`tools/invoke ${tool} ${res.status}: ${typeof json === 'string' ? json : JSON.stringify(json)} [requestId=${reqId}]`);
-  }
-
-  return json;
+  throw new Error(lastNetworkErr || `tools/invoke ${tool} failed (no reachable gateway candidates) [requestId=${reqId}]`);
 }
 
 async function toolsInvokeWithOpts(tool: string, args: unknown, opts: ToolsInvokeOpts = {}) {
@@ -644,6 +858,40 @@ function openclawInlineDirectivesFor(agentId: string, taskId?: string | null) {
   return directives;
 }
 
+function interpolateFallbackCommand(template: string, vars: Record<string, string>) {
+  let out = template;
+  for (const [k, v] of Object.entries(vars)) {
+    out = out.replaceAll(`{{${k}}}`, v);
+  }
+  return out;
+}
+
+async function sendToAgentViaFallbackCommand(input: {
+  sessionKey: string;
+  message: string;
+  commandId?: string;
+}) {
+  const template = String(env.MC_NOTIFICATION_FALLBACK_CMD || '').trim();
+  if (!template) return false;
+
+  const message = String(input.message || '');
+  const vars = {
+    SESSION_KEY: input.sessionKey,
+    MESSAGE: message,
+    MESSAGE_B64: Buffer.from(message, 'utf8').toString('base64'),
+    COMMAND_ID: String(input.commandId || ''),
+  };
+  const cmd = interpolateFallbackCommand(template, vars);
+  const childEnv: NodeJS.ProcessEnv = { ...process.env };
+  childEnv.MC_SESSION_KEY = input.sessionKey;
+  childEnv.MC_MESSAGE = message;
+  childEnv.MC_MESSAGE_B64 = vars.MESSAGE_B64;
+  childEnv.MC_COMMAND_ID = vars.COMMAND_ID;
+
+  await execAsync(cmd, { env: childEnv, timeout: 20_000, maxBuffer: 2 * 1024 * 1024 });
+  return true;
+}
+
 async function sendToAgent(agentId: string, message: string, taskId?: string | null, commandId?: string) {
   const resolved = normalizeAgentId(agentId);
   if (!resolved) throw new Error('UNKNOWN_AGENT');
@@ -720,7 +968,37 @@ async function sendToAgent(agentId: string, message: string, taskId?: string | n
   // Use timeoutSeconds=0 so tools/invoke returns immediately ("accepted") instead of
   // waiting for the agent to finish a full turn. Waiting caused worker timeouts,
   // retries, and notification storms (token burn).
-  await toolsInvoke('sessions_send', { sessionKey, message: prefixed, timeoutSeconds: 0 }, commandId ? { commandId } : {});
+  try {
+    await toolsInvoke('sessions_send', { sessionKey, message: prefixed, timeoutSeconds: 0 }, commandId ? { commandId } : {});
+  } catch (err: any) {
+    const blocked = err instanceof ToolsInvokeHttpError && err.blockedByPolicy;
+    if (!blocked || !env.MC_NOTIFICATION_FALLBACK_ON_TOOL_BLOCK) throw err;
+
+    let usedFallback = false;
+    try {
+      usedFallback = await sendToAgentViaFallbackCommand({ sessionKey, message: prefixed, commandId });
+    } catch (fallbackErr: any) {
+      throw new Error(
+        `OPENCLAW_TOOL_BLOCKED:sessions_send fallback failed (${String(fallbackErr?.message || fallbackErr)})`
+      );
+    }
+    if (!usedFallback) {
+      throw new Error(
+        `OPENCLAW_TOOL_BLOCKED:sessions_send ${err?.message || ''} (set gateway.tools.allow=[\"sessions_send\"] or configure MC_NOTIFICATION_FALLBACK_CMD)`
+      );
+    }
+    if (taskId) {
+      const token = await ensureAuth();
+      await createActivity(
+        token,
+        'delivery_fallback',
+        `OpenClaw gateway blocked sessions_send; delivered via fallback command.`,
+        String(taskId),
+        resolved
+      );
+    }
+  }
+  openclawToolBlockedUntilMs = 0;
   if (taskId) {
     const key = `${resolved}|${String(taskId).trim()}`;
     const now = Date.now();
@@ -768,19 +1046,53 @@ async function ensureTaskSubscription(token: string, taskId: string, agentId: st
   }
 }
 
-async function createNotification(token: string, toAgentId: string, content: string, taskId?: string, kind = 'generic') {
+async function createNotification(
+  token: string,
+  toAgentId: string,
+  content: string,
+  taskId?: string,
+  kind = 'generic',
+  meta?: { title?: string; url?: string }
+) {
   const normalized = normalizeAgentId(toAgentId);
   if (!normalized) return null;
   const key = notificationKey(normalized, taskId, kind);
   if (!shouldNotify(key)) return null;
 
   try {
+    const title = String(meta?.title || '').trim() || String(content || '').trim().slice(0, 140);
+    const url = String(meta?.url || '').trim() || (taskId ? `/tasks/${taskId}` : '/inbox');
     return await pbFetch('/api/collections/notifications/records', {
       method: 'POST',
       token,
-      body: { toAgentId: normalized, taskId: taskId ?? '', content, delivered: false },
+      body: {
+        toAgentId: normalized,
+        taskId: taskId ?? '',
+        content,
+        kind,
+        title,
+        url,
+        delivered: false,
+        readAt: '',
+      },
     });
   } catch (err: any) {
+    const fallbackMsg = String(err?.message || '');
+    const maybeSchemaDrift =
+      fallbackMsg.includes('Failed to create record') ||
+      fallbackMsg.includes('validation_not_match') ||
+      fallbackMsg.includes('Unknown field');
+    if (maybeSchemaDrift) {
+      try {
+        return await pbFetch('/api/collections/notifications/records', {
+          method: 'POST',
+          token,
+          body: { toAgentId: normalized, taskId: taskId ?? '', content, delivered: false },
+        });
+      } catch {
+        // fall through to log
+      }
+    }
     // Notification write failures should never crash the worker loop.
     console.error('[worker] createNotification failed', {
       toAgentId: normalized,
@@ -789,6 +1101,48 @@ async function createNotification(token: string, toAgentId: string, content: str
       err: err?.message || err,
     });
     return null;
+  }
+}
+
+async function notifyReviewRequested(token: string, record: any) {
+  const taskId = String(record?.id || '').trim();
+  if (!taskId) return;
+  const title = String(record?.title || taskId).trim() || taskId;
+  const recipients = new Set<string>([leadAgentId]);
+  for (const assigneeId of normalizeAgentIds(record?.assigneeIds ?? [])) recipients.add(assigneeId);
+
+  for (const toAgentId of recipients) {
+    await ensureTaskSubscription(token, taskId, toAgentId, 'review_requested');
+    await createNotification(
+      token,
+      toAgentId,
+      `Review requested: ${title}`,
+      taskId,
+      'review_requested',
+      { title: `Review requested: ${title}`, url: `/tasks/${taskId}` }
+    );
+  }
+}
+
+async function notifyWorkflowFailure(
+  token: string,
+  detail: { workflowName: string; reason: string; taskId?: string; runId?: string }
+) {
+  const workflowName = String(detail.workflowName || '').trim() || 'workflow';
+  const reason = String(detail.reason || '').trim() || 'unknown error';
+  const taskId = String(detail.taskId || '').trim();
+  const runId = String(detail.runId || '').trim();
+  const recipients = new Set<string>([leadAgentId]);
+  if (taskId) {
+    const task = taskCache.get(taskId);
+    for (const assigneeId of normalizeAgentIds(task?.assigneeIds ?? [])) recipients.add(assigneeId);
+  }
+  const url = runId ? `/workflows?run=${encodeURIComponent(runId)}` : taskId ? `/tasks/${taskId}` : '/workflows';
+  const title = `Workflow failed: ${workflowName}`;
+  const content = `Workflow failed (${workflowName}): ${reason}`;
+
+  for (const toAgentId of recipients) {
+    await createNotification(token, toAgentId, content, taskId || '', 'workflow_failed', { title, url });
   }
 }
 
@@ -937,6 +1291,23 @@ async function deliverPendingNotifications(token: string) {
         }
         if (err?.message === 'MC_CIRCUIT_BREAKER_OPEN') {
           // Circuit breaker trips inside sendToAgent.
+          return;
+        }
+        const blockedByPolicy =
+          (err instanceof ToolsInvokeHttpError && err.blockedByPolicy) ||
+          String(err?.message || '').startsWith('OPENCLAW_TOOL_BLOCKED:');
+        if (blockedByPolicy) {
+          openclawToolBlockedUntilMs = Date.now() + env.MC_TOOL_BLOCK_COOLDOWN_MS;
+          if (taskId) {
+            await createActivity(
+              token,
+              'delivery_blocked',
+              `OpenClaw blocked sessions_send via gateway policy. Update gateway.tools.allow or configure MC_NOTIFICATION_FALLBACK_CMD.`,
+              taskId,
+              agentId
+            );
+          }
+          console.error('[worker] delivery blocked by gateway policy', { agentId, taskId, error: String(err?.message || err) });
           return;
         }
         const reason = String(err?.message || err);
@@ -1154,6 +1525,7 @@ async function handleTaskEvent(token: string, record: any, action: string) {
       { title: 'New task', body: record.title, url: `/tasks/${record.id}` },
       `task:create:${record.id}`
     );
+    await maybeFireWorkflowCreateTriggers(token, record);
   }
 
   if (prev && prev.status !== record.status) {
@@ -1167,6 +1539,10 @@ async function handleTaskEvent(token: string, record: any, action: string) {
     // so humans don't have to open the OpenClaw session chat for the end state.
     await maybePostStatusSnapshotComment(token, prev, record);
     await maybeFireWorkflowTriggers(token, prev, record);
+    if (record.status === 'review') {
+      await createActivity(token, 'review_requested', `Review requested for "${record.title}"`, record.id, record.leaseOwnerAgentId || '');
+      await notifyReviewRequested(token, record);
+    }
   }
 
   // Auto-done policy: tasks only stay in review when explicitly required.
@@ -1484,6 +1860,334 @@ async function refreshTasks(token: string) {
   for (const task of tasks.items ?? []) taskCache.set(task.id, task);
 }
 
+async function refreshProjects(token: string) {
+  const q = new URLSearchParams({ page: '1', perPage: '200', sort: '-updatedAt' });
+  const projects = await pbFetch(`/api/collections/projects/records?${q.toString()}`, { token });
+  projectCache.clear();
+  for (const project of projects.items ?? []) {
+    const id = String(project?.id || '').trim();
+    if (!id) continue;
+    projectCache.set(id, project);
+  }
+}
+
+function normalizeProjectMode(value: unknown): 'manual' | 'supervised' | 'autopilot' {
+  const mode = String(value || '').trim().toLowerCase();
+  if (mode === 'manual' || mode === 'autopilot' || mode === 'supervised') return mode;
+  return 'supervised';
+}
+
+function normalizeProjectStatus(project: any): 'active' | 'paused' | 'archived' {
+  const status = String(project?.status || '').trim().toLowerCase();
+  if (status === 'paused' || status === 'archived' || status === 'active') return status;
+  if (project?.archived === true) return 'archived';
+  return 'active';
+}
+
+function getProjectAutomationBlockReason(projectId: string) {
+  const id = String(projectId || '').trim();
+  if (!id) return '';
+  const project = projectCache.get(id);
+  if (!project) return '';
+  const name = String(project?.name || id).trim() || id;
+  const status = normalizeProjectStatus(project);
+  if (status === 'archived') return `project "${name}" is archived`;
+  if (status === 'paused') return `project "${name}" is paused`;
+  const mode = normalizeProjectMode(project?.mode);
+  if (mode === 'manual') return `project "${name}" is in manual mode`;
+  return '';
+}
+
+function shouldEmitAutomationPolicyNotice(key: string, cooldownMs = 20 * 60_000) {
+  const now = Date.now();
+  for (const [k, at] of automationPolicyNoticeByKey) {
+    if (!at || now - at > cooldownMs * 4) automationPolicyNoticeByKey.delete(k);
+  }
+  const last = automationPolicyNoticeByKey.get(key) || 0;
+  if (last && now - last < cooldownMs) return false;
+  automationPolicyNoticeByKey.set(key, now);
+  return true;
+}
+
+async function writeUsageEvent(token: string, payload: Record<string, unknown>) {
+  if (Date.now() < usageCollectionDisabledUntilMs) return false;
+  try {
+    await pbFetch('/api/collections/usage_events/records', {
+      method: 'POST',
+      token,
+      body: payload,
+    });
+    return true;
+  } catch (err: any) {
+    const msg = String(err?.message || err);
+    if (msg.includes('/usage_events/') || msg.includes('usage_events') || msg.includes('404')) {
+      usageCollectionDisabledUntilMs = Date.now() + 15 * 60_000;
+    }
+    console.error('[worker] usage event write failed', msg);
+    return false;
+  }
+}
+
+async function collectUsageSnapshot(token: string) {
+  if (!env.MC_USAGE_COLLECT_ENABLED) return;
+  if (env.OPENCLAW_GATEWAY_DISABLED || !env.OPENCLAW_GATEWAY_TOKEN) return;
+  if (Date.now() < usageCollectionDisabledUntilMs) return;
+
+  let out: any;
+  try {
+    out = await toolsInvokeWithOpts('sessions_list', { limit: 500, messageLimit: 0 }, { timeoutMs: 10_000 });
+  } catch (err: any) {
+    console.error('[worker] usage snapshot sessions_list failed', err?.message || err);
+    return;
+  }
+
+  const parsed = invokeParsedJson(out);
+  const sessions = Array.isArray((parsed as any)?.sessions) ? (parsed as any).sessions : [];
+  if (!sessions.length) return;
+
+  const now = Date.now();
+  const ts = nowIso();
+  let written = 0;
+
+  for (const s of sessions) {
+    const sessionKey = String(s?.key || '').trim();
+    if (!sessionKey) continue;
+
+    const inputTokens = safeNumber(s?.inputTokens);
+    const outputTokens = safeNumber(s?.outputTokens);
+    const tokensUsed = safeNumber(s?.totalTokens);
+    const tokensMax = safeNumber(s?.contextTokens);
+    const tokensPct = tokensUsed > 0 && tokensMax > 0 ? Math.round((tokensUsed / tokensMax) * 100) : 0;
+
+    const prev = usageSnapshotBySession.get(sessionKey);
+    if (
+      prev &&
+      prev.inputTokens === inputTokens &&
+      prev.outputTokens === outputTokens &&
+      prev.tokensUsed === tokensUsed &&
+      prev.tokensMax === tokensMax &&
+      prev.tokensPct === tokensPct
+    ) {
+      continue;
+    }
+
+    usageSnapshotBySession.set(sessionKey, { inputTokens, outputTokens, tokensUsed, tokensMax, tokensPct, at: now });
+
+    const rawAgent = sessionKeyAgentId(sessionKey);
+    const agentId = normalizeAgentId(rawAgent) || rawAgent || '';
+    const taskId = sessionKeyTaskId(sessionKey);
+    const projectId = taskId ? String(taskCache.get(taskId)?.projectId || '').trim() : '';
+    const model = String(s?.model || '').trim();
+    const estimatedCostUsd = estimateCostUsd(model, inputTokens, outputTokens);
+
+    const ok = await writeUsageEvent(token, {
+      ts,
+      source: 'sessions_list_snapshot',
+      sessionKey,
+      agentId,
+      taskId,
+      projectId,
+      model,
+      inputTokens,
+      outputTokens,
+      tokensUsed,
+      tokensMax,
+      tokensPct,
+      ...(estimatedCostUsd !== null ? { estimatedCostUsd } : {}),
+      createdAt: ts,
+      updatedAt: ts,
+    });
+    if (ok) written += 1;
+  }
+
+  const staleMs = 24 * 60 * 60_000;
+  for (const [k, v] of usageSnapshotBySession) {
+    if (now - v.at > staleMs) usageSnapshotBySession.delete(k);
+  }
+
+  if (written) {
+    console.log('[worker] usage snapshot captured', written, 'event(s)');
+  }
+}
+
+async function sumProjectCostSince(token: string, projectId: string, since: Date) {
+  if (!projectId) return 0;
+  if (Date.now() < usageCollectionDisabledUntilMs) return 0;
+  const perPage = 500;
+  let page = 1;
+  let total = 0;
+
+  while (page <= 40) {
+    const q = new URLSearchParams({
+      page: String(page),
+      perPage: String(perPage),
+      filter: `projectId = "${pbFilterString(projectId)}" && ts >= "${pbDateForFilter(since)}"`,
+    });
+    let data: any;
+    try {
+      data = await pbFetch(`/api/collections/usage_events/records?${q.toString()}`, { token });
+    } catch {
+      return total;
+    }
+    const items = Array.isArray(data?.items) ? data.items : [];
+    for (const row of items) total += safeNumber(row?.estimatedCostUsd);
+    if (items.length < perPage) break;
+    page += 1;
+  }
+  return round(total, 8);
+}
+
+function shouldSendBudgetAlert(key: string) {
+  const now = Date.now();
+  for (const [k, at] of budgetAlertByProjectKey) {
+    if (now - at > env.MC_PROJECT_BUDGET_ALERT_COOLDOWN_MS) budgetAlertByProjectKey.delete(k);
+  }
+  const last = budgetAlertByProjectKey.get(key) || 0;
+  if (now - last < env.MC_PROJECT_BUDGET_ALERT_COOLDOWN_MS) return false;
+  budgetAlertByProjectKey.set(key, now);
+  return true;
+}
+
+async function pauseProjectSchedulesForBudget(token: string, projectId: string) {
+  if (!projectId) return 0;
+  let paused = 0;
+  const perPage = 200;
+  let page = 1;
+
+  while (page <= 20) {
+    let data: any;
+    try {
+      const q = new URLSearchParams({
+        page: String(page),
+        perPage: String(perPage),
+        filter: 'enabled = true && taskId != ""',
+      });
+      data = await pbFetch(`/api/collections/workflow_schedules/records?${q.toString()}`, { token });
+    } catch {
+      return paused;
+    }
+
+    const items = Array.isArray(data?.items) ? data.items : [];
+    for (const schedule of items) {
+      const scheduleId = String(schedule?.id || '').trim();
+      const taskId = String(schedule?.taskId || '').trim();
+      if (!scheduleId || !taskId) continue;
+      const taskProjectId = String(taskCache.get(taskId)?.projectId || '').trim();
+      if (!taskProjectId || taskProjectId !== projectId) continue;
+
+      try {
+        await pbFetch(`/api/collections/workflow_schedules/records/${scheduleId}`, {
+          method: 'PATCH',
+          token,
+          body: {
+            enabled: false,
+            running: false,
+            runningRunId: '',
+            runningStartedAt: '',
+            updatedAt: nowIso(),
+          },
+        });
+        paused += 1;
+      } catch {
+        // ignore per-schedule patch errors; keep trying others
+      }
+    }
+
+    if (items.length < perPage) break;
+    page += 1;
+  }
+
+  return paused;
+}
+
+async function checkProjectBudgets(token: string) {
+  if (!env.MC_USAGE_COLLECT_ENABLED) return;
+  if (Date.now() < usageCollectionDisabledUntilMs) return;
+
+  let projects: any[] = [];
+  try {
+    const q = new URLSearchParams({
+      page: '1',
+      perPage: '200',
+      filter: 'archived = false',
+    });
+    const data = await pbFetch(`/api/collections/projects/records?${q.toString()}`, { token });
+    projects = Array.isArray(data?.items) ? data.items : [];
+  } catch {
+    return;
+  }
+  if (!projects.length) return;
+
+  const now = new Date();
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+  const monthStart = new Date(now);
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  for (const project of projects) {
+    const projectId = String(project?.id || '').trim();
+    if (!projectId) continue;
+    const projectName = String(project?.name || projectId);
+    const warnPctRaw = safeNumber(project?.budgetWarnPct);
+    const warnPct = warnPctRaw > 0 ? warnPctRaw : 90;
+
+    const dailyBudget = safeNumber(project?.dailyBudgetUsd);
+    const monthlyBudget = safeNumber(project?.monthlyBudgetUsd);
+    const dailySpent = dailyBudget > 0 ? await sumProjectCostSince(token, projectId, dayStart) : 0;
+    const monthlySpent = monthlyBudget > 0 ? await sumProjectCostSince(token, projectId, monthStart) : 0;
+
+    if (dailyBudget > 0) {
+      const threshold = dailyBudget * (warnPct / 100);
+      const key = `${projectId}:daily`;
+      if (dailySpent >= threshold && shouldSendBudgetAlert(key)) {
+        const msg = `Budget alert (${projectName}): daily spend ${round(dailySpent, 4)} / ${round(dailyBudget, 4)} USD (${Math.round((dailySpent / dailyBudget) * 100)}%).`;
+        await createActivity(token, 'budget_exceeded', msg);
+        await createNotification(token, leadAgentId, msg, '', 'budget_exceeded', {
+          title: `Budget alert: ${projectName}`,
+          url: `/usage?project=${projectId}`,
+        });
+      } else if (dailySpent < threshold * 0.8) {
+        budgetAlertByProjectKey.delete(key);
+      }
+    }
+
+    if (monthlyBudget > 0) {
+      const threshold = monthlyBudget * (warnPct / 100);
+      const key = `${projectId}:month`;
+      if (monthlySpent >= threshold && shouldSendBudgetAlert(key)) {
+        const msg = `Budget alert (${projectName}): monthly spend ${round(monthlySpent, 4)} / ${round(monthlyBudget, 4)} USD (${Math.round((monthlySpent / monthlyBudget) * 100)}%).`;
+        await createActivity(token, 'budget_exceeded', msg);
+        await createNotification(token, leadAgentId, msg, '', 'budget_exceeded', {
+          title: `Budget alert: ${projectName}`,
+          url: `/usage?project=${projectId}`,
+        });
+      } else if (monthlySpent < threshold * 0.8) {
+        budgetAlertByProjectKey.delete(key);
+      }
+    }
+
+    if (env.MC_BUDGET_PAUSE_AUTOMATIONS) {
+      const hardExceeded =
+        (dailyBudget > 0 && dailySpent >= dailyBudget) || (monthlyBudget > 0 && monthlySpent >= monthlyBudget);
+      const pauseKey = `${projectId}:pause`;
+      if (hardExceeded && shouldSendBudgetAlert(pauseKey)) {
+        const paused = await pauseProjectSchedulesForBudget(token, projectId);
+        if (paused > 0) {
+          const msg = `Budget hard-limit reached (${projectName}). Paused ${paused} workflow schedule(s) tied to this project.`;
+          await createActivity(token, 'workflow_schedule_disabled', msg);
+          await createNotification(token, leadAgentId, msg, '', 'budget_exceeded', {
+            title: `Automation paused: ${projectName}`,
+            url: `/usage?project=${projectId}`,
+          });
+        }
+      } else if (!hardExceeded) {
+        budgetAlertByProjectKey.delete(pauseKey);
+      }
+    }
+  }
+}
+
 async function backfillAssignedTaskNotifications(token: string) {
   // If the worker was down (crash/restart), we may have missed task assignment events.
   // Backfill ensures assignees still receive at least one "Assigned:" notification.
@@ -1570,6 +2274,99 @@ async function backfillAssignedTaskNotifications(token: string) {
   }
 }
 
+function projectStatusFromCounts(done: number, inProgress: number, review: number, blocked: number) {
+  if (blocked > 0) return 'at_risk';
+  if (done === 0 && inProgress === 0 && review === 0) return 'off_track';
+  return 'on_track';
+}
+
+function listTaskTitles(tasks: any[], max = 3) {
+  return tasks
+    .map((task) => String(task?.title || '').trim())
+    .filter(Boolean)
+    .slice(0, max);
+}
+
+async function upsertAutoProjectStatusUpdates(token: string, dayStart: Date, dateKey: string) {
+  let projects: any[] = [];
+  try {
+    const q = new URLSearchParams({
+      page: '1',
+      perPage: '200',
+      sort: 'name',
+      filter: 'archived = false',
+    });
+    const data = await pbFetch(`/api/collections/projects/records?${q.toString()}`, { token });
+    projects = Array.isArray(data?.items) ? data.items : [];
+  } catch (err: any) {
+    console.error('[worker] status update project query failed', err?.message || err);
+    return;
+  }
+
+  for (const project of projects) {
+    const projectId = String(project?.id || '').trim();
+    if (!projectId) continue;
+    const projectName = String(project?.name || projectId).trim() || projectId;
+    const tasks = Array.from(taskCache.values()).filter(
+      (task) => String(task?.projectId || '').trim() === projectId && task?.archived !== true
+    );
+    const done = tasks.filter((task) => String(task?.status || '').trim() === 'done');
+    const inProgress = tasks.filter((task) => String(task?.status || '').trim() === 'in_progress');
+    const review = tasks.filter((task) => String(task?.status || '').trim() === 'review');
+    const blocked = tasks.filter((task) => String(task?.status || '').trim() === 'blocked');
+    const status = projectStatusFromCounts(done.length, inProgress.length, review.length, blocked.length);
+
+    const summary = `Auto status ${dateKey}: ${done.length} done, ${inProgress.length} in progress, ${review.length} in review, ${blocked.length} blocked.`;
+    const highlights = listTaskTitles(done).join(' | ');
+    const risks = listTaskTitles(blocked).join(' | ');
+    const nextSteps = listTaskTitles([...inProgress, ...review]).join(' | ');
+
+    const filter = `projectId = "${pbFilterString(projectId)}" && autoGenerated = true && createdAt >= "${pbFilterString(pbDateForFilter(dayStart))}"`;
+    try {
+      const existingQ = new URLSearchParams({
+        page: '1',
+        perPage: '1',
+        sort: '-createdAt',
+        filter,
+      });
+      const existing = await pbFetch(`/api/collections/project_status_updates/records?${existingQ.toString()}`, { token });
+      const row = Array.isArray(existing?.items) && existing.items.length ? existing.items[0] : null;
+      const payload = {
+        projectId,
+        status,
+        summary,
+        highlights,
+        risks,
+        nextSteps,
+        autoGenerated: true,
+        updatedAt: nowIso(),
+      };
+
+      if (row?.id) {
+        await pbFetch(`/api/collections/project_status_updates/records/${row.id}`, {
+          method: 'PATCH',
+          token,
+          body: payload,
+        });
+      } else {
+        await pbFetch('/api/collections/project_status_updates/records', {
+          method: 'POST',
+          token,
+          body: {
+            ...payload,
+            createdAt: nowIso(),
+          },
+        });
+        await createActivity(token, 'project_status_update', `Auto status update created for ${projectName}.`);
+      }
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      if (msg.includes('project_status_updates') || msg.includes('/project_status_updates/')) return;
+      console.error('[worker] status update upsert failed', { projectId, err: msg });
+    }
+  }
+}
+
 async function maybeStandup(token: string) {
   const now = new Date();
   const dateKey = now.toISOString().slice(0, 10);
@@ -1607,6 +2404,8 @@ async function maybeStandup(token: string) {
     body: { title: `Daily Standup ${dateKey}`, content: lines, type: 'deliverable', createdAt: nowStamp, updatedAt: nowStamp },
   });
   await createActivity(token, 'standup', `Daily standup generated for ${dateKey}`);
+
+  await upsertAutoProjectStatusUpdates(token, start, dateKey);
 
   try {
     await sendToAgent(leadAgentId, lines);
@@ -1673,6 +2472,33 @@ async function executeWorkflowSchedule(token: string, schedule: any) {
   const now = new Date();
   const nowIsoStamp = now.toISOString();
   const nextRunAt = new Date(Date.now() + intervalMinutes * 60_000).toISOString();
+  const taskProjectId = taskId ? String(taskCache.get(taskId)?.projectId || '').trim() : '';
+  const projectBlockReason = getProjectAutomationBlockReason(taskProjectId);
+  if (projectBlockReason) {
+    await pbFetch(`/api/collections/workflow_schedules/records/${scheduleId}`, {
+      method: 'PATCH',
+      token,
+      body: {
+        running: false,
+        runningRunId: '',
+        runningStartedAt: '',
+        lastRunAt: nowIsoStamp,
+        nextRunAt,
+        updatedAt: nowIsoStamp,
+      },
+    }).catch(() => {});
+    const workflowName = String(workflow?.name || workflowId).trim() || workflowId;
+    const summary = `Skipped schedule ${scheduleId} (${workflowName}) because ${projectBlockReason}.`;
+    const noticeKey = `schedule:${scheduleId}:${taskProjectId}:${projectBlockReason}`;
+    if (shouldEmitAutomationPolicyNotice(noticeKey)) {
+      await createActivity(token, 'workflow_schedule_skipped', summary, taskId || '', '');
+      await createNotification(token, leadAgentId, summary, taskId || '', 'incident', {
+        title: `Automation skipped: ${workflowName}`,
+        url: taskId ? `/tasks/${taskId}` : '/projects',
+      });
+    }
+    return;
+  }
 
   const runBase: any = {
     workflowId,
@@ -1720,7 +2546,14 @@ async function executeWorkflowSchedule(token: string, schedule: any) {
   );
 
   if (kind !== 'lobster') {
-    await createActivity(token, 'workflow_run_failed', `Workflow run failed (unsupported kind "${kind}").`, taskId || '', '');
+    const reason = `unsupported kind "${kind}"`;
+    await createActivity(token, 'workflow_run_failed', `Workflow run failed (${reason}).`, taskId || '', '');
+    await notifyWorkflowFailure(token, {
+      workflowName: String(workflow?.name || workflowId).trim() || workflowId,
+      reason,
+      taskId: taskId || '',
+      runId,
+    });
     return;
   }
 
@@ -1736,6 +2569,12 @@ async function executeWorkflowSchedule(token: string, schedule: any) {
       body: { running: false, runningRunId: '', runningStartedAt: '', updatedAt: nowIso() },
     }).catch(() => {});
     await createActivity(token, 'workflow_run_failed', `Workflow run failed (missing pipeline).`, taskId || '', '');
+    await notifyWorkflowFailure(token, {
+      workflowName: String(workflow?.name || workflowId).trim() || workflowId,
+      reason: 'missing pipeline',
+      taskId: taskId || '',
+      runId,
+    });
     return;
   }
 
@@ -1766,6 +2605,12 @@ async function executeWorkflowSchedule(token: string, schedule: any) {
       body: { status: 'failed', log: msg, finishedAt: nowIso(), updatedAt: nowIso() },
     }).catch(() => {});
     await createActivity(token, 'workflow_run_failed', `Workflow run failed (${String(workflow?.name || workflowId).trim() || workflowId}): ${msg}`, taskId || '', '');
+    await notifyWorkflowFailure(token, {
+      workflowName: String(workflow?.name || workflowId).trim() || workflowId,
+      reason: msg,
+      taskId: taskId || '',
+      runId,
+    });
   } finally {
     await pbFetch(`/api/collections/workflow_schedules/records/${scheduleId}`, {
       method: 'PATCH',
@@ -1821,6 +2666,12 @@ function normalizeStringArray(raw: unknown): string[] {
   return raw.map((v) => String(v ?? '').trim()).filter(Boolean);
 }
 
+function normalizePriority(value: unknown) {
+  const p = String(value ?? '').trim().toLowerCase();
+  if (['p0', 'p1', 'p2', 'p3'].includes(p)) return p;
+  return '';
+}
+
 function labelsMatchAny(taskLabels: string[], labelsAny: string[]) {
   if (!labelsAny.length) return true;
   const set = new Set(taskLabels.map((l) => l.toLowerCase()));
@@ -1831,18 +2682,134 @@ function labelsMatchAny(taskLabels: string[], labelsAny: string[]) {
 }
 
 const triggersByStatusTo = new Map<string, any[]>();
+const triggersOnTaskCreate: any[] = [];
+const triggersOnTaskDueSoon: any[] = [];
 const recentTriggerFires = new Map<string, number>();
+const dueSoonTriggerFires = new Map<string, number>();
+
+function triggerMatchesTask(trigger: any, record: any) {
+  const taskLabels = normalizeStringArray(record?.labels);
+  const labelsAny = normalizeStringArray(trigger?.labelsAny);
+  if (!labelsMatchAny(taskLabels, labelsAny)) return false;
+
+  const projectId = String(trigger?.projectId || '').trim();
+  if (projectId && String(record?.projectId || '').trim() !== projectId) return false;
+
+  const priority = normalizePriority(trigger?.priority);
+  if (priority && normalizePriority(record?.priority) !== priority) return false;
+
+  const assigneeId = normalizeAgentId(String(trigger?.assigneeId || '').trim()) || String(trigger?.assigneeId || '').trim();
+  if (assigneeId) {
+    const assignees = normalizeAgentIds(record?.assigneeIds ?? []);
+    if (!assignees.includes(assigneeId)) return false;
+  }
+
+  return true;
+}
+
+async function applyWorkflowTriggerActions(token: string, trigger: any, record: any) {
+  const taskId = String(record?.id || '').trim();
+  if (!taskId) return;
+  const actions = trigger?.actions && typeof trigger.actions === 'object' ? (trigger.actions as Record<string, unknown>) : null;
+  if (!actions) return;
+
+  const patch: Record<string, unknown> = {};
+  const setStatus = String(actions.setStatus || '').trim();
+  if (['inbox', 'assigned', 'in_progress', 'review', 'done', 'blocked'].includes(setStatus) && setStatus !== String(record?.status || '').trim()) {
+    patch.status = setStatus;
+  }
+
+  const assignAgentId = normalizeAgentId(String(actions.assignAgentId || '').trim()) || String(actions.assignAgentId || '').trim();
+  if (assignAgentId) {
+    patch.assigneeIds = [assignAgentId];
+    if (!patch.status && String(record?.status || '').trim() === 'inbox') patch.status = 'assigned';
+  }
+
+  const labelsAdd = normalizeStringArray(actions.addLabelsAny || actions.addLabels || []);
+  if (labelsAdd.length) {
+    const set = new Set<string>(normalizeStringArray(record?.labels));
+    for (const label of labelsAdd) set.add(label);
+    patch.labels = Array.from(set);
+  }
+
+  if (actions.requestReview === true) {
+    patch.requiresReview = true;
+    if (!patch.status && String(record?.status || '').trim() !== 'review') patch.status = 'review';
+  }
+
+  if (Object.keys(patch).length) {
+    patch.updatedAt = nowIso();
+    await pbFetch(`/api/collections/tasks/records/${taskId}`, {
+      method: 'PATCH',
+      token,
+      body: patch,
+    }).catch(() => {});
+  }
+
+  const postMessage = String(actions.postMessage || '').trim();
+  if (postMessage) {
+    await pbFetch('/api/collections/messages/records', {
+      method: 'POST',
+      token,
+      body: {
+        taskId,
+        fromAgentId: '',
+        content: postMessage,
+        mentions: [],
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      },
+    }).catch(() => {});
+  }
+
+  const createSubtasks = normalizeStringArray(actions.createSubtasks || []);
+  for (const title of createSubtasks.slice(0, 10)) {
+    await pbFetch('/api/collections/subtasks/records', {
+      method: 'POST',
+      token,
+      body: {
+        taskId,
+        title,
+        done: false,
+        order: Date.now(),
+        assigneeIds: [],
+        dueAt: '',
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      },
+    }).catch(() => {});
+  }
+
+  if (actions.notifyLead === true) {
+    const msg = String(actions.notifyLeadMessage || '').trim() || `Rule action executed for "${String(record?.title || taskId)}".`;
+    await createNotification(token, leadAgentId, msg, taskId, 'generic', {
+      title: 'Rule action',
+      url: `/tasks/${taskId}`,
+    });
+  }
+}
 
 async function refreshWorkflowTriggers(token: string) {
   try {
     const q = new URLSearchParams({
       page: '1',
       perPage: '200',
-      filter: `enabled = true && event = "task_status_to"`,
+      filter: `enabled = true`,
     });
     const list = await pbFetch(`/api/collections/workflow_triggers/records?${q.toString()}`, { token });
     triggersByStatusTo.clear();
+    triggersOnTaskCreate.length = 0;
+    triggersOnTaskDueSoon.length = 0;
     for (const t of (list?.items ?? []) as any[]) {
+      const event = String(t?.event || 'task_status_to').trim();
+      if (event === 'task_created') {
+        triggersOnTaskCreate.push(t);
+        continue;
+      }
+      if (event === 'task_due_soon') {
+        triggersOnTaskDueSoon.push(t);
+        continue;
+      }
       const statusTo = String(t?.statusTo || '').trim();
       if (!statusTo) continue;
       const arr = triggersByStatusTo.get(statusTo) || [];
@@ -1878,21 +2845,45 @@ function scheduleWorkflowTriggerRefresh(token: string) {
   }, 500);
 }
 
-async function executeWorkflowTrigger(token: string, trigger: any, record: any) {
+async function executeWorkflowTrigger(
+  token: string,
+  trigger: any,
+  record: any,
+  opts?: { fireTag?: string; dedupeKey?: string }
+) {
   const triggerId = String(trigger?.id || '').trim();
   const workflowId = String(trigger?.workflowId || '').trim();
   const taskId = String(record?.id || '').trim();
-  const statusTo = String(trigger?.statusTo || '').trim();
-  if (!triggerId || !workflowId || !taskId || !statusTo) return;
+  const fireTag = String(opts?.fireTag || trigger?.event || trigger?.statusTo || '').trim() || 'task_event';
+  if (!triggerId || !workflowId || !taskId) return;
 
   // Dedupe: avoid accidental double-firing if PB reconnects or events replay.
-  const dedupeKey = `${triggerId}|${taskId}|${statusTo}`;
+  const dedupeKey = String(opts?.dedupeKey || `${triggerId}|${taskId}|${fireTag}`);
   const now = Date.now();
   for (const [k, ts] of recentTriggerFires) {
     if (now - ts > 5 * 60_000) recentTriggerFires.delete(k);
   }
   if (recentTriggerFires.has(dedupeKey)) return;
   recentTriggerFires.set(dedupeKey, now);
+
+  const taskProjectId =
+    String(record?.projectId || '').trim() || String(taskCache.get(taskId)?.projectId || '').trim();
+  const projectBlockReason = getProjectAutomationBlockReason(taskProjectId);
+  if (projectBlockReason) {
+    const workflowNameHint = String(trigger?.workflowId || '').trim() || workflowId;
+    const summary = `Skipped trigger ${triggerId} (${workflowNameHint}) because ${projectBlockReason}.`;
+    const noticeKey = `trigger:${triggerId}:${taskProjectId}:${projectBlockReason}`;
+    if (shouldEmitAutomationPolicyNotice(noticeKey)) {
+      await createActivity(token, 'workflow_trigger_skipped', summary, taskId, '');
+      await createNotification(token, leadAgentId, summary, taskId, 'incident', {
+        title: `Trigger skipped`,
+        url: taskId ? `/tasks/${taskId}` : '/projects',
+      });
+    }
+    return;
+  }
+
+  await applyWorkflowTriggerActions(token, trigger, record);
 
   let workflow: any;
   try {
@@ -1935,12 +2926,19 @@ async function executeWorkflowTrigger(token: string, trigger: any, record: any) 
   await createActivity(
     token,
     'workflow_trigger_fired',
-    `Workflow trigger fired (${String(workflow?.name || workflowId).trim() || workflowId}) on status "${statusTo}".`,
+    `Workflow trigger fired (${String(workflow?.name || workflowId).trim() || workflowId}) on "${fireTag}".`,
     taskId
   );
 
   if (kind !== 'lobster') {
-    await createActivity(token, 'workflow_run_failed', `Workflow run failed (unsupported kind "${kind}").`, taskId);
+    const reason = `unsupported kind "${kind}"`;
+    await createActivity(token, 'workflow_run_failed', `Workflow run failed (${reason}).`, taskId);
+    await notifyWorkflowFailure(token, {
+      workflowName: String(workflow?.name || workflowId).trim() || workflowId,
+      reason,
+      taskId,
+      runId,
+    });
     return;
   }
   if (!pipeline) {
@@ -1950,6 +2948,12 @@ async function executeWorkflowTrigger(token: string, trigger: any, record: any) 
       body: { status: 'failed', log: 'Missing pipeline on workflow.', finishedAt: nowIso(), updatedAt: nowIso() },
     }).catch(() => {});
     await createActivity(token, 'workflow_run_failed', `Workflow run failed (missing pipeline).`, taskId);
+    await notifyWorkflowFailure(token, {
+      workflowName: String(workflow?.name || workflowId).trim() || workflowId,
+      reason: 'missing pipeline',
+      taskId,
+      runId,
+    });
     return;
   }
 
@@ -1979,6 +2983,40 @@ async function executeWorkflowTrigger(token: string, trigger: any, record: any) 
       body: { status: 'failed', log: msg, finishedAt: nowIso(), updatedAt: nowIso() },
     }).catch(() => {});
     await createActivity(token, 'workflow_run_failed', `Workflow run failed (${String(workflow?.name || workflowId).trim() || workflowId}): ${msg}`, taskId);
+    await notifyWorkflowFailure(token, {
+      workflowName: String(workflow?.name || workflowId).trim() || workflowId,
+      reason: msg,
+      taskId,
+      runId,
+    });
+  }
+}
+
+let usageTicking = false;
+async function runUsageCollectionTick(token: string) {
+  if (usageTicking) return;
+  usageTicking = true;
+  try {
+    await refreshTasks(token);
+    await collectUsageSnapshot(token);
+  } catch (err: any) {
+    console.error('[worker] usage collection tick failed', err?.message || err);
+  } finally {
+    usageTicking = false;
+  }
+}
+
+let budgetTicking = false;
+async function runProjectBudgetCheckTick(token: string) {
+  if (budgetTicking) return;
+  budgetTicking = true;
+  try {
+    await refreshTasks(token);
+    await checkProjectBudgets(token);
+  } catch (err: any) {
+    console.error('[worker] budget check tick failed', err?.message || err);
+  } finally {
+    budgetTicking = false;
   }
 }
 
@@ -1991,11 +3029,54 @@ async function maybeFireWorkflowTriggers(token: string, prev: any, record: any) 
   const triggers = triggersByStatusTo.get(statusTo) || [];
   if (!triggers.length) return;
 
-  const taskLabels = normalizeStringArray(record.labels);
   for (const t of triggers) {
-    const labelsAny = normalizeStringArray(t.labelsAny);
-    if (!labelsMatchAny(taskLabels, labelsAny)) continue;
-    await executeWorkflowTrigger(token, t, record);
+    if (!triggerMatchesTask(t, record)) continue;
+    await executeWorkflowTrigger(token, t, record, { fireTag: `task_status_to:${statusTo}` });
+  }
+}
+
+async function maybeFireWorkflowCreateTriggers(token: string, record: any) {
+  if (record?.archived) return;
+  if (!triggersOnTaskCreate.length) return;
+  for (const t of triggersOnTaskCreate) {
+    if (!triggerMatchesTask(t, record)) continue;
+    await executeWorkflowTrigger(token, t, record, { fireTag: 'task_created' });
+  }
+}
+
+async function maybeFireWorkflowDueSoonTriggers(token: string) {
+  if (!triggersOnTaskDueSoon.length) return;
+  const now = Date.now();
+
+  for (const [k, at] of dueSoonTriggerFires) {
+    if (now - at > 24 * 60 * 60_000) dueSoonTriggerFires.delete(k);
+  }
+
+  const tasks = Array.from(taskCache.values());
+  for (const record of tasks) {
+    const taskId = String(record?.id || '').trim();
+    if (!taskId) continue;
+    if (record?.archived) continue;
+    const status = String(record?.status || '').trim();
+    if (status === 'done' || status === 'blocked') continue;
+    const dueAt = String(record?.dueAt || '').trim();
+    if (!dueAt) continue;
+    const dueMs = Date.parse(dueAt);
+    if (!Number.isFinite(dueMs)) continue;
+
+    for (const t of triggersOnTaskDueSoon) {
+      if (!triggerMatchesTask(t, record)) continue;
+      const withinMinutes = toPositiveNumber(t?.dueWithinMinutes) || 60;
+      const withinMs = withinMinutes * 60_000;
+      const diffMs = dueMs - now;
+      if (diffMs < 0 || diffMs > withinMs) continue;
+      const triggerId = String(t?.id || '').trim();
+      if (!triggerId) continue;
+      const dedupeKey = `${triggerId}|${taskId}|${dueAt}`;
+      if (dueSoonTriggerFires.has(dedupeKey)) continue;
+      dueSoonTriggerFires.set(dedupeKey, now);
+      await executeWorkflowTrigger(token, t, record, { fireTag: 'task_due_soon', dedupeKey });
+    }
   }
 }
 
@@ -2106,6 +3187,17 @@ async function subscribeWithRetry(token: string) {
     } catch {
       // Optional collection (may not exist on older schemas).
     }
+    try {
+      await pb.collection('projects').subscribe('*', async () => {
+        try {
+          await refreshProjects(token);
+        } catch (err: any) {
+          console.error('[worker] projects refresh failed', err?.message || err);
+        }
+      });
+    } catch {
+      // Optional collection (may not exist on older schemas).
+    }
   };
 
   while (true) {
@@ -2129,22 +3221,30 @@ async function main() {
 
   await refreshAgents(pbToken);
   await refreshTasks(pbToken);
+  await refreshProjects(pbToken);
   await refreshWorkflowTriggers(pbToken);
   await subscribeWithRetry(pbToken);
 
   // Recover assignments that happened while the worker was down.
   await backfillAssignedTaskNotifications(pbToken);
+  await runUsageCollectionTick(pbToken);
+  await runProjectBudgetCheckTick(pbToken);
+  await maybeFireWorkflowDueSoonTriggers(pbToken);
 
   // Deliver notifications with a debounce to avoid event storms / overlapping runs.
   // A slow interval acts as a safety net in case realtime misses an event.
   setInterval(() => scheduleDeliver(pbToken), env.MC_DELIVER_INTERVAL_MS);
   setInterval(() => void enforceLeases(pbToken), 10_000);
   setInterval(() => void refreshAgents(pbToken), 60_000 * 5);
+  setInterval(() => void refreshProjects(pbToken), 60_000 * 5);
   setInterval(() => void backfillAssignedTaskNotifications(pbToken), 60_000 * 5);
   setInterval(() => void maybeStandup(pbToken), 60_000);
   setInterval(() => void snapshotNodes(pbToken), 60_000 * env.MC_NODE_SNAPSHOT_MINUTES);
   setInterval(() => void runWorkflowSchedules(pbToken), 30_000);
   setInterval(() => void refreshWorkflowTriggers(pbToken), 60_000);
+  setInterval(() => void maybeFireWorkflowDueSoonTriggers(pbToken), 60_000);
+  setInterval(() => void runUsageCollectionTick(pbToken), 60_000 * env.MC_USAGE_COLLECT_MINUTES);
+  setInterval(() => void runProjectBudgetCheckTick(pbToken), 60_000 * env.MC_PROJECT_BUDGET_CHECK_MINUTES);
 
   // keep alive
   // eslint-disable-next-line no-constant-condition

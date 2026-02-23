@@ -40,11 +40,17 @@ async function main() {
     'agents',
     'nodes',
     'tasks',
+    'task_views',
+    'workspaces',
+    'projects',
+    'project_status_updates',
+    'task_dependencies',
     'subtasks',
     'messages',
     'documents',
     'workflows',
     'workflow_runs',
+    'workflow_step_approvals',
     'workflow_schedules',
     'workflow_triggers',
     'activities',
@@ -52,6 +58,7 @@ async function main() {
     'task_subscriptions',
     'push_subscriptions',
     'task_files',
+    'usage_events',
   ]);
 
   for (const c of list.items) {

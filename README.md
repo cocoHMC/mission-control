@@ -18,14 +18,23 @@ This repo is meant to be “clone → run → open `/setup` → done”.
 Note: the desktop app is not notarized/signed by default. On macOS you may need to allow it in System Settings → Privacy & Security.
 
 ## What You Get
-- **Kanban tasks** (Inbox → Assigned → In Progress → Review → Done, plus Blocked)
+- **Task views**: Kanban + Calendar + Asana-style List (inline edits + saved views)
+- **Projects** (multi-project grouping with per-project mode/status)
+- **Automation safety by project mode** (`manual` blocks schedules/triggers, `paused/archived` blocks automation)
+- **Project status updates** (manual check-ins + worker auto-generated daily rollups)
+- **Inbox** (human notification queue with read/unread state)
+- **Task dependencies** (`blocked-by` graph with start enforcement)
 - **Subtasks** with progress counters (`done/total`)
+- **Webhook intake** (`POST /api/intake/webhook` turns external events into tasks)
+- **Usage command center** (events, top spenders, budgets, alerts)
+- **Rules engine triggers** (status/create/due-soon events with conditions + actions)
+- **Manual workflow control** (step trace + wait-for-approval + approve/reject/resume endpoints)
 - **@mention autocomplete** in comments (notify-only)
 - **Auto-done by default**: when a task hits `review`, it automatically becomes `done` unless `requiresReview=true`
 - **Deterministic worker** (no LLM polling): only assignment + explicit `@mentions` can wake OpenClaw
 - **PocketBase** realtime backend (single binary)
 - **Web push notifications** (optional)
-- **OpenClaw wiring**: worker delivers notifications via `/tools/invoke` (token-safe delivery rules + circuit breakers)
+- **OpenClaw wiring**: worker delivers notifications via `/tools/invoke` (token-safe delivery rules + circuit breakers), with optional fallback command when `sessions_send` is gateway-blocked
 
 ## Why “Review” Exists If Auto-Done Is Default
 `review` is the “waiting for approval” stage. Mission Control supports **two policies per task**:
@@ -213,6 +222,30 @@ Minimum required values:
 
 Optional quality-of-life:
 - `MC_GATEWAY_HOST_HINT` (your tailnet IP/hostname; used only to prefill copyable node install commands in the UI)
+- `MC_INTAKE_WEBHOOK_KEY` (enables secure webhook intake at `/api/intake/webhook`)
+- `MC_USAGE_COLLECT_ENABLED`, `MC_USAGE_COLLECT_MINUTES` (capture usage snapshots into `usage_events`)
+- `MC_USAGE_MODEL_PRICES_JSON` (JSON map for estimated USD/token pricing)
+- `MC_PROJECT_BUDGET_CHECK_MINUTES`, `MC_PROJECT_BUDGET_ALERT_COOLDOWN_MS` (project budget alerts in Inbox)
+- `MC_BUDGET_PAUSE_AUTOMATIONS` (auto-pause project workflow schedules at hard budget limit)
+
+### Webhook Intake
+Use this to turn external events (forms, alerts, CRM updates, ticketing webhooks) into inbox tasks.
+
+Example:
+```bash
+curl -X POST "http://127.0.0.1:4010/api/intake/webhook" \
+  -H "content-type: application/json" \
+  -H "x-mc-intake-key: $MC_INTAKE_WEBHOOK_KEY" \
+  -d '{
+    "title": "Investigate production alert",
+    "description": "CPU > 90% on api-2",
+    "projectId": "PROJECT_ID",
+    "priority": "p1",
+    "labels": ["alert","ops"],
+    "source": "pagerduty",
+    "externalId": "incident-1234"
+  }'
+```
 
 When you run `./scripts/dev.sh`, it starts:
 - PocketBase (local) and writes logs to `pb/pocketbase.log`

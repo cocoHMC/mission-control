@@ -2,9 +2,10 @@ import { AppShell } from '@/components/shell/AppShell';
 import { Topbar } from '@/components/shell/Topbar';
 import { TaskBoard } from '@/app/tasks/TaskBoard';
 import { TaskCalendar } from '@/app/tasks/TaskCalendar';
+import { TaskList } from '@/app/tasks/TaskList';
 import { TaskViewToggle } from '@/app/tasks/TaskViewToggle';
 import { pbFetch } from '@/lib/pbServer';
-import type { Agent, NodeRecord, PBList, Task } from '@/lib/types';
+import type { Agent, NodeRecord, PBList, Project, Task } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,15 @@ async function getNodes() {
   return pbFetch<PBList<NodeRecord>>(`/api/collections/nodes/records?${q.toString()}`);
 }
 
+async function getProjects() {
+  const q = new URLSearchParams({ page: '1', perPage: '200', sort: '-updatedAt' });
+  try {
+    return await pbFetch<PBList<Project>>(`/api/collections/projects/records?${q.toString()}`);
+  } catch {
+    return { items: [], page: 1, perPage: 200, totalItems: 0, totalPages: 1 } as PBList<Project>;
+  }
+}
+
 function pickString(value: string | string[] | undefined) {
   if (!value) return '';
   if (Array.isArray(value)) return value[0] || '';
@@ -36,9 +46,9 @@ export default async function TasksPage({
 }) {
   const resolved = (await searchParams) ?? {};
   const viewParam = pickString(resolved.view).trim().toLowerCase();
-  const view = viewParam === 'calendar' ? 'calendar' : 'board';
+  const view = viewParam === 'calendar' ? 'calendar' : viewParam === 'list' ? 'list' : 'board';
 
-  const [tasks, agents, nodes] = await Promise.all([getTasks(), getAgents(), getNodes()]);
+  const [tasks, agents, nodes, projects] = await Promise.all([getTasks(), getAgents(), getNodes(), getProjects()]);
 
   return (
     <AppShell scroll="none" padding="dense">
@@ -49,9 +59,26 @@ export default async function TasksPage({
         </div>
         <div className="min-h-0 flex-1">
           {view === 'calendar' ? (
-            <TaskCalendar initialTasks={tasks.items ?? []} agents={agents.items ?? []} nodes={nodes.items ?? []} />
+            <TaskCalendar
+              initialTasks={tasks.items ?? []}
+              agents={agents.items ?? []}
+              nodes={nodes.items ?? []}
+              projects={projects.items ?? []}
+            />
+          ) : view === 'list' ? (
+            <TaskList
+              initialTasks={tasks.items ?? []}
+              agents={agents.items ?? []}
+              nodes={nodes.items ?? []}
+              projects={projects.items ?? []}
+            />
           ) : (
-            <TaskBoard initialTasks={tasks.items ?? []} agents={agents.items ?? []} nodes={nodes.items ?? []} />
+            <TaskBoard
+              initialTasks={tasks.items ?? []}
+              agents={agents.items ?? []}
+              nodes={nodes.items ?? []}
+              projects={projects.items ?? []}
+            />
           )}
         </div>
       </div>

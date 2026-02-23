@@ -13,6 +13,7 @@ import { buildVaultHintMarkdown, upsertVaultHintMarkdown } from '@/lib/vaultHint
 
 type Agent = { id: string; displayName?: string; openclawAgentId?: string };
 type NodeRecord = { id: string; displayName?: string; nodeId?: string };
+type Project = { id: string; name?: string; archived?: boolean; status?: string };
 type OpenClawNode = {
   nodeId?: string;
   displayName?: string;
@@ -45,19 +46,24 @@ function providerFromModelKey(key: string): string {
 export function TaskForm({
   agents,
   nodes,
+  projects,
   onCreated,
   initialStartAt,
   initialDueAt,
+  initialProjectId,
 }: {
   agents: Agent[];
   nodes: NodeRecord[];
+  projects: Project[];
   onCreated?: (taskId?: string) => void;
   initialStartAt?: string;
   initialDueAt?: string;
+  initialProjectId?: string;
 }) {
   const router = useRouter();
   const leadAgentId = process.env.NEXT_PUBLIC_MC_LEAD_AGENT_ID || 'main';
   const [pending, setPending] = React.useState(false);
+  const [projectId, setProjectId] = React.useState(initialProjectId || '');
   const [title, setTitle] = React.useState('');
   const [description, setDescription] = React.useState('');
   const [context, setContext] = React.useState('');
@@ -87,6 +93,10 @@ export function TaskForm({
   const [vaultLoading, setVaultLoading] = React.useState(false);
   const [vaultLoadError, setVaultLoadError] = React.useState<string | null>(null);
   const [includeVaultHintInDescription, setIncludeVaultHintInDescription] = React.useState(true);
+
+  React.useEffect(() => {
+    setProjectId(initialProjectId || '');
+  }, [initialProjectId]);
 
   React.useEffect(() => {
     // Best-effort live node list from OpenClaw (no PocketBase sync required).
@@ -208,6 +218,7 @@ export function TaskForm({
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         title,
+        projectId,
         description: descriptionWithHint,
         context,
         vaultItem: vaultHandle.trim() || '',
@@ -396,6 +407,23 @@ export function TaskForm({
         />
       </details>
       <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="text-sm font-medium">Project</label>
+          <select
+            className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+            value={projectId}
+            onChange={(event) => setProjectId(event.target.value)}
+          >
+            <option value="">No project</option>
+            {(projects || [])
+              .filter((p) => !p.archived && String(p.status || 'active') !== 'archived')
+              .map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name || project.id}
+                </option>
+              ))}
+          </select>
+        </div>
         <div>
           <label className="text-sm font-medium">Priority</label>
           <select

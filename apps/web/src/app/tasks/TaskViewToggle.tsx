@@ -2,16 +2,17 @@
 
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { CalendarDays, Columns3 } from 'lucide-react';
+import { CalendarDays, Columns3, Rows3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type ViewId = 'board' | 'calendar';
+type ViewId = 'board' | 'calendar' | 'list';
 
 function normalizeView(value: string | null): ViewId {
   const v = String(value || '')
     .trim()
     .toLowerCase();
   if (v === 'calendar') return 'calendar';
+  if (v === 'list') return 'list';
   return 'board';
 }
 
@@ -30,6 +31,7 @@ export function TaskViewToggle({ variant = 'page' }: { variant?: 'page' | 'inlin
 
   const tabs: Array<{ id: ViewId; label: string; Icon: React.ComponentType<{ className?: string }> }> = [
     { id: 'board', label: 'Board', Icon: Columns3 },
+    { id: 'list', label: 'List', Icon: Rows3 },
     { id: 'calendar', label: 'Calendar', Icon: CalendarDays },
   ];
 
@@ -68,8 +70,9 @@ export function TaskViewToggle({ variant = 'page' }: { variant?: 'page' | 'inlin
 
       {variant === 'page' ? (
         <div className="hidden text-xs text-muted sm:block">
-          Tip: <span className="font-medium text-[var(--foreground)]">Board</span> for flow,{' '}
-          <span className="font-medium text-[var(--foreground)]">Calendar</span> for dates and agent load.
+          Tip: <span className="font-medium text-[var(--foreground)]">List</span> for bulk edits,{' '}
+          <span className="font-medium text-[var(--foreground)]">Board</span> for flow,{' '}
+          <span className="font-medium text-[var(--foreground)]">Calendar</span> for dates.
         </div>
       ) : null}
     </div>

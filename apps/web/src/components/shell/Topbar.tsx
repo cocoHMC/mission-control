@@ -1,6 +1,7 @@
 import Link from 'next/link';
-import { Bell, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { CommandPalette } from '@/components/shell/CommandPalette';
+import { NotificationBell } from '@/components/shell/NotificationBell';
 import { Badge } from '@/components/ui/badge';
 
 export function Topbar({
@@ -40,9 +41,7 @@ export function Topbar({
             {actionLabel}
           </Link>
         ) : null}
-        <button className="no-drag rounded-full border border-[var(--border)] bg-[var(--card)] p-2">
-          <Bell className="h-4 w-4" />
-        </button>
+        <NotificationBell />
         <div className="no-drag">
           <CommandPalette variant={compact ? 'icon' : 'default'} />
         </div>

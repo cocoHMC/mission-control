@@ -7,13 +7,14 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { mcFetch } from '@/lib/clientApi';
 import { getPocketBaseClient, type PBRealtimeEvent } from '@/lib/pbClient';
-import type { Agent, DocumentRecord, Message, NodeRecord, PBList, Subtask, Task, TaskFile } from '@/lib/types';
+import type { Agent, DocumentRecord, Message, NodeRecord, PBList, Project, Subtask, Task, TaskFile } from '@/lib/types';
 
 type DrawerProps = {
   open: boolean;
   taskId: string | null;
   agents: Agent[];
   nodes: NodeRecord[];
+  projects: Project[];
   onClose: () => void;
 };
 
@@ -25,7 +26,7 @@ async function fetchJson<T>(url: string) {
   return (await res.json()) as T;
 }
 
-export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps) {
+export function TaskDrawer({ open, taskId, agents, nodes, projects, onClose }: DrawerProps) {
   const TRANSITION_MS = 220;
   const [rendered, setRendered] = React.useState(open);
   const [visible, setVisible] = React.useState(open);
@@ -266,6 +267,7 @@ export function TaskDrawer({ open, taskId, agents, nodes, onClose }: DrawerProps
               task={task}
               agents={agents}
               nodes={nodes}
+              projects={projects}
               messages={messages}
               documents={documents}
               files={files}

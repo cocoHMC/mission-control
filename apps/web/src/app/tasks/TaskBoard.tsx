@@ -28,7 +28,7 @@ import { TaskCreateDrawer } from '@/app/tasks/TaskCreateDrawer';
 import { TaskDrawer } from '@/app/tasks/TaskDrawer';
 import { mcFetch } from '@/lib/clientApi';
 import { getPocketBaseClient, type PBRealtimeEvent } from '@/lib/pbClient';
-import type { Agent, NodeRecord, Task, TaskStatus } from '@/lib/types';
+import type { Agent, NodeRecord, Project, Task, TaskStatus } from '@/lib/types';
 import { cn, formatShortDate, titleCase } from '@/lib/utils';
 
 const columns: Array<{ id: TaskStatus; label: string; tone: string }> = [
@@ -262,7 +262,17 @@ function Column({
   );
 }
 
-export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[]; agents: Agent[]; nodes: NodeRecord[] }) {
+export function TaskBoard({
+  initialTasks,
+  agents,
+  nodes,
+  projects,
+}: {
+  initialTasks: Task[];
+  agents: Agent[];
+  nodes: NodeRecord[];
+  projects: Project[];
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -302,6 +312,11 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
     setTasks(initialTasks);
   }, [initialTasks]);
 
+  const selectedProjectId = React.useMemo(() => {
+    const raw = String(searchParams.get('project') || '').trim();
+    return raw;
+  }, [searchParams]);
+
   React.useEffect(() => {
     setMounted(true);
   }, []);
@@ -327,6 +342,16 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
     }
     return map;
   }, [agents]);
+
+  const projectNameById = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of projects || []) {
+      const id = String(p.id || '').trim();
+      if (!id) continue;
+      map.set(id, String(p.name || id));
+    }
+    return map;
+  }, [projects]);
 
   React.useEffect(() => {
     let pollId: ReturnType<typeof setInterval> | null = setInterval(async () => {
@@ -382,11 +407,18 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
     if (typeof overrideTaskId === 'string' && taskParam === overrideTaskId) setOverrideTaskId(undefined);
   }, [overrideTaskId, taskParam]);
 
+  const visibleTasks = React.useMemo(() => {
+    return tasks.filter((task) => {
+      if (task.archived) return false;
+      if (!selectedProjectId) return true;
+      return String(task.projectId || '').trim() === selectedProjectId;
+    });
+  }, [tasks, selectedProjectId]);
+
   const grouped = React.useMemo(() => {
     const by = new Map<TaskStatus, Task[]>();
     for (const c of columns) by.set(c.id, []);
-    for (const t of tasks) {
-      if (t.archived) continue;
+    for (const t of visibleTasks) {
       const list = by.get(t.status as TaskStatus);
       if (!list) continue;
       list.push(t);
@@ -396,7 +428,7 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
       by.set(k, list);
     }
     return by;
-  }, [tasks]);
+  }, [visibleTasks]);
 
   function openDrawer(taskId: string) {
     if (suppressOpenRef.current) return;
@@ -433,7 +465,7 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
   }
 
   function findTask(id: string) {
-    return tasks.find((t) => t.id === id) || null;
+    return visibleTasks.find((t) => t.id === id) || null;
   }
 
   function columnOfId(id: string): TaskStatus | null {
@@ -575,6 +607,32 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
           <div className="hidden sm:block text-xs text-muted">
             Drag to reorder. Drop into another column to change status.
           </div>
+          <select
+            className="h-9 rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-xs"
+            value={selectedProjectId}
+            onChange={(event) => {
+              const params = new URLSearchParams(searchParams.toString());
+              const value = String(event.target.value || '').trim();
+              if (value) params.set('project', value);
+              else params.delete('project');
+              const next = params.toString();
+              router.replace(next ? `/tasks?${next}` : '/tasks', { scroll: false });
+            }}
+          >
+            <option value="">All projects</option>
+            {projects
+              .filter((p) => !p.archived && String(p.status || 'active') !== 'archived')
+              .map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name || project.id}
+                </option>
+              ))}
+          </select>
+          {selectedProjectId ? (
+            <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">
+              {projectNameById.get(selectedProjectId) || selectedProjectId}
+            </Badge>
+          ) : null}
         </div>
         <Button
           type="button"
@@ -655,8 +713,22 @@ export function TaskBoard({ initialTasks, agents, nodes }: { initialTasks: Task[
         </div>
       )}
 
-      <TaskDrawer open={drawerOpen} taskId={effectiveTaskId} agents={agents} nodes={nodes} onClose={closeDrawer} />
-      <TaskCreateDrawer open={createOpen} agents={agents} nodes={nodes} onClose={closeCreateDrawer} />
+      <TaskDrawer
+        open={drawerOpen}
+        taskId={effectiveTaskId}
+        agents={agents}
+        nodes={nodes}
+        projects={projects}
+        onClose={closeDrawer}
+      />
+      <TaskCreateDrawer
+        open={createOpen}
+        agents={agents}
+        nodes={nodes}
+        projects={projects}
+        initialProjectId={selectedProjectId || undefined}
+        onClose={closeCreateDrawer}
+      />
     </div>
   );
 }

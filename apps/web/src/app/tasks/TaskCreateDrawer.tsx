@@ -3,19 +3,30 @@
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { TaskForm } from '@/app/tasks/new/TaskForm';
-import type { Agent, NodeRecord } from '@/lib/types';
+import type { Agent, NodeRecord, Project } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 type DrawerProps = {
   open: boolean;
   agents: Agent[];
   nodes: NodeRecord[];
+  projects: Project[];
   onClose: () => void;
   initialStartAt?: string;
   initialDueAt?: string;
+  initialProjectId?: string;
 };
 
-export function TaskCreateDrawer({ open, agents, nodes, onClose, initialStartAt, initialDueAt }: DrawerProps) {
+export function TaskCreateDrawer({
+  open,
+  agents,
+  nodes,
+  projects,
+  onClose,
+  initialStartAt,
+  initialDueAt,
+  initialProjectId,
+}: DrawerProps) {
   const TRANSITION_MS = 220;
   const [rendered, setRendered] = React.useState(open);
   const [visible, setVisible] = React.useState(open);
@@ -92,8 +103,10 @@ export function TaskCreateDrawer({ open, agents, nodes, onClose, initialStartAt,
           <TaskForm
             agents={agents}
             nodes={nodes}
+            projects={projects}
             initialStartAt={initialStartAt}
             initialDueAt={initialDueAt}
+            initialProjectId={initialProjectId}
             onCreated={() => onClose()}
           />
         </div>
