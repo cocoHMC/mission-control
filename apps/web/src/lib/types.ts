@@ -15,6 +15,18 @@ export type OpenClawTaskPolicy = {
   };
 };
 
+export type TaskRecurrenceFrequency = 'hourly' | 'daily' | 'weekly' | 'monthly';
+export type TaskRecurrenceMode = 'after_completion';
+
+export type TaskRecurrence = {
+  version: 1;
+  frequency: TaskRecurrenceFrequency;
+  interval: number;
+  weekdays?: number[];
+  monthday?: number;
+  mode?: TaskRecurrenceMode;
+};
+
 export type Task = {
   id: string;
   projectId?: string;
@@ -46,6 +58,10 @@ export type Task = {
   startAt?: string;
   dueAt?: string;
   completedAt?: string;
+  recurrence?: TaskRecurrence | null;
+  recurrenceSeriesId?: string;
+  recurrenceFromTaskId?: string;
+  recurrenceSpawnedTaskId?: string;
   requiresReview?: boolean;
   // Optional task-level policy knobs (e.g. future tool profile / escalation rules).
   policy?: OpenClawTaskPolicy | unknown;

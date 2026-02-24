@@ -1,5 +1,6 @@
 import { AppShell } from '@/components/shell/AppShell';
 import { Topbar } from '@/components/shell/Topbar';
+import { Badge } from '@/components/ui/badge';
 import { pbFetch } from '@/lib/pbServer';
 import type { PBList, Project, ProjectStatusUpdate, Workspace } from '@/lib/types';
 import { ProjectsClient } from '@/app/projects/ProjectsClient';
@@ -53,7 +54,8 @@ export default async function ProjectsPage({
       <div className="flex h-full min-h-0 flex-col gap-3">
         <Topbar
           title="Projects"
-          subtitle="Asana-style work buckets with automation controls and status reporting."
+          subtitle="Asana-style work buckets with automation controls and status reporting inside Mission Control."
+          rightSlot={<Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Scope: Mission Control</Badge>}
           density="compact"
         />
         <div className="min-h-0 flex-1">

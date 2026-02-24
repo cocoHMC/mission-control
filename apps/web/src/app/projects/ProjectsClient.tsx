@@ -258,15 +258,29 @@ export function ProjectsClient({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-xs text-muted">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Scope: Mission Control</Badge>
+          <span>Workspace here means a Mission Control project grouping for boards, automations, and budgets.</span>
+        </div>
+        <div className="mt-2">
+          OpenClaw workspace paths are filesystem directories per agent and can be managed in{' '}
+          <Link href="/agents" className="font-medium underline">
+            Agents
+          </Link>
+          .
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-          <span className="uppercase tracking-[0.2em]">Workspace filter</span>
+          <span className="uppercase tracking-[0.2em]">Mission Control workspace filter</span>
           <select
             className="h-9 rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-xs text-[var(--foreground)]"
             value={workspaceFilter}
             onChange={(event) => updateWorkspaceFilter(event.target.value)}
           >
-            <option value="">All workspaces</option>
+            <option value="">All MC workspaces</option>
             {workspaces.map((workspace) => (
               <option key={workspace.id} value={workspace.id}>
                 {workspace.name || workspace.id}
@@ -278,7 +292,7 @@ export function ProjectsClient({
           </Badge>
         </div>
         <Link href="/workspaces" className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium">
-          Manage workspaces
+          Manage MC workspaces
         </Link>
       </div>
 
@@ -296,13 +310,13 @@ export function ProjectsClient({
             <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-2" placeholder="Ops Control Tower" />
           </div>
           <div>
-            <label className="text-xs uppercase tracking-[0.2em] text-muted">Workspace</label>
+            <label className="text-xs uppercase tracking-[0.2em] text-muted">Mission Control workspace</label>
             <select
               className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
               value={workspaceId}
               onChange={(e) => setWorkspaceId(e.target.value)}
             >
-              <option value="">No workspace</option>
+              <option value="">No MC workspace</option>
               {workspaces.map((workspace) => (
                 <option key={workspace.id} value={workspace.id}>
                   {workspace.name || workspace.id}
@@ -426,7 +440,7 @@ export function ProjectsClient({
                     ) : null}
                     {project.slug ? <span className="font-mono text-muted">{project.slug}</span> : null}
                     {workspaceName ? (
-                      <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">{workspaceName}</Badge>
+                      <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">MC: {workspaceName}</Badge>
                     ) : null}
                   </div>
                 </div>
@@ -452,7 +466,7 @@ export function ProjectsClient({
                       })
                     }
                   >
-                    <option value="">no workspace</option>
+                    <option value="">no MC workspace</option>
                     {workspaces.map((workspace) => (
                       <option key={workspace.id} value={workspace.id}>
                         {workspace.name || workspace.id}
@@ -620,7 +634,7 @@ export function ProjectsClient({
           })}
           {!filteredProjects.length ? (
             <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--card)] p-8 text-center text-sm text-muted">
-              {workspaceFilter ? 'No projects in this workspace yet.' : 'No projects yet.'}
+              {workspaceFilter ? 'No projects in this Mission Control workspace yet.' : 'No projects yet.'}
             </div>
           ) : null}
         </div>

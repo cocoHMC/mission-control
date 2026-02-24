@@ -32,7 +32,7 @@ const sections: Array<{
       { href: '/', label: 'Overview', icon: LayoutDashboard },
       { href: '/tasks', label: 'Tasks', icon: ListTodo },
       { href: '/inbox', label: 'Inbox', icon: Inbox },
-      { href: '/workspaces', label: 'Workspaces', icon: Layers3 },
+      { href: '/workspaces', label: 'MC Workspaces', icon: Layers3 },
       { href: '/projects', label: 'Projects', icon: FolderKanban },
       { href: '/usage', label: 'Usage', icon: Gauge },
       { href: '/activity', label: 'Activity', icon: BarChart3 },

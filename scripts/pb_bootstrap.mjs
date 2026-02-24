@@ -360,6 +360,11 @@ async function main() {
         { type: 'date', name: 'startAt' },
         { type: 'date', name: 'dueAt' },
         { type: 'date', name: 'completedAt' },
+        // Optional recurrence rule for generating next tasks when this one completes.
+        { type: 'json', name: 'recurrence' },
+        { type: 'text', name: 'recurrenceSeriesId' },
+        { type: 'text', name: 'recurrenceFromTaskId' },
+        { type: 'text', name: 'recurrenceSpawnedTaskId' },
         // PocketBase validates required bool/number fields as "must be truthy",
         // which breaks defaults like `false` and `0`. We enforce these in app logic instead.
         { type: 'bool', name: 'requiresReview' },

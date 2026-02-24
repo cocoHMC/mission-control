@@ -1,5 +1,6 @@
 import { AppShell } from '@/components/shell/AppShell';
 import { Topbar } from '@/components/shell/Topbar';
+import { Badge } from '@/components/ui/badge';
 import { pbFetch } from '@/lib/pbServer';
 import type { Agent, PBList } from '@/lib/types';
 import { AgentsGrid } from '@/app/agents/AgentsGrid';
@@ -13,7 +14,12 @@ export default async function AgentsPage() {
   return (
     <AppShell padding="dense">
       <div className="flex h-full min-h-0 flex-col gap-3">
-        <Topbar title="Agents" subtitle={`Lead agent: ${leadName}. Add more agents when ready.`} density="compact" />
+        <Topbar
+          title="Agents"
+          subtitle={`Lead agent: ${leadName}. OpenClaw workspace paths are configured here; Mission Control workspaces live under Projects.`}
+          rightSlot={<Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Scope: OpenClaw</Badge>}
+          density="compact"
+        />
         <div className="min-h-0 flex-1">
           <AgentsGrid initialAgents={agents} />
         </div>

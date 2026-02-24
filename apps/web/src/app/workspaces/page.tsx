@@ -1,5 +1,6 @@
 import { AppShell } from '@/components/shell/AppShell';
 import { Topbar } from '@/components/shell/Topbar';
+import { Badge } from '@/components/ui/badge';
 import { pbFetch } from '@/lib/pbServer';
 import type { PBList, Project, Workspace } from '@/lib/types';
 import { WorkspacesClient } from '@/app/workspaces/WorkspacesClient';
@@ -31,8 +32,9 @@ export default async function WorkspacesPage() {
     <AppShell padding="dense">
       <div className="flex h-full min-h-0 flex-col gap-3">
         <Topbar
-          title="Workspaces"
-          subtitle="Group projects into focused operating domains with separate ownership and budgets."
+          title="Mission Control Workspaces"
+          subtitle="Group projects into operating domains for Mission Control. These do not set OpenClaw filesystem workspace paths."
+          rightSlot={<Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Scope: Mission Control</Badge>}
           density="compact"
         />
         <div className="min-h-0 flex-1">

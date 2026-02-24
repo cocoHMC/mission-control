@@ -12,6 +12,12 @@ import { MentionsTextarea } from '@/components/mentions/MentionsTextarea';
 import { Textarea } from '@/components/ui/textarea';
 import { CopyButton } from '@/components/ui/copy-button';
 import { cn, formatShortDate, fromDateTimeLocalValue, toDateTimeLocalValue } from '@/lib/utils';
+import {
+  TASK_RECURRENCE_WEEKDAYS,
+  fallbackRecurrenceDate,
+  normalizeTaskRecurrence,
+  taskRecurrenceSummary,
+} from '@/lib/taskRecurrence';
 import type {
   Activity,
   Agent,
@@ -24,6 +30,7 @@ import type {
   ReviewChecklistItem,
   Subtask,
   Task,
+  TaskRecurrenceFrequency,
   TaskDependency,
   TaskFile,
   WorkflowRun,
@@ -165,6 +172,20 @@ function newChecklistId() {
   return `${rand}${ts}`;
 }
 
+function parsePositiveInt(value: string, fallback = 1) {
+  const parsed = Number.parseInt(String(value || '').trim(), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.trunc(parsed);
+}
+
+function safeTaskRecurrence(raw: unknown, ...seedValues: unknown[]) {
+  try {
+    return normalizeTaskRecurrence(raw, { fallbackDate: fallbackRecurrenceDate(...seedValues) });
+  } catch {
+    return null;
+  }
+}
+
 export function TaskDetail({
   task,
   agents,
@@ -222,6 +243,30 @@ export function TaskDetail({
   const [policySaving, setPolicySaving] = React.useState(false);
   const [startAt, setStartAt] = React.useState(toDateTimeLocalValue(task.startAt));
   const [dueAt, setDueAt] = React.useState(toDateTimeLocalValue(task.dueAt));
+  const [recurrenceEnabled, setRecurrenceEnabled] = React.useState(() =>
+    Boolean(safeTaskRecurrence(task.recurrence, task.dueAt, task.startAt, task.createdAt))
+  );
+  const [recurrenceFrequency, setRecurrenceFrequency] = React.useState<TaskRecurrenceFrequency>(() => {
+    const parsed = safeTaskRecurrence(task.recurrence, task.dueAt, task.startAt, task.createdAt);
+    return parsed?.frequency || 'weekly';
+  });
+  const [recurrenceInterval, setRecurrenceInterval] = React.useState(() => {
+    const parsed = safeTaskRecurrence(task.recurrence, task.dueAt, task.startAt, task.createdAt);
+    return String(parsed?.interval || 1);
+  });
+  const [recurrenceWeekdays, setRecurrenceWeekdays] = React.useState<number[]>(() => {
+    const parsed = safeTaskRecurrence(task.recurrence, task.dueAt, task.startAt, task.createdAt);
+    if (parsed?.frequency === 'weekly' && parsed.weekdays?.length) return parsed.weekdays;
+    const seed = fallbackRecurrenceDate(task.dueAt, task.startAt, task.createdAt);
+    return [seed.getDay()];
+  });
+  const [recurrenceMonthday, setRecurrenceMonthday] = React.useState(() => {
+    const parsed = safeTaskRecurrence(task.recurrence, task.dueAt, task.startAt, task.createdAt);
+    if (parsed?.frequency === 'monthly' && parsed.monthday) return String(parsed.monthday);
+    const seed = fallbackRecurrenceDate(task.dueAt, task.startAt, task.createdAt);
+    return String(seed.getDate());
+  });
+  const [recurrenceError, setRecurrenceError] = React.useState<string | null>(null);
   const [vaultAgent, setVaultAgent] = React.useState<string>('');
   const [vaultHandle, setVaultHandle] = React.useState<string>(String(task.vaultItem || ''));
   const [vaultItems, setVaultItems] = React.useState<
@@ -400,6 +445,26 @@ export function TaskDetail({
     const nextDueAt = toDateTimeLocalValue(task.dueAt);
     setDueAt((prev) => (prev === nextDueAt ? prev : nextDueAt));
 
+    const recurrence = safeTaskRecurrence(task.recurrence, task.dueAt, task.startAt, task.createdAt);
+    setRecurrenceEnabled((prev) => (prev === Boolean(recurrence) ? prev : Boolean(recurrence)));
+    setRecurrenceFrequency((prev) => (prev === (recurrence?.frequency || 'weekly') ? prev : recurrence?.frequency || 'weekly'));
+    setRecurrenceInterval((prev) => {
+      const next = String(recurrence?.interval || 1);
+      return prev === next ? prev : next;
+    });
+    setRecurrenceWeekdays((prev) => {
+      const seed = fallbackRecurrenceDate(task.dueAt, task.startAt, task.createdAt);
+      const next =
+        recurrence?.frequency === 'weekly' && recurrence.weekdays?.length ? recurrence.weekdays : [seed.getDay()];
+      return sameStringArray(prev.map(String), next.map(String)) ? prev : next;
+    });
+    setRecurrenceMonthday((prev) => {
+      const seed = fallbackRecurrenceDate(task.dueAt, task.startAt, task.createdAt);
+      const next = String(recurrence?.frequency === 'monthly' && recurrence.monthday ? recurrence.monthday : seed.getDate());
+      return prev === next ? prev : next;
+    });
+    setRecurrenceError(null);
+
     const nextContextDraft = String(task.context ?? '');
     setContextDraft((prev) => (prev === nextContextDraft ? prev : nextContextDraft));
 
@@ -426,8 +491,10 @@ export function TaskDetail({
     task.reviewChecklist,
     task.startAt,
     task.dueAt,
+    task.recurrence,
     task.context,
     task.projectId,
+    task.createdAt,
     task.vaultItem,
   ]);
 
@@ -505,6 +572,18 @@ export function TaskDetail({
     if (!p || p === 'auto') return [];
     return (modelCatalog || []).filter((m) => providerFromModelKey(m.key) === p);
   }, [modelCatalog, aiProvider]);
+
+  const recurrenceSummary = React.useMemo(() => {
+    if (!recurrenceEnabled) return '';
+    const interval = parsePositiveInt(recurrenceInterval, 1);
+    const payload =
+      recurrenceFrequency === 'weekly'
+        ? { version: 1, frequency: 'weekly', interval, weekdays: recurrenceWeekdays, mode: 'after_completion' as const }
+        : recurrenceFrequency === 'monthly'
+          ? { version: 1, frequency: 'monthly', interval, monthday: parsePositiveInt(recurrenceMonthday, 1), mode: 'after_completion' as const }
+          : { version: 1, frequency: recurrenceFrequency, interval, mode: 'after_completion' as const };
+    return taskRecurrenceSummary(payload);
+  }, [recurrenceEnabled, recurrenceFrequency, recurrenceInterval, recurrenceMonthday, recurrenceWeekdays]);
 
   async function updateTask(payload: Record<string, unknown>) {
     const res = await mcFetch(`/api/tasks/${task.id}`, {
@@ -653,6 +732,67 @@ export function TaskDetail({
       startAt: nextStart || '',
       dueAt: nextDue || '',
     });
+  }
+
+  function toggleRecurrenceWeekday(day: number) {
+    setRecurrenceWeekdays((prev) => {
+      const exists = prev.includes(day);
+      if (exists) {
+        const next = prev.filter((d) => d !== day);
+        return next.length ? next : [day];
+      }
+      return [...prev, day].sort((a, b) => a - b);
+    });
+  }
+
+  async function onSaveRecurrence() {
+    setRecurrenceError(null);
+
+    let recurrencePayload: Record<string, unknown> | null = null;
+    if (recurrenceEnabled) {
+      const interval = parsePositiveInt(recurrenceInterval, 1);
+      if (interval <= 0) {
+        setRecurrenceError('Recurrence interval must be a positive number.');
+        return;
+      }
+
+      if (recurrenceFrequency === 'weekly') {
+        const weekdays = recurrenceWeekdays.length ? Array.from(new Set(recurrenceWeekdays)).sort((a, b) => a - b) : [];
+        if (!weekdays.length) {
+          setRecurrenceError('Select at least one weekday for weekly recurrence.');
+          return;
+        }
+        recurrencePayload = {
+          version: 1,
+          frequency: recurrenceFrequency,
+          interval,
+          weekdays,
+          mode: 'after_completion',
+        };
+      } else if (recurrenceFrequency === 'monthly') {
+        const monthday = parsePositiveInt(recurrenceMonthday, 1);
+        if (monthday < 1 || monthday > 31) {
+          setRecurrenceError('Monthly recurrence day must be between 1 and 31.');
+          return;
+        }
+        recurrencePayload = {
+          version: 1,
+          frequency: recurrenceFrequency,
+          interval,
+          monthday,
+          mode: 'after_completion',
+        };
+      } else {
+        recurrencePayload = {
+          version: 1,
+          frequency: recurrenceFrequency,
+          interval,
+          mode: 'after_completion',
+        };
+      }
+    }
+
+    await updateTask({ recurrence: recurrencePayload });
   }
 
   async function onToggleRequiresReview(next: boolean) {
@@ -995,7 +1135,7 @@ export function TaskDetail({
             </div>
             <Badge className="border-none bg-[var(--accent)] text-[var(--background)]">{status.replace('_', ' ')}</Badge>
           </div>
-          {(task.startAt || task.dueAt) && (
+          {(task.startAt || task.dueAt || recurrenceSummary) && (
             <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
               {task.startAt && (
                 <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
@@ -1009,6 +1149,9 @@ export function TaskDetail({
               )}
               {task.requiresReview ? (
                 <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-1">requires review</span>
+              ) : null}
+              {recurrenceSummary ? (
+                <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-1">repeats: {recurrenceSummary}</span>
               ) : null}
               {projectId ? (
                 <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
@@ -2009,6 +2152,101 @@ export function TaskDetail({
             </div>
             <Button type="button" size="sm" variant="secondary" className="mt-3" onClick={onUpdateDates}>
               Save dates
+            </Button>
+          </div>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-[0.2em] text-muted">Recurrence</div>
+                <div className="mt-1 text-xs text-muted">Generates the next task when this one is completed.</div>
+              </div>
+              {recurrenceSummary ? (
+                <span className="rounded-full border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs text-[var(--foreground)]">
+                  {recurrenceSummary}
+                </span>
+              ) : null}
+            </div>
+
+            <label className="mt-3 flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-3 text-sm">
+              <input type="checkbox" checked={recurrenceEnabled} onChange={(e) => setRecurrenceEnabled(e.target.checked)} />
+              Enable recurrence
+            </label>
+
+            {recurrenceEnabled ? (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs uppercase tracking-[0.2em] text-muted">Frequency</label>
+                  <select
+                    className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+                    value={recurrenceFrequency}
+                    onChange={(event) => setRecurrenceFrequency(event.target.value as TaskRecurrenceFrequency)}
+                  >
+                    <option value="hourly">Hourly</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-[0.2em] text-muted">Interval</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={recurrenceInterval}
+                    onChange={(event) => setRecurrenceInterval(event.target.value)}
+                    className="mt-2"
+                  />
+                </div>
+
+                {recurrenceFrequency === 'weekly' ? (
+                  <div className="sm:col-span-2">
+                    <label className="text-xs uppercase tracking-[0.2em] text-muted">Weekdays</label>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {TASK_RECURRENCE_WEEKDAYS.map((day) => {
+                        const active = recurrenceWeekdays.includes(day.value);
+                        return (
+                          <button
+                            key={day.value}
+                            type="button"
+                            className={`rounded-full border px-3 py-1 text-xs ${
+                              active
+                                ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]'
+                                : 'border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]'
+                            }`}
+                            onClick={() => toggleRecurrenceWeekday(day.value)}
+                          >
+                            {day.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {recurrenceFrequency === 'monthly' ? (
+                  <div>
+                    <label className="text-xs uppercase tracking-[0.2em] text-muted">Day of month</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={31}
+                      step={1}
+                      value={recurrenceMonthday}
+                      onChange={(event) => setRecurrenceMonthday(event.target.value)}
+                      className="mt-2"
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {recurrenceError ? (
+              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">{recurrenceError}</div>
+            ) : null}
+
+            <Button type="button" size="sm" variant="secondary" className="mt-3" onClick={() => void onSaveRecurrence()}>
+              Save recurrence
             </Button>
           </div>
           <div>

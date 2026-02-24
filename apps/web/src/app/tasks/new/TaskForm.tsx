@@ -10,6 +10,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { fromDateTimeLocalValue, toDateTimeLocalValue } from '@/lib/utils';
 import { mcFetch } from '@/lib/clientApi';
 import { buildVaultHintMarkdown, upsertVaultHintMarkdown } from '@/lib/vaultHint';
+import { TASK_RECURRENCE_WEEKDAYS, taskRecurrenceSummary } from '@/lib/taskRecurrence';
+import type { TaskRecurrenceFrequency } from '@/lib/types';
 
 type Agent = { id: string; displayName?: string; openclawAgentId?: string };
 type NodeRecord = { id: string; displayName?: string; nodeId?: string };
@@ -41,6 +43,12 @@ function inferTierFromModelKey(key: string): string {
 function providerFromModelKey(key: string): string {
   const idx = key.indexOf('/');
   return idx > 0 ? key.slice(0, idx) : 'unknown';
+}
+
+function parsePositiveInt(value: string, fallback = 1) {
+  const parsed = Number.parseInt(String(value || '').trim(), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.trunc(parsed);
 }
 
 export function TaskForm({
@@ -77,6 +85,22 @@ export function TaskForm({
   const [requiredNodeId, setRequiredNodeId] = React.useState('');
   const [startAt, setStartAt] = React.useState(() => toDateTimeLocalValue(initialStartAt));
   const [dueAt, setDueAt] = React.useState(() => toDateTimeLocalValue(initialDueAt));
+  const [recurrenceEnabled, setRecurrenceEnabled] = React.useState(false);
+  const [recurrenceFrequency, setRecurrenceFrequency] = React.useState<TaskRecurrenceFrequency>('weekly');
+  const [recurrenceInterval, setRecurrenceInterval] = React.useState('1');
+  const [recurrenceWeekdays, setRecurrenceWeekdays] = React.useState<number[]>(() => {
+    const seed = initialDueAt || initialStartAt || '';
+    const date = seed ? new Date(seed) : new Date();
+    const day = Number.isNaN(date.getTime()) ? new Date().getDay() : date.getDay();
+    return [day];
+  });
+  const [recurrenceMonthday, setRecurrenceMonthday] = React.useState(() => {
+    const seed = initialDueAt || initialStartAt || '';
+    const date = seed ? new Date(seed) : new Date();
+    const day = Number.isNaN(date.getTime()) ? new Date().getDate() : date.getDate();
+    return String(day);
+  });
+  const [recurrenceError, setRecurrenceError] = React.useState<string | null>(null);
   const [requiresReview, setRequiresReview] = React.useState(false);
   const [subtasks, setSubtasks] = React.useState<{ id: string; title: string }[]>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = React.useState('');
@@ -197,14 +221,73 @@ export function TaskForm({
     });
   }
 
+  function toggleRecurrenceWeekday(day: number) {
+    setRecurrenceWeekdays((prev) => {
+      const exists = prev.includes(day);
+      if (exists) {
+        const next = prev.filter((d) => d !== day);
+        return next.length ? next : [day];
+      }
+      return [...prev, day].sort((a, b) => a - b);
+    });
+  }
+
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!title.trim()) return;
+    setRecurrenceError(null);
     setPending(true);
     const labelList = labels
       .split(',')
       .map((label) => label.trim())
       .filter(Boolean);
+
+    let recurrencePayload: Record<string, unknown> | null = null;
+    if (recurrenceEnabled) {
+      const interval = parsePositiveInt(recurrenceInterval, 1);
+      if (interval <= 0) {
+        setRecurrenceError('Recurrence interval must be a positive number.');
+        setPending(false);
+        return;
+      }
+
+      if (recurrenceFrequency === 'weekly') {
+        const weekdays = recurrenceWeekdays.length ? Array.from(new Set(recurrenceWeekdays)).sort((a, b) => a - b) : [];
+        if (!weekdays.length) {
+          setRecurrenceError('Select at least one weekday for weekly recurrence.');
+          setPending(false);
+          return;
+        }
+        recurrencePayload = {
+          version: 1,
+          frequency: recurrenceFrequency,
+          interval,
+          weekdays,
+          mode: 'after_completion',
+        };
+      } else if (recurrenceFrequency === 'monthly') {
+        const monthday = parsePositiveInt(recurrenceMonthday, 1);
+        if (monthday < 1 || monthday > 31) {
+          setRecurrenceError('Monthly recurrence day must be between 1 and 31.');
+          setPending(false);
+          return;
+        }
+        recurrencePayload = {
+          version: 1,
+          frequency: recurrenceFrequency,
+          interval,
+          monthday,
+          mode: 'after_completion',
+        };
+      } else {
+        recurrencePayload = {
+          version: 1,
+          frequency: recurrenceFrequency,
+          interval,
+          mode: 'after_completion',
+        };
+      }
+    }
 
     const selected = vaultHandle.trim();
     const selectedItem = selected ? vaultItems.find((it) => it.handle === selected) : null;
@@ -233,6 +316,7 @@ export function TaskForm({
         requiredNodeId: requiredNodeId || '',
         startAt: fromDateTimeLocalValue(startAt) || '',
         dueAt: fromDateTimeLocalValue(dueAt) || '',
+        recurrence: recurrencePayload,
         requiresReview,
         ...(requiresReview
           ? {
@@ -302,6 +386,18 @@ export function TaskForm({
     if (!p || p === 'auto') return [];
     return (modelCatalog || []).filter((m) => providerFromModelKey(m.key) === p);
   }, [modelCatalog, aiProvider]);
+
+  const recurrenceSummary = React.useMemo(() => {
+    if (!recurrenceEnabled) return '';
+    const interval = parsePositiveInt(recurrenceInterval, 1);
+    const payload =
+      recurrenceFrequency === 'weekly'
+        ? { version: 1, frequency: 'weekly', interval, weekdays: recurrenceWeekdays, mode: 'after_completion' as const }
+        : recurrenceFrequency === 'monthly'
+          ? { version: 1, frequency: 'monthly', interval, monthday: parsePositiveInt(recurrenceMonthday, 1), mode: 'after_completion' as const }
+          : { version: 1, frequency: recurrenceFrequency, interval, mode: 'after_completion' as const };
+    return taskRecurrenceSummary(payload);
+  }, [recurrenceEnabled, recurrenceFrequency, recurrenceInterval, recurrenceMonthday, recurrenceWeekdays]);
 
   function toggleAssignee(id: string, fallbackId: string) {
     setAssignees((prev) => {
@@ -727,6 +823,97 @@ export function TaskForm({
         <div>
           <label className="text-sm font-medium">Due</label>
           <Input type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} className="mt-2" />
+        </div>
+        <div className="sm:col-span-2 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold">Repeat</div>
+              <div className="mt-1 text-xs text-muted">Creates the next task when this one is marked done.</div>
+            </div>
+            {recurrenceSummary ? (
+              <span className="rounded-full border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs text-[var(--foreground)]">
+                {recurrenceSummary}
+              </span>
+            ) : null}
+          </div>
+
+          <label className="mt-3 flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-3 text-sm">
+            <input type="checkbox" checked={recurrenceEnabled} onChange={(e) => setRecurrenceEnabled(e.target.checked)} />
+            Enable recurrence
+          </label>
+
+          {recurrenceEnabled ? (
+            <div className="mt-3 grid gap-3 sm:grid-cols-4">
+              <div className="sm:col-span-2">
+                <label className="text-xs uppercase tracking-[0.2em] text-muted">Frequency</label>
+                <select
+                  className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-[var(--ring)]"
+                  value={recurrenceFrequency}
+                  onChange={(event) => setRecurrenceFrequency(event.target.value as TaskRecurrenceFrequency)}
+                >
+                  <option value="hourly">Hourly</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs uppercase tracking-[0.2em] text-muted">Interval</label>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={recurrenceInterval}
+                  onChange={(event) => setRecurrenceInterval(event.target.value)}
+                  className="mt-2"
+                />
+              </div>
+
+              {recurrenceFrequency === 'weekly' ? (
+                <div className="sm:col-span-4">
+                  <label className="text-xs uppercase tracking-[0.2em] text-muted">Weekdays</label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {TASK_RECURRENCE_WEEKDAYS.map((day) => {
+                      const active = recurrenceWeekdays.includes(day.value);
+                      return (
+                        <button
+                          key={day.value}
+                          type="button"
+                          className={`rounded-full border px-3 py-1 text-xs ${
+                            active
+                              ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]'
+                              : 'border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]'
+                          }`}
+                          onClick={() => toggleRecurrenceWeekday(day.value)}
+                        >
+                          {day.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {recurrenceFrequency === 'monthly' ? (
+                <div className="sm:col-span-2">
+                  <label className="text-xs uppercase tracking-[0.2em] text-muted">Day of month</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={31}
+                    step={1}
+                    value={recurrenceMonthday}
+                    onChange={(event) => setRecurrenceMonthday(event.target.value)}
+                    className="mt-2"
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {recurrenceError ? (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">{recurrenceError}</div>
+          ) : null}
         </div>
         <div className="sm:col-span-2">
           <label className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-sm">

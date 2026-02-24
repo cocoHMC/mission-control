@@ -23,7 +23,7 @@ const actions = [
   { label: 'Create new task', icon: FilePlus2, href: '/tasks/new' },
   { label: 'Open tasks board', icon: ListTodo, href: '/tasks' },
   { label: 'Open inbox', icon: Inbox, href: '/inbox' },
-  { label: 'Manage workspaces', icon: Layers3, href: '/workspaces' },
+  { label: 'Manage MC workspaces', icon: Layers3, href: '/workspaces' },
   { label: 'Manage projects', icon: FolderKanban, href: '/projects' },
   { label: 'Usage dashboard', icon: Gauge, href: '/usage' },
   { label: 'View activity feed', icon: BarChart3, href: '/activity' },

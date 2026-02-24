@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pbFetch } from '@/lib/pbServer';
 import { ensureTaskSubscription } from '@/lib/subscriptions';
+import { fallbackRecurrenceDate, normalizeTaskRecurrence } from '@/lib/taskRecurrence';
 
 type ReviewChecklistItem = { id: string; label: string; done: boolean };
 type ReviewChecklist = { version: 1; items: ReviewChecklistItem[] };
 
 function pbFilterString(value: string) {
   return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function safeString(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 function defaultReviewChecklist(): ReviewChecklist {
@@ -90,6 +95,36 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   delete payload.blockActorId;
   const now = new Date();
   payload.updatedAt = now.toISOString();
+
+  if (Object.prototype.hasOwnProperty.call(body ?? {}, 'recurrence')) {
+    try {
+      const parsed = normalizeTaskRecurrence(body?.recurrence, {
+        fallbackDate: fallbackRecurrenceDate(body?.dueAt, body?.startAt, payload.updatedAt),
+      });
+      payload.recurrence = parsed;
+      if (parsed) {
+        if (Object.prototype.hasOwnProperty.call(body ?? {}, 'recurrenceSeriesId')) {
+          payload.recurrenceSeriesId = safeString(body?.recurrenceSeriesId);
+        }
+        if (Object.prototype.hasOwnProperty.call(body ?? {}, 'recurrenceFromTaskId')) {
+          payload.recurrenceFromTaskId = safeString(body?.recurrenceFromTaskId);
+        }
+        if (Object.prototype.hasOwnProperty.call(body ?? {}, 'recurrenceSpawnedTaskId')) {
+          payload.recurrenceSpawnedTaskId = safeString(body?.recurrenceSpawnedTaskId);
+        } else {
+          // Editing recurrence should reset spawn linkage unless caller explicitly preserves it.
+          payload.recurrenceSpawnedTaskId = '';
+        }
+      } else {
+        payload.recurrenceSeriesId = '';
+        payload.recurrenceFromTaskId = '';
+        payload.recurrenceSpawnedTaskId = '';
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return NextResponse.json({ ok: false, error: message || 'Invalid recurrence.' }, { status: 400 });
+    }
+  }
 
   // Review gate: if requiresReview=true, block moving to done until checklist is complete.
   if (payload.status === 'in_progress') {

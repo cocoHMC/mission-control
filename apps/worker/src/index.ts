@@ -5,6 +5,7 @@ import { exec } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import webpush from 'web-push';
+import { nextRecurrenceAt, normalizeTaskRecurrence, type TaskRecurrence } from './taskRecurrence';
 
 const execAsync = promisify(exec);
 
@@ -150,6 +151,7 @@ const taskCache = new Map<string, any>();
 const projectCache = new Map<string, any>();
 const agentByRecordId = new Map<string, any>();
 const agentByOpenclawId = new Map<string, any>();
+const recurringSpawnLocks = new Set<string>();
 const recentNotifications = new Map<string, number>();
 const recentPush = new Map<string, number>();
 let delivering = false;
@@ -1023,6 +1025,227 @@ async function createActivity(token: string, type: string, summary: string, task
   }
 }
 
+function parseDateValue(value: unknown) {
+  if (!value) return null;
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function nextRecurrenceAfter(base: Date, recurrence: TaskRecurrence, floor: Date) {
+  let next = nextRecurrenceAt(base, recurrence);
+  let guard = 0;
+  while (next.getTime() <= floor.getTime() && guard < 1024) {
+    next = nextRecurrenceAt(next, recurrence);
+    guard += 1;
+  }
+  if (next.getTime() <= floor.getTime()) {
+    // Safety fallback: ensure we always return a future timestamp.
+    next = nextRecurrenceAt(floor, recurrence);
+  }
+  return next;
+}
+
+function nextRecurringDates(task: any, recurrence: TaskRecurrence) {
+  const now = new Date();
+  const sourceStart = parseDateValue(task?.startAt);
+  const sourceDue = parseDateValue(task?.dueAt);
+  const anchor = parseDateValue(task?.completedAt) || parseDateValue(task?.updatedAt) || now;
+
+  let nextStart: Date | null = null;
+  let nextDue: Date | null = null;
+
+  if (sourceStart) nextStart = nextRecurrenceAfter(sourceStart, recurrence, anchor);
+  if (sourceDue) nextDue = nextRecurrenceAfter(sourceDue, recurrence, anchor);
+
+  if (!nextStart && !nextDue) {
+    nextDue = nextRecurrenceAt(anchor, recurrence);
+  }
+
+  if (nextStart && nextDue && nextDue.getTime() <= nextStart.getTime()) {
+    const sourceDuration = sourceStart && sourceDue ? sourceDue.getTime() - sourceStart.getTime() : 0;
+    const safeDuration = sourceDuration > 60_000 ? sourceDuration : 60_000;
+    nextDue = new Date(nextStart.getTime() + safeDuration);
+  }
+
+  return {
+    startAt: nextStart ? nextStart.toISOString() : '',
+    dueAt: nextDue ? nextDue.toISOString() : '',
+  };
+}
+
+async function findExistingRecurringSpawn(token: string, fromTaskId: string) {
+  const normalizedTaskId = String(fromTaskId || '').trim();
+  if (!normalizedTaskId) return '';
+
+  try {
+    const q = new URLSearchParams({
+      page: '1',
+      perPage: '1',
+      sort: '-createdAt',
+      filter: `recurrenceFromTaskId = "${pbFilterString(normalizedTaskId)}"`,
+    });
+    const list = await pbFetch(`/api/collections/tasks/records?${q.toString()}`, { token });
+    return String(list?.items?.[0]?.id || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+async function maybeSpawnRecurringTask(token: string, prev: any, record: any) {
+  if (!prev) return;
+  if (String(prev?.status || '').trim() === 'done') return;
+  if (String(record?.status || '').trim() !== 'done') return;
+
+  const taskId = String(record?.id || '').trim();
+  if (!taskId) return;
+  if (recurringSpawnLocks.has(taskId)) return;
+
+  const fallback = parseDateValue(record?.dueAt) || parseDateValue(record?.startAt) || parseDateValue(record?.createdAt) || new Date();
+  const recurrence = normalizeTaskRecurrence(record?.recurrence, fallback);
+  if (!recurrence) return;
+
+  recurringSpawnLocks.add(taskId);
+  try {
+    const fresh = await pbFetch(`/api/collections/tasks/records/${taskId}`, { token });
+    const freshFallback = parseDateValue(fresh?.dueAt) || parseDateValue(fresh?.startAt) || parseDateValue(fresh?.createdAt) || new Date();
+    const normalized = normalizeTaskRecurrence(fresh?.recurrence, freshFallback);
+    if (!normalized) return;
+
+    const seriesId = String(fresh?.recurrenceSeriesId || '').trim() || taskId;
+    const existingSpawnId = String(fresh?.recurrenceSpawnedTaskId || '').trim();
+    if (existingSpawnId) return;
+
+    const discoveredSpawnId = await findExistingRecurringSpawn(token, taskId);
+    if (discoveredSpawnId) {
+      await pbFetch(`/api/collections/tasks/records/${taskId}`, {
+        method: 'PATCH',
+        token,
+        body: {
+          recurrenceSeriesId: seriesId,
+          recurrenceSpawnedTaskId: discoveredSpawnId,
+          updatedAt: nowIso(),
+        },
+      }).catch(() => {});
+
+      const cached = taskCache.get(taskId);
+      if (cached && typeof cached === 'object') {
+        taskCache.set(taskId, {
+          ...cached,
+          recurrenceSeriesId: seriesId,
+          recurrenceSpawnedTaskId: discoveredSpawnId,
+        });
+      }
+      return;
+    }
+
+    const taskProjectId = String(fresh?.projectId || '').trim();
+    const projectBlockReason = getProjectAutomationBlockReason(taskProjectId);
+    if (projectBlockReason) {
+      const summary = `Skipped recurring spawn for "${String(fresh?.title || taskId)}" because ${projectBlockReason}.`;
+      const noticeKey = `recurrence:${taskId}:${taskProjectId}:${projectBlockReason}`;
+      if (shouldEmitAutomationPolicyNotice(noticeKey, 30 * 60_000)) {
+        await createActivity(token, 'task_recurrence_skipped', summary, taskId);
+        await createNotification(token, leadAgentId, summary, taskId, 'incident', {
+          title: 'Recurring task skipped',
+          url: `/tasks/${taskId}`,
+        });
+      }
+      return;
+    }
+
+    const nextDates = nextRecurringDates(fresh, normalized);
+    const nowStamp = nowIso();
+    const rawAssigneeIds = Array.isArray(fresh?.assigneeIds)
+      ? fresh.assigneeIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
+      : [];
+    const normalizedAssigneeIds = normalizeAgentIds(rawAssigneeIds);
+    const assigneeIds = normalizedAssigneeIds.length ? normalizedAssigneeIds : rawAssigneeIds;
+    const nextStatus = assigneeIds.length ? 'assigned' : 'inbox';
+
+    const nextTitle = String(fresh?.title || '').trim() || 'Recurring task';
+    const nextPriority = String(fresh?.priority || '').trim().toLowerCase();
+    const nextEscalation = normalizeAgentId(String(fresh?.escalationAgentId || '').trim()) || leadAgentId;
+    const nextMaxAutoNudges = Number.isFinite(Number(fresh?.maxAutoNudges)) ? Number(fresh.maxAutoNudges) : 3;
+
+    const created = await pbFetch('/api/collections/tasks/records', {
+      method: 'POST',
+      token,
+      body: {
+        projectId: String(fresh?.projectId || '').trim(),
+        title: nextTitle,
+        description: String(fresh?.description || ''),
+        context: String(fresh?.context || ''),
+        vaultItem: String(fresh?.vaultItem || ''),
+        status: nextStatus,
+        priority: ['p0', 'p1', 'p2', 'p3'].includes(nextPriority) ? nextPriority : 'p2',
+        aiEffort: String(fresh?.aiEffort || '').trim() || 'auto',
+        aiThinking: String(fresh?.aiThinking || '').trim() || 'auto',
+        aiModelTier: String(fresh?.aiModelTier || '').trim() || 'auto',
+        aiModel: String(fresh?.aiModel || '').trim(),
+        assigneeIds,
+        requiredNodeId: String(fresh?.requiredNodeId || '').trim(),
+        labels: normalizeStringArray(fresh?.labels),
+        leaseOwnerAgentId: '',
+        leaseExpiresAt: '',
+        attemptCount: 0,
+        lastProgressAt: '',
+        maxAutoNudges: nextMaxAutoNudges,
+        escalationAgentId: nextEscalation,
+        archived: false,
+        createdAt: nowStamp,
+        updatedAt: nowStamp,
+        startAt: nextDates.startAt,
+        dueAt: nextDates.dueAt,
+        completedAt: '',
+        recurrence: normalized,
+        recurrenceSeriesId: seriesId,
+        recurrenceFromTaskId: taskId,
+        recurrenceSpawnedTaskId: '',
+        requiresReview: Boolean(fresh?.requiresReview),
+        policy: fresh?.policy ?? null,
+        reviewChecklist: fresh?.reviewChecklist ?? null,
+        order: Date.now(),
+        subtasksTotal: 0,
+        subtasksDone: 0,
+      },
+    });
+
+    const spawnedTaskId = String((created as any)?.id || '').trim();
+    if (!spawnedTaskId) return;
+
+    await pbFetch(`/api/collections/tasks/records/${taskId}`, {
+      method: 'PATCH',
+      token,
+      body: {
+        recurrenceSeriesId: seriesId,
+        recurrenceSpawnedTaskId: spawnedTaskId,
+        updatedAt: nowIso(),
+      },
+    }).catch(() => {});
+
+    const cached = taskCache.get(taskId);
+    if (cached && typeof cached === 'object') {
+      taskCache.set(taskId, {
+        ...cached,
+        recurrenceSeriesId: seriesId,
+        recurrenceSpawnedTaskId: spawnedTaskId,
+      });
+    }
+
+    await createActivity(
+      token,
+      'task_recurred',
+      `Generated next recurring task "${String((created as any)?.title || spawnedTaskId)}".`,
+      taskId
+    );
+  } catch (err: any) {
+    console.error('[worker] recurring task spawn failed', taskId, err?.message || err);
+  } finally {
+    recurringSpawnLocks.delete(taskId);
+  }
+}
+
 async function ensureTaskSubscription(token: string, taskId: string, agentId: string, reason: string) {
   if (!taskId || !agentId) return null;
   const normalized = normalizeAgentId(agentId);
@@ -1566,6 +1789,8 @@ async function handleTaskEvent(token: string, record: any, action: string) {
       body: { completedAt: now, lastProgressAt: now, updatedAt: now },
     });
   }
+
+  await maybeSpawnRecurringTask(token, prev, record);
 
   if (record.status === 'in_progress' && !record.leaseOwnerAgentId) {
     const assignees = normalizeAgentIds(record.assigneeIds ?? []);

@@ -215,7 +215,7 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
       }
 
       if (json.workspaceError) {
-        setSuccess(`Created agent ${json.agent?.openclawAgentId || id}. Workspace error: ${json.workspaceError}`);
+        setSuccess(`Created agent ${json.agent?.openclawAgentId || id}. Workspace path error: ${json.workspaceError}`);
       } else {
         setSuccess(`Created agent ${json.agent?.openclawAgentId || id}${openclawResult ? ' + OpenClaw agent' : ''}`);
       }
@@ -403,7 +403,7 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
   async function deleteOpenClawAgentFor(id: string) {
     setError(null);
     setSuccess(null);
-    if (!window.confirm(`Delete OpenClaw agent "${id}"? This will prune agent state and workspace.`)) return;
+    if (!window.confirm(`Delete OpenClaw agent "${id}"? This will prune agent state and workspace path.`)) return;
     try {
       const res = await mcFetch('/api/openclaw/agents/delete', {
         method: 'POST',
@@ -422,6 +422,22 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
+      <Card className="lg:col-span-3">
+        <CardContent className="pt-6 text-xs text-muted">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Scope: OpenClaw</Badge>
+            <span>Agent workspace paths below are filesystem directories used by OpenClaw.</span>
+          </div>
+          <div className="mt-2">
+            Mission Control workspaces are separate project groupings managed in{' '}
+            <Link href="/workspaces" className="font-medium underline">
+              MC Workspaces
+            </Link>
+            .
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Add agent</CardTitle>
@@ -451,7 +467,7 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
             <Input
               value={form.workspace}
               onChange={(e) => setForm((prev) => ({ ...prev, workspace: e.target.value }))}
-              placeholder="Workspace path (default: agents/<id>)"
+              placeholder="OpenClaw workspace path (default: agents/<id>)"
             />
             <div className="flex flex-wrap gap-2 text-xs text-muted">
               {['cheap', 'mid', 'expensive'].map((tier) => (
@@ -472,7 +488,7 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
                 checked={form.createWorkspace}
                 onChange={(e) => setForm((prev) => ({ ...prev, createWorkspace: e.target.checked }))}
               />
-              Scaffold workspace files (recommended)
+              Scaffold OpenClaw workspace files (recommended)
             </label>
             <label className="flex items-center gap-2 text-xs text-muted">
               <input
@@ -525,6 +541,12 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
           {!openclawError ? (
             <div className="text-xs text-muted">
               OpenClaw agents live in OpenClaw&apos;s config/state. Mission Control agents are the roster used for tasks.
+              OpenClaw workspace paths are filesystem directories.
+            </div>
+          ) : null}
+          {!openclawError ? (
+            <div className="text-xs text-muted">
+              Mission Control workspaces (Projects tab) are separate from OpenClaw workspace paths.
               If an agent exists in OpenClaw but not Mission Control, you can import it (no changes to OpenClaw).
             </div>
           ) : null}
@@ -539,7 +561,7 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
                 <span className="font-mono text-[var(--foreground)]">{openclawDefaults.thinkingDefault || '—'}</span>
               </div>
               <div className="truncate">
-                Workspace:{' '}
+                Workspace path:{' '}
                 <span className="font-mono text-[var(--foreground)]">{openclawDefaults.workspace || '—'}</span>
               </div>
               <div className="truncate">
@@ -607,7 +629,7 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
                 </div>
 
                 <div className="space-y-1 sm:col-span-2">
-                  <div className="text-xs text-muted">Workspace</div>
+                  <div className="text-xs text-muted">Workspace path</div>
                   <Input
                     value={defaultsDraft.workspace}
                     onChange={(e) => setDefaultsDraft((p) => ({ ...p, workspace: e.target.value }))}
@@ -757,7 +779,7 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
                     </Button>
                   </div>
                   <div className="truncate">
-                    Workspace: <span className="font-mono text-[var(--foreground)]">{oc.workspace || '—'}</span>
+                    Workspace path: <span className="font-mono text-[var(--foreground)]">{oc.workspace || '—'}</span>
                   </div>
                 </div>
               ) : null}
