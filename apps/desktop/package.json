@@ -4,7 +4,7 @@
   "homepage": "https://github.com/cocoHMC/mission-control",
   "author": "HMC <dev@hmcf.ca>",
   "private": true,
-  "version": "0.1.23",
+  "version": "0.1.78",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
