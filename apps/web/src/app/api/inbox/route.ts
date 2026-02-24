@@ -10,6 +10,28 @@ function toInt(value: string | null, fallback: number) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+const NOTIFICATION_SORT_FALLBACKS = ['-created', '-createdAt', '-deliveredAt,-id', '-id'];
+
+function isPbBadRequest(err: any) {
+  return Number((err as any)?.status || 0) === 400;
+}
+
+async function listNotifications(baseQ: URLSearchParams) {
+  let lastErr: unknown = null;
+  for (const sort of NOTIFICATION_SORT_FALLBACKS) {
+    const q = new URLSearchParams(baseQ);
+    q.set('sort', sort);
+    try {
+      return await pbFetch(`/api/collections/notifications/records?${q.toString()}`);
+    } catch (err: any) {
+      lastErr = err;
+      if (!isPbBadRequest(err)) throw err;
+    }
+  }
+  if (lastErr) throw lastErr;
+  return pbFetch(`/api/collections/notifications/records?${baseQ.toString()}`);
+}
+
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const page = Math.max(1, toInt(url.searchParams.get('page'), 1));
@@ -28,22 +50,25 @@ export async function GET(req: NextRequest) {
   const q = new URLSearchParams({
     page: String(page),
     perPage: String(perPage),
-    sort: '-created',
     ...(filters.length ? { filter: filters.join(' && ') } : {}),
   });
   try {
-    const data = await pbFetch(`/api/collections/notifications/records?${q.toString()}`);
+    const data = await listNotifications(q);
     return NextResponse.json(data);
   } catch (err: any) {
-    const msg = String(err?.message || '');
-    if (unreadOnly && msg.includes('readAt')) {
+    if (unreadOnly) {
+      const retryFilters = filters.filter((f) => f !== 'readAt = ""');
       const retryQ = new URLSearchParams({
         page: String(page),
         perPage: String(perPage),
-        sort: '-created',
+        ...(retryFilters.length ? { filter: retryFilters.join(' && ') } : {}),
       });
-      const data = await pbFetch(`/api/collections/notifications/records?${retryQ.toString()}`);
-      return NextResponse.json(data);
+      try {
+        const data = await listNotifications(retryQ);
+        return NextResponse.json(data);
+      } catch {
+        // Preserve the original error below for better diagnostics.
+      }
     }
     throw err;
   }
