@@ -473,6 +473,22 @@ async function startStack() {
     await new Promise((r) => setTimeout(r, 400));
 
     if (!pbIsRemote) {
+      // If a local dev stack left PocketBase running on the default port, reclaim it.
+      // This avoids false "already in use" failures when the packaged app is launched
+      // after `./scripts/run.sh` from a source checkout.
+      const reclaimedPb = await killListeningPids(pbPort, (cmd) => {
+        const c = String(cmd || '');
+        const lower = c.toLowerCase();
+        const isPocketBaseServe = lower.includes('pocketbase') && lower.includes('serve');
+        const isMissionControlPath = lower.includes('/mission-control/');
+        const isCurrentDesktopPb = c.includes(pbBin);
+        return isPocketBaseServe && isMissionControlPath && !isCurrentDesktopPb;
+      });
+      if (reclaimedPb > 0) {
+        log.warn('[desktop] reclaimed stale pocketbase listener(s)', { pbPort, reclaimedPb });
+        await new Promise((r) => setTimeout(r, 400));
+      }
+
       const pbUsage = await describePortUsage(pbPort);
       if (pbUsage) {
         log.error('[desktop] PocketBase port already in use', { pbPort, pbUsage });
