@@ -19,6 +19,10 @@ function parseArchived(value: unknown) {
   return ['1', 'true', 'yes', 'y', 'on', 'archived'].includes(raw);
 }
 
+function normalizeWorkspacePath(value: unknown) {
+  return String(value || '').trim();
+}
+
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const data = await pbFetch(`/api/collections/workspaces/records/${id}`);
@@ -37,6 +41,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('slug' in payload) payload.slug = slugify(payload.slug);
   if ('name' in payload && !payload.slug) payload.slug = slugify(payload.name);
   if ('description' in payload) payload.description = String(payload.description || '').trim();
+  if ('openclawWorkspacePath' in payload) payload.openclawWorkspacePath = normalizeWorkspacePath(payload.openclawWorkspacePath);
   if ('archived' in payload) payload.archived = parseArchived(payload.archived);
 
   const updated = await pbFetch(`/api/collections/workspaces/records/${id}`, {

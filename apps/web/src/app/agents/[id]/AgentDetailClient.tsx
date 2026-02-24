@@ -239,7 +239,8 @@ export function AgentDetailClient({ agentId, pbAgent }: { agentId: string; pbAge
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted">
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 text-xs">
-            Mission Control workspaces organize projects and boards. OpenClaw workspace paths point to this agent&apos;s files on disk.
+            Mission Control workspaces organize projects and boards, and can be linked to OpenClaw workspace paths.
+            This agent&apos;s workspace path points to its files on disk.
           </div>
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 text-xs">
             Use <span className="font-mono">agent:&lt;id&gt;:main</span> for normal chat, and{' '}

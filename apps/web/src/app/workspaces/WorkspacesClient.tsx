@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Layers3, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Layers3, Link2, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +34,9 @@ export function WorkspacesClient({ initialWorkspaces, initialProjects }: Props) 
   const [name, setName] = React.useState('');
   const [slug, setSlug] = React.useState('');
   const [description, setDescription] = React.useState('');
+  const [openclawWorkspacePath, setOpenclawWorkspacePath] = React.useState('');
+  const [syncingOpenClaw, setSyncingOpenClaw] = React.useState(false);
+  const [syncFeedback, setSyncFeedback] = React.useState<string | null>(null);
 
   const projectsByWorkspace = React.useMemo(() => {
     const out = new Map<string, Project[]>();
@@ -67,6 +70,37 @@ export function WorkspacesClient({ initialWorkspaces, initialProjects }: Props) 
     }
   }
 
+  async function syncFromOpenClaw(seedWhenEmptyOnly = false) {
+    setSyncingOpenClaw(true);
+    setSyncFeedback(null);
+    try {
+      const res = await mcFetch('/api/workspaces/sync-openclaw', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ seedWhenEmptyOnly }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        setSyncFeedback(String(json?.error || 'OpenClaw sync failed.'));
+        return;
+      }
+
+      const createdCount = Array.isArray(json?.createdWorkspaceIds) ? json.createdWorkspaceIds.length : 0;
+      const connected = Boolean(json?.connected);
+      const syncErrors = Array.isArray(json?.errors) ? json.errors.map((v: unknown) => String(v || '').trim()).filter(Boolean) : [];
+      if (!connected) {
+        setSyncFeedback(syncErrors[0] ? `OpenClaw sync unavailable: ${syncErrors[0]}` : 'OpenClaw workspace paths were not detected.');
+      } else if (createdCount > 0) {
+        setSyncFeedback(`Imported ${createdCount} workspace${createdCount === 1 ? '' : 's'} from OpenClaw.`);
+      } else {
+        setSyncFeedback(syncErrors[0] || 'Mission Control workspaces are already synced with OpenClaw paths.');
+      }
+      await refresh();
+    } finally {
+      setSyncingOpenClaw(false);
+    }
+  }
+
   async function createWorkspace(event: React.FormEvent) {
     event.preventDefault();
     const trimmedName = name.trim();
@@ -79,6 +113,7 @@ export function WorkspacesClient({ initialWorkspaces, initialProjects }: Props) 
         name: trimmedName,
         slug: normalizeSlug(slug || trimmedName),
         description: description.trim(),
+        openclawWorkspacePath: openclawWorkspacePath.trim(),
       }),
     });
     if (!res.ok) return;
@@ -86,6 +121,7 @@ export function WorkspacesClient({ initialWorkspaces, initialProjects }: Props) 
     setName('');
     setSlug('');
     setDescription('');
+    setOpenclawWorkspacePath('');
     await refresh();
   }
 
@@ -114,14 +150,21 @@ export function WorkspacesClient({ initialWorkspaces, initialProjects }: Props) 
       <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-xs text-muted">
         <div className="flex flex-wrap items-center gap-2">
           <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Scope: Mission Control</Badge>
-          <span>Workspaces here group projects, boards, and budgets in Mission Control.</span>
+          <span>Workspaces here group projects, boards, and budgets in Mission Control, and can link to OpenClaw filesystem workspaces.</span>
         </div>
         <div className="mt-2">
-          OpenClaw workspace paths are filesystem directories per agent. Configure those in{' '}
+          OpenClaw workspace defaults are managed in{' '}
           <Link href="/agents" className="font-medium underline">
             Agents
           </Link>
-          .
+          . Use sync to import paths into Mission Control workspace records.
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button type="button" variant="secondary" size="sm" onClick={() => void syncFromOpenClaw(false)} disabled={syncingOpenClaw}>
+            <Link2 className="mr-2 h-4 w-4" />
+            {syncingOpenClaw ? 'Syncing OpenClaw…' : 'Sync from OpenClaw'}
+          </Button>
+          {syncFeedback ? <span className="text-[11px] text-muted">{syncFeedback}</span> : null}
         </div>
       </div>
 
@@ -158,6 +201,15 @@ export function WorkspacesClient({ initialWorkspaces, initialProjects }: Props) 
                 placeholder="What this Mission Control workspace owns, and how teams should run it."
               />
             </div>
+            <div>
+              <label className="text-xs uppercase tracking-[0.2em] text-muted">Linked OpenClaw workspace path (optional)</label>
+              <Input
+                value={openclawWorkspacePath}
+                onChange={(event) => setOpenclawWorkspacePath(event.target.value)}
+                className="mt-2"
+                placeholder="~/.openclaw/workspace"
+              />
+            </div>
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -185,6 +237,11 @@ export function WorkspacesClient({ initialWorkspaces, initialProjects }: Props) 
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                         <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">{linked.length} projects</Badge>
                         {workspace.slug ? <span className="font-mono text-muted">{workspace.slug}</span> : null}
+                        {workspace.openclawWorkspacePath ? (
+                          <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">
+                            OC: {workspace.openclawWorkspacePath}
+                          </Badge>
+                        ) : null}
                         {workspace.archived ? (
                           <Badge className="border-none bg-red-600 text-white">archived</Badge>
                         ) : (
@@ -219,7 +276,7 @@ export function WorkspacesClient({ initialWorkspaces, initialProjects }: Props) 
                   </div>
 
                   <form
-                    className="mt-3 grid gap-2 md:grid-cols-[1fr_1fr_auto]"
+                    className="mt-3 grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto]"
                     onSubmit={(event) => {
                       event.preventDefault();
                       const data = new FormData(event.currentTarget);
@@ -227,11 +284,18 @@ export function WorkspacesClient({ initialWorkspaces, initialProjects }: Props) 
                         name: String(data.get('name') || '').trim(),
                         slug: normalizeSlug(String(data.get('slug') || '')),
                         description: String(data.get('description') || '').trim(),
+                        openclawWorkspacePath: String(data.get('openclawWorkspacePath') || '').trim(),
                       });
                     }}
                   >
                     <Input name="name" defaultValue={workspace.name || ''} placeholder="Mission Control workspace name" className="h-9" />
                     <Input name="slug" defaultValue={workspace.slug || ''} placeholder="slug" className="h-9" />
+                    <Input
+                      name="openclawWorkspacePath"
+                      defaultValue={workspace.openclawWorkspacePath || ''}
+                      placeholder="OpenClaw workspace path"
+                      className="h-9"
+                    />
                     <Button type="submit" size="sm" variant="secondary" className="h-9">
                       Save
                     </Button>
@@ -239,7 +303,7 @@ export function WorkspacesClient({ initialWorkspaces, initialProjects }: Props) 
                       name="description"
                       defaultValue={workspace.description || ''}
                       placeholder="Mission Control workspace description"
-                      className="md:col-span-3"
+                      className="md:col-span-4"
                     />
                   </form>
 
@@ -266,7 +330,14 @@ export function WorkspacesClient({ initialWorkspaces, initialProjects }: Props) 
 
             {!workspaces.length ? (
               <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--card)] p-8 text-center text-sm text-muted">
-                No Mission Control workspaces yet.
+                <div>No Mission Control workspaces yet.</div>
+                <div className="mt-2 text-xs">Connect OpenClaw and run sync to import workspace paths automatically.</div>
+                <div className="mt-3">
+                  <Button type="button" variant="secondary" size="sm" onClick={() => void syncFromOpenClaw(false)} disabled={syncingOpenClaw}>
+                    <Link2 className="mr-2 h-4 w-4" />
+                    {syncingOpenClaw ? 'Syncing OpenClaw…' : 'Sync from OpenClaw'}
+                  </Button>
+                </div>
               </div>
             ) : null}
           </div>

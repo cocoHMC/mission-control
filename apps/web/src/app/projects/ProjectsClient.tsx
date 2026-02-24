@@ -57,6 +57,12 @@ function makeDefaultDraft(): StatusDraft {
   };
 }
 
+function workspaceLabel(workspace: Workspace) {
+  const name = String(workspace.name || workspace.id || '').trim() || 'Workspace';
+  const path = String(workspace.openclawWorkspacePath || '').trim();
+  return path ? `${name} · ${path}` : name;
+}
+
 export function ProjectsClient({
   initialProjects,
   initialStatusUpdates,
@@ -261,10 +267,14 @@ export function ProjectsClient({
       <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-xs text-muted">
         <div className="flex flex-wrap items-center gap-2">
           <Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Scope: Mission Control</Badge>
-          <span>Workspace here means a Mission Control project grouping for boards, automations, and budgets.</span>
+          <span>Workspace here is a Mission Control project grouping that can be linked to an OpenClaw workspace path.</span>
         </div>
         <div className="mt-2">
-          OpenClaw workspace paths are filesystem directories per agent and can be managed in{' '}
+          Manage workspace-to-OpenClaw path mapping in{' '}
+          <Link href="/workspaces" className="font-medium underline">
+            Workspaces
+          </Link>
+          , and manage agent-specific workspace defaults in{' '}
           <Link href="/agents" className="font-medium underline">
             Agents
           </Link>
@@ -283,7 +293,7 @@ export function ProjectsClient({
             <option value="">All MC workspaces</option>
             {workspaces.map((workspace) => (
               <option key={workspace.id} value={workspace.id}>
-                {workspace.name || workspace.id}
+                {workspaceLabel(workspace)}
               </option>
             ))}
           </select>
@@ -319,7 +329,7 @@ export function ProjectsClient({
               <option value="">No MC workspace</option>
               {workspaces.map((workspace) => (
                 <option key={workspace.id} value={workspace.id}>
-                  {workspace.name || workspace.id}
+                  {workspaceLabel(workspace)}
                 </option>
               ))}
             </select>
@@ -469,7 +479,7 @@ export function ProjectsClient({
                     <option value="">no MC workspace</option>
                     {workspaces.map((workspace) => (
                       <option key={workspace.id} value={workspace.id}>
-                        {workspace.name || workspace.id}
+                        {workspaceLabel(workspace)}
                       </option>
                     ))}
                   </select>

@@ -16,7 +16,7 @@ export default async function AgentsPage() {
       <div className="flex h-full min-h-0 flex-col gap-3">
         <Topbar
           title="Agents"
-          subtitle={`Lead agent: ${leadName}. OpenClaw workspace paths are configured here; Mission Control workspaces live under Projects.`}
+          subtitle={`Lead agent: ${leadName}. Configure OpenClaw agent defaults here; link Mission Control workspaces to OpenClaw paths under Workspaces.`}
           rightSlot={<Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Scope: OpenClaw</Badge>}
           density="compact"
         />

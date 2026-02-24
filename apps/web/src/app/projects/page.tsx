@@ -2,6 +2,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { Topbar } from '@/components/shell/Topbar';
 import { Badge } from '@/components/ui/badge';
 import { pbFetch } from '@/lib/pbServer';
+import { syncMissionControlWorkspacesFromOpenClaw } from '@/lib/openclawWorkspaceSync';
 import type { PBList, Project, ProjectStatusUpdate, Workspace } from '@/lib/types';
 import { ProjectsClient } from '@/app/projects/ProjectsClient';
 
@@ -28,6 +29,9 @@ async function getStatusUpdates() {
 async function getWorkspaces() {
   const q = new URLSearchParams({ page: '1', perPage: '200', sort: '-updatedAt' });
   try {
+    const list = await pbFetch<PBList<Workspace>>(`/api/collections/workspaces/records?${q.toString()}`);
+    if (Array.isArray(list.items) && list.items.length > 0) return list;
+    await syncMissionControlWorkspacesFromOpenClaw({ seedWhenEmptyOnly: true }).catch(() => null);
     return await pbFetch<PBList<Workspace>>(`/api/collections/workspaces/records?${q.toString()}`);
   } catch {
     return { items: [], page: 1, perPage: 200, totalItems: 0, totalPages: 1 } as PBList<Workspace>;
@@ -54,7 +58,7 @@ export default async function ProjectsPage({
       <div className="flex h-full min-h-0 flex-col gap-3">
         <Topbar
           title="Projects"
-          subtitle="Asana-style work buckets with automation controls and status reporting inside Mission Control."
+          subtitle="Asana-style work buckets with automation controls, status reporting, and OpenClaw-linked workspace context."
           rightSlot={<Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Scope: Mission Control</Badge>}
           density="compact"
         />

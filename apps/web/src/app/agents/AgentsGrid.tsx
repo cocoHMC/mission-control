@@ -546,7 +546,11 @@ export function AgentsGrid({ initialAgents }: { initialAgents: Agent[] }) {
           ) : null}
           {!openclawError ? (
             <div className="text-xs text-muted">
-              Mission Control workspaces (Projects tab) are separate from OpenClaw workspace paths.
+              Mission Control workspaces can now store linked OpenClaw workspace paths in the{' '}
+              <Link href="/workspaces" className="underline">
+                Workspaces
+              </Link>{' '}
+              tab.
               If an agent exists in OpenClaw but not Mission Control, you can import it (no changes to OpenClaw).
             </div>
           ) : null}

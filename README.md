@@ -21,6 +21,7 @@ Note: the desktop app is not notarized/signed by default. On macOS you may need 
 - **Task views**: Kanban + Calendar + Asana-style List (inline edits + saved views)
 - **Recurring tasks** (hourly/daily/weekly/monthly; auto-generate next task on completion)
 - **Projects** (multi-project grouping with per-project mode/status)
+- **Workspace linking** (Mission Control workspaces can sync/map to OpenClaw workspace paths)
 - **Automation safety by project mode** (`manual` blocks schedules/triggers, `paused/archived` blocks automation)
 - **Project status updates** (manual check-ins + worker auto-generated daily rollups)
 - **Inbox** (human notification queue with read/unread state)

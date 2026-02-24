@@ -2,6 +2,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { Topbar } from '@/components/shell/Topbar';
 import { Badge } from '@/components/ui/badge';
 import { pbFetch } from '@/lib/pbServer';
+import { syncMissionControlWorkspacesFromOpenClaw } from '@/lib/openclawWorkspaceSync';
 import type { PBList, Project, Workspace } from '@/lib/types';
 import { WorkspacesClient } from '@/app/workspaces/WorkspacesClient';
 
@@ -10,6 +11,9 @@ export const dynamic = 'force-dynamic';
 async function getWorkspaces() {
   const q = new URLSearchParams({ page: '1', perPage: '200', sort: '-updatedAt' });
   try {
+    const list = await pbFetch<PBList<Workspace>>(`/api/collections/workspaces/records?${q.toString()}`);
+    if (Array.isArray(list.items) && list.items.length > 0) return list;
+    await syncMissionControlWorkspacesFromOpenClaw({ seedWhenEmptyOnly: true }).catch(() => null);
     return await pbFetch<PBList<Workspace>>(`/api/collections/workspaces/records?${q.toString()}`);
   } catch {
     return { items: [], page: 1, perPage: 200, totalItems: 0, totalPages: 1 } as PBList<Workspace>;
@@ -33,7 +37,7 @@ export default async function WorkspacesPage() {
       <div className="flex h-full min-h-0 flex-col gap-3">
         <Topbar
           title="Mission Control Workspaces"
-          subtitle="Group projects into operating domains for Mission Control. These do not set OpenClaw filesystem workspace paths."
+          subtitle="Group projects into operating domains and optionally link each workspace to an OpenClaw filesystem workspace path."
           rightSlot={<Badge className="border-none bg-[var(--surface)] text-[var(--foreground)]">Scope: Mission Control</Badge>}
           density="compact"
         />

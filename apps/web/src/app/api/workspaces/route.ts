@@ -19,6 +19,10 @@ function parseArchived(value: unknown) {
   return ['1', 'true', 'yes', 'y', 'on', 'archived'].includes(raw);
 }
 
+function normalizeWorkspacePath(value: unknown) {
+  return String(value || '').trim();
+}
+
 export async function GET(req: NextRequest) {
   const q = new URL(req.url).searchParams.toString();
   const data = await pbFetch(`/api/collections/workspaces/records?${q}`);
@@ -37,6 +41,7 @@ export async function POST(req: NextRequest) {
     name,
     slug: slugify(body?.slug || name),
     description: String(body?.description || '').trim(),
+    openclawWorkspacePath: normalizeWorkspacePath(body?.openclawWorkspacePath),
     archived: parseArchived(body?.archived),
     createdAt: now,
     updatedAt: now,

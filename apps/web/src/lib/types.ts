@@ -97,6 +97,7 @@ export type Workspace = {
   name: string;
   slug?: string;
   description?: string;
+  openclawWorkspacePath?: string;
   archived?: boolean;
   createdAt?: string;
   updatedAt?: string;
